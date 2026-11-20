@@ -2,18 +2,20 @@
 
 **Standalone chat-style console and addon diagnostics hub for RIFT Live**
 
-![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Version](https://img.shields.io/badge/Version-0.2.5-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
+![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Version](https://img.shields.io/badge/Version-0.2.6-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
 
 A compact, dark-mode chat window that can receive addon diagnostics, record event history, filter/search, copy to clipboard, and expose a command API to **all our RIFT repositories**. LuaPadModern inspired the editor focus design; this is **original code** with no LuaPadModern dependency or source modifications.
 
-**Development record:** [Complete project history — concept, version timeline, failures, fixes, live proof, and outstanding work](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md).
+**Development record:** [concept through v0.2.2, including failures and live proof](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md), [v0.2.3 navigation](docs/V0_2_3_NAVIGATION_AND_RELEASE.md), [v0.2.4 resizing](docs/V0_2_4_RESIZE.md), [v0.2.5 codebase bug hunt](docs/V0_2_5_CODEBASE_BUGHUNT.md), and [v0.2.6 editor improvements / deployment receipt](docs/V0_2_6_EDITOR_HISTORY_AND_SEARCH.md).
 
 ## Implemented
 
 | Feature | Current state |
 | --- | --- |
-| Modern dark UI, default 760×618, **21pt title / 16pt message font** | ✅ Live v0.2.3; v0.2.4 resize mock-tested |
+| Modern dark UI, default 760×618, **21pt title / 16pt message font** | ✅ v0.2.2 basic UI live-verified; later revisions offline-verified, live acceptance pending |
 | Dedicated **18pt editor**, getter-verified input/search focus badge, Enter dispatch | ✅ Lua 5.1 mock; physical acceptance pending |
+| **Session-only Up/Down command recall**, 32 entries, restores unsent draft | ✅ v0.2.6 Lua 5.1 tests; live key acceptance pending |
+| Search field stays synchronized with `:find` and `/rcm find` | ✅ v0.2.6 regression tests |
 | Drag release outside, viewport clamping and saved placement | ✅ Tests |
 | **Resizable window**, responsive message-history rows and saved width/height | ✅ v0.2.4 Lua 5.1 geometry tests; physical acceptance pending |
 | **Paged detail reading** for long messages at compact window sizes | ✅ v0.2.4 Lua 5.1 tests |
@@ -92,6 +94,7 @@ After that, the new editor handles its **own local commands**.
 | :native copy | Copy the native console configuration report to clipboard |
 | :mirror on / off / status | Opt-in mirroring of other addons' console output; never player chat |
 | :copy | Copy all currently filtered history via the game clipboard API |
+| Up / Down (editor focused) | Browse up to 32 previously successful local editor commands; Down past newest restores unsent draft (live acceptance pending) |
 
 A plain social-chat draft or native slash command entered into the new editor **is not silently sent**. It remains in the editor with a clear status explaining the missing native send route.
 
@@ -122,7 +125,7 @@ end
 | GetHistory(kind, search, limit, offset) | Return copies, never mutable history references |
 | GetMessage(id) / OpenMessage(id) | Look up a retained message by stable ID and open its full-text reader |
 | GetSelectedMessage() / CopySelectedMessage() / CloseMessage() | Inspect/copy the full selected message without losing history context |
-| GetStatus() | Version, ready/visible state, **editorFocusState** (`focused`, `search`, `unfocused`, `hidden`, `unavailable`), focus flags, filter, count and capabilities |
+| GetStatus() | Version, ready/visible state, **editorFocusState** (`focused`, `search`, `unfocused`, `hidden`, `unavailable`), focus flags, filter, count, **commandHistoryCount**, **commandHistoryPersisted=false**, and capabilities |
 | RegisterCommand(name, callback) | Register local colon-command |
 | Subscribe(name, callback) / Unsubscribe(name) | Receive copied event data |
 | Submit(":command args") | Execute a local command |
@@ -188,3 +191,13 @@ This release audits all five Lua runtime modules, the RIFT manifest, local tests
 **Testing:** 76/76 Lua 5.1 regression tests passed, including new bug-hunt and messaging checks. Existing SavedVariables schema, addon transport identifier, CLI commands and public API interfaceVersion = 1 remain compatible. Full audit details and evidence limitations are in [v0.2.5 bug hunt](docs/V0_2_5_CODEBASE_BUGHUNT.md).
 
 **Physical in-game acceptance:** separate from mock verification. Loading the installed files in RIFT, error checks, drag/resize, paging, and clipboard behavior must be verified in the actual client before being labeled LIVE PASS. Normal native social chat still requires a distinct bridge.
+
+## v0.2.6 — Console input history and search synchronization
+
+**New:** The local editor now remembers the latest 32 successfully submitted `:` commands for in-session Up/Down recall, avoids consecutive duplicates, and restores unsent text when navigating forward past the newest command. An edit or paste exits navigation. The history is deliberately **not persisted** to SavedVariables; unsent native/social drafts are never counted as successful commands. API calls to `Submit` are separate from manual editor recall.
+
+**Fixed:** `:find` and `/rcm find` previously changed the active model search without updating the visible search textbox. The renderer now synchronizes the query without redundant change events.
+
+**Compatibility regression caught before deployment:** Adding keyboard handlers initially pushed the UI constructor beyond the Lua 5.1 **60-upvalue** compilation limit, failing many tests and preventing addon startup. Input callbacks were consolidated through the existing controls upvalue; the revised loader and runtime suites pass **81/81 tests**. These are offline tests, not physical keyboard acceptance.
+
+See [v0.2.6 engineering and acceptance notes](docs/V0_2_6_EDITOR_HISTORY_AND_SEARCH.md). Native social-chat send/receive remains unimplemented through the verified Lua addon API. No character SavedVariables migration or destructive install procedure is required.

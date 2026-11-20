@@ -2,7 +2,7 @@
 -- Native player say/tell/guild transmit and full native chat interception are NOT
 -- exposed by the verified addon APIs. This UI never pretends to send those.
 local info = ...
-local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.5"
+local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.6"
 local Core = _G.RiftChatModernCore
 local MessageBridge = _G.RiftChatModernAddonMessages
 local NativeProbe = _G.RiftChatModernNativeProbe
@@ -31,6 +31,9 @@ local transport
 local context,visibleOffset,lastFocusState= nil,0,nil
 local lastViewportW,lastViewportH
 local initialized=false
+-- Editor commands are recalled in memory only; never written to SavedVariables.
+local HISTORY_CAP=32
+local commandHistory,recallIndex,recallDraft,recallWritten={},nil,nil,nil
 local function finite(v)
     return type(v)=="number" and v==v and v>-math.huge and v<math.huge
 end
@@ -57,6 +60,57 @@ end
 local function notifyUi(text)
     if statusField then statusField:SetText(text) end
 end
+local function rememberExecuted(value)
+    if type(value)~="string" or value:sub(1,1)~=":" then return end
+    if commandHistory[#commandHistory]~=value then
+        commandHistory[#commandHistory+1]=value
+        if #commandHistory>HISTORY_CAP then table.remove(commandHistory,1) end
+    end
+    recallIndex,recallDraft,recallWritten=nil,nil,nil
+end
+local function recallCommand(direction)
+    if not editor or #commandHistory==0 then return false end
+    local value
+    if direction=="older" then
+        if not recallIndex then
+            recallDraft=editor:GetText() or ""
+            recallIndex=#commandHistory
+        else
+            recallIndex=math.max(1,recallIndex-1)
+        end
+        value=commandHistory[recallIndex]
+    elseif direction=="newer" then
+        if not recallIndex then return false end
+        if recallIndex<#commandHistory then
+            recallIndex=recallIndex+1
+            value=commandHistory[recallIndex]
+        else
+            value=recallDraft or ""
+            recallIndex,recallDraft=nil,nil
+        end
+    else return false end
+    recallWritten=value
+    editor:SetText(value)
+    if type(editor.SetCursor)=="function" then
+        pcall(editor.SetCursor,editor,#value)
+    end
+    notifyUi(recallIndex and ("Local command "..recallIndex.."/"..#commandHistory..
+        " • session-only history") or "Restored unsent draft")
+    return true
+end
+-- Reuse the existing controls upvalue in makeUi: Lua 5.1 limits a function
+-- to 60 distinct upvalues. Extra direct state captures break addon loading.
+controls=controls or {}
+controls._commandActions={
+    recall=recallCommand,
+    changed=function(current)
+        if recallWritten~=nil and current==recallWritten then
+            recallWritten=nil
+            return
+        end
+        recallIndex,recallDraft,recallWritten=nil,nil,nil
+    end,
+}
 local function mouse()
     if not Inspect or type(Inspect.Mouse)~="function" then return nil end
     local ok,value=pcall(Inspect.Mouse)
@@ -291,6 +345,11 @@ local function openMessage(id)
 end
 render=function()
     if not model or not panel or not rows then return end
+    -- :find and /rcm find can update the model independently of the textfield.
+    -- Keep the displayed query synchronized without resetting matching input.
+    if searchField and searchField:GetText()~=model.search then
+        searchField:SetText(model.search)
+    end
     local selection,total=model:getHistory(model.filter,model.search,LINES,visibleOffset)
     local oldestOffset=total>0 and math.floor((total-1)/LINES)*LINES or 0
     if visibleOffset>oldestOffset then
@@ -400,6 +459,7 @@ local function submit()
         else notifyUi("Command rejected: "..tostring(err)) end
         return nil,err -- Keep unsent draft visible.
     end
+    rememberExecuted(value)
     editor:SetText("")
     visibleOffset=0
     -- Copy writes a useful receipt into the footer; preserve it until changed.
@@ -581,7 +641,7 @@ local function makeUi()
     if Event.UI.Textfield and Event.UI.Textfield.Change then
         searchField:EventAttach(Event.UI.Textfield.Change,function()
             local val=searchField:GetText() or ""
-            if #val<=60 then model:setSearch(val);visibleOffset=0;render() end
+            if #val<=60 and val~=model.search then model:setSearch(val);visibleOffset=0;render() end
         end,ADDON.." search updated")
     end
     button("FindReset","RESET",panel,605,111,75,33,function()
@@ -634,12 +694,25 @@ local function makeUi()
     editor:SetText("")
     rgba(editor,C.control)
     if editor.Event then
+        -- RIFT Textfield's native KeyDown is the proven input path (LuaPadModern).
         function editor.Event:KeyDown(key)
-            if type(key)=="string" and (key:byte(1)==13 or key:byte(1)==10
-                or key:lower()=="enter" or key:lower()=="return") then
+            if not panel or not panel:GetVisible() or type(key)~="string" then return end
+            local normalized=key:lower()
+            if key:byte(1)==13 or key:byte(1)==10
+                or normalized=="enter" or normalized=="return" then
                 submit()
+            elseif normalized=="up" or normalized=="arrowup" then
+                controls._commandActions.recall("older")
+            elseif normalized=="down" or normalized=="arrowdown" then
+                controls._commandActions.recall("newer")
             end
         end
+    end
+    if Event.UI.Textfield and Event.UI.Textfield.Change then
+        editor:EventAttach(Event.UI.Textfield.Change,function()
+            -- Typing or pasting into recalled text exits history navigation.
+            controls._commandActions.changed(editor:GetText() or "")
+        end,ADDON.." input changed")
     end
     if Event.UI.Input.Mouse.Left.Click then
         editor:EventAttach(Event.UI.Input.Mouse.Left.Click,function()
@@ -999,6 +1072,8 @@ _G.RiftChatModernAPI={
         data.windowWidth=W;data.windowHeight=H
         data.minimumWindowWidth=MIN_W;data.minimumWindowHeight=MIN_H
         data.visibleRows=LINES
+        data.commandHistoryCount=#commandHistory
+        data.commandHistoryPersisted=false
         data.resizable=panel~=nil
         return data
     end,
