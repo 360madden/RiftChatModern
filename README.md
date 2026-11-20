@@ -2,7 +2,7 @@
 
 **Standalone chat-style console and addon diagnostics hub for RIFT Live**
 
-![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Version](https://img.shields.io/badge/Version-0.2.3-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
+![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Version](https://img.shields.io/badge/Version-0.2.4-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
 
 A compact, dark-mode chat window that can receive addon diagnostics, record event history, filter/search, copy to clipboard, and expose a command API to **all our RIFT repositories**. LuaPadModern inspired the editor focus design; this is **original code** with no LuaPadModern dependency or source modifications.
 
@@ -12,9 +12,11 @@ A compact, dark-mode chat window that can receive addon diagnostics, record even
 
 | Feature | Current state |
 | --- | --- |
-| Modern dark UI, 760×618, **21pt title / 16pt message font** | ✅ Lua 5.1 geometry tests |
+| Modern dark UI, default 760×618, **21pt title / 16pt message font** | ✅ Live v0.2.3; v0.2.4 resize mock-tested |
 | Dedicated **18pt editor**, getter-verified input/search focus badge, Enter dispatch | ✅ Lua 5.1 mock; physical acceptance pending |
 | Drag release outside, viewport clamping and saved placement | ✅ Tests |
+| **Resizable window**, responsive message-history rows and saved width/height | ✅ v0.2.4 Lua 5.1 geometry tests; physical acceptance pending |
+| **Paged detail reading** for long messages at compact window sizes | ✅ v0.2.4 Lua 5.1 tests |
 | Bundled Lato Regular/Bold fonts and original OFL license | ✅ SHA-256 verified |
 | All / Chat / System / NPC / Addons / Dev tabs | ✅ |
 | Timestamped history, paging, search | ✅ |
@@ -66,6 +68,8 @@ After that, the new editor handles its **own local commands**.
 | /rcm find Atank | Search messages |
 | /rcm copy | Copy filtered history |
 | /rcm clear | Clear saved local history |
+| /rcm size WIDTH HEIGHT | Resize the addon window within supported viewport limits |
+| /rcm size reset | Restore the default 760 × 618 size |
 | /rcm status / help | Diagnostics |
 
 ## Local editor commands
@@ -129,6 +133,7 @@ end
 | GetNativeConsoles() | Read-only native-frame and console-channel metadata; **never** claims ordinary chat-message access |
 | SetConsoleMirror(boolean) / GetConsoleMirrorStatus() | Explicit optional pass-through interception of addon console output, preserving native behavior |
 | GetFocusState() | Read the addon-owned input/search focus state; does not infer native RIFT chat focus |
+| SetWindowSize(width, height) | Resize and persist a window's dimensions; requires initialized addon |
 
 Channel labels include **general, party, guild, tell, system, npc, combat, addons, dev**. They are *categories* for records, not assertions that the game server transmitted them.
 
@@ -165,3 +170,11 @@ Built on AMD-DESKTOP for reusable RIFT development tooling.
 The message-history pagination buttons now read **OLDER** and **NEWER** instead of tiny arrow glyphs. The manifest, startup window and status API all report v0.2.3. All 54 Lua 5.1 mock tests passed, including the RIFT startup-loader contract and paging-control regression. Physical RIFT acceptance of v0.2.3 remains pending; the physical v0.2.2 acceptance is preserved in the historical report.
 
 The addon is also available publicly at https://github.com/360madden/RiftChatModern.
+
+## v0.2.4 — resizable responsive window
+
+Drag the **// grip** at the bottom-right corner of the RCM window to resize horizontally, vertically, or diagonally. The title bar still moves the window independently. The history region consumes most added height, dynamically expanding the number of rows shown; wider windows reveal longer message previews. At the compact minimum (680 × 480), message details have **PREV/NEXT** pages with a page indicator so long text remains accessible.
+
+Window position and dimensions persist under the existing character-scoped RiftChatModernSaved.ui (x, y, w, h) with validation and viewport clamping. Existing messages and custom UI state are preserved. The new API SetWindowSize(w, h) is additive; interfaceVersion remains 1. The native chat command /rcm size 1000 750 provides a direct test and /rcm size reset restores the default size.
+
+**Verification:** 63/63 Lua 5.1 mock tests, including resize gestures, independent axes, mouse release outside, full control containment, persistence and restore, viewport clamping, detailed messages, RIFT startup loader contract and old API regression. **Physical v0.2.4 acceptance remains separate**; inspect the in-game version, resizing, saved dimensions after /reloadui and errors before claiming a live pass. See [v0.2.4 engineering notes](docs/V0_2_4_RESIZE.md).

@@ -4,7 +4,7 @@ NameShort = "RCM"
 Description = "Compact addon-owned chat-style console: NPC/alerts, addon events, search, history and clipboard. Native player chat is not intercepted."
 Author = "360madden"
 Email = "placeholder@example.com" -- maintainer contact placeholder
-Version = "0.2.3"
+Version = "0.2.4"
 Environment = "4.3"
 RunOnStartup = { "Core.lua", "AddonMessages.lua", "NativeChatProbe.lua", "ConsoleMirror.lua", "Main.lua" }
 SavedVariables = { RiftChatModernSaved = "character" }

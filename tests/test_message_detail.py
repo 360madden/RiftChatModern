@@ -1,4 +1,4 @@
-"""RiftChatModern v0.2.3 complete-message reader and clipboard controls."""
+"""RiftChatModern v0.2.4 complete-message reader and clipboard controls."""
 from pathlib import Path
 import sys
 import unittest
@@ -23,7 +23,7 @@ class MessageReaderTests(unittest.TestCase):
             lua.execute((ADDON / name).read_text(encoding="utf-8"))
         main=(ADDON/"Main.lua").read_text(encoding="utf-8")
         lua.execute("assert(loadstring("+_lua_quote(main)+"))"
-                    "({identifier='RiftChatModern',version='0.2.3'})")
+                    "({identifier='RiftChatModern',version='0.2.4'})")
         lua.execute(source)
 
     def test_click_row_opens_full_text_and_copy_selected(self):
@@ -38,8 +38,18 @@ assert(row.id==2)
 assert(frames.RCMLineText2.text:find("...",1,true))
 triggerFrame(frames.RCMLine2,Event.UI.Input.Mouse.Left.Click)
 assert(frames.RCMDetailOverlay.visible==true)
-assert(frames.RCMDetailBody.text==long)
 assert(frames.RCMDetailBody.wrap==true)
+local chunks={frames.RCMDetailBody.text}
+for i=1,16 do
+    triggerFrame(frames.RCMDetailNext,Event.UI.Input.Mouse.Left.Click)
+    local nextChunk=frames.RCMDetailBody.text
+    if nextChunk==chunks[#chunks] then break end
+    chunks[#chunks+1]=nextChunk
+end
+assert(table.concat(chunks)==long)
+assert(frames.RCMDetailPageStatus.text:find("/",1,true))
+triggerFrame(frames.RCMDetailPrev,Event.UI.Input.Mouse.Left.Click)
+assert(frames.RCMDetailBody.text==chunks[math.max(1,#chunks-1)])
 local selected=assert(api.GetSelectedMessage())
 assert(selected.id==2 and selected.text==long)
 selected.text="altered"

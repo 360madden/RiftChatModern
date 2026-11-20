@@ -2,12 +2,17 @@
 -- Native player say/tell/guild transmit and full native chat interception are NOT
 -- exposed by the verified addon APIs. This UI never pretends to send those.
 local info = ...
-local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.3"
+local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.4"
 local Core = _G.RiftChatModernCore
 local MessageBridge = _G.RiftChatModernAddonMessages
 local NativeProbe = _G.RiftChatModernNativeProbe
 local ConsoleMirror = _G.RiftChatModernConsoleMirror
-local W,H,LINES=760,618,13
+local DEFAULT_W, DEFAULT_H, MIN_W, MIN_H=760,618,680,480
+local W,H,LINES=DEFAULT_W,DEFAULT_H,13
+local ROW_H,MAX_ROWS=24,80
+local TAB_ORDER={"all","chat","system","npc","addons","dev"}
+local ACTION_ORDER={"Copy","Clear","Focus","Mirror"}
+local ACTION_WEIGHTS={170/587,98/587,145/587,174/587}
 local C = {
     bg={0.065,0.080,0.11,0.98}, header={0.090,0.111,0.15,1},
     card={0.092,0.117,0.15,1}, alt={0.081,0.102,0.13,1},
@@ -17,7 +22,10 @@ local C = {
     warning={1.0,0.73,0.43,1}, good={0.40,0.91,0.70,1}
 }
 local model,panel,editor,searchField,statusField,focusIndicator,rows,tabLabels,drag
-local selectedId,detailOverlay,detailTitle,detailBody
+local resize, resizeGrip, header, handle, titleFrame, versionFrame, divider
+local list, findLabel, controls, layoutWindow, render
+local selectedId,detailOverlay,detailTitle,detailBody,detailPageStatus
+local detailPageIndex,refreshDetail=1,nil
 local mirror,mirrorButtonLabel
 local transport
 local context,visibleOffset,lastFocusState= nil,0,nil
@@ -56,18 +64,24 @@ local function mouse()
         return value
     end
 end
+local function saveGeometry()
+    if not model or not panel then return end
+    local ui=type(model.saved.ui)=="table" and model.saved.ui or {}
+    ui.x=panel:GetLeft();ui.y=panel:GetTop()
+    ui.w=W;ui.h=H
+    model.saved.ui=ui -- preserve other SavedVariables fields and history
+end
 local function shift(x,y,save)
     if not panel or not finite(x) or not finite(y) then return end
     local vw,vh=UIParent:GetWidth(),UIParent:GetHeight()
     if not finite(vw) or not finite(vh) then return end
-    x=math.max(0,math.min(vw-W,math.floor(x+0.5)))
-    y=math.max(0,math.min(vh-H,math.floor(y+0.5)))
+    x=math.max(0,math.min(math.max(0,vw-W),math.floor(x+0.5)))
+    y=math.max(0,math.min(math.max(0,vh-H),math.floor(y+0.5)))
     panel:SetPoint("TOPLEFT",UIParent,"TOPLEFT",x,y)
-    if save and model then
-        model.saved.ui={x=x,y=y}
-    end
+    if save then saveGeometry() end
 end
 local function startDrag()
+    if resize then return end
     local m=mouse()
     if m and panel then drag={dx=m.x-panel:GetLeft(),dy=m.y-panel:GetTop()} end
 end
@@ -121,7 +135,21 @@ local function button(name,value,parent,x,y,w,h,fn,strong)
             rgba(control,strong and C.accent or C.control)
         end,ADDON.." "..name.." leave")
     end
+    controls=controls or {}
+    controls[name]={frame=control,label=caption}
     return control,caption
+end
+local function place(obj,parent,x,y,w,h)
+    if not obj then return end
+    obj:SetPoint("TOPLEFT",parent,"TOPLEFT",math.floor(x),math.floor(y))
+    obj:SetWidth(math.max(1,math.floor(w)))
+    obj:SetHeight(math.max(1,math.floor(h)))
+end
+local function placeButton(name,parent,x,y,w,h)
+    local b=controls and controls[name]
+    if not b then return end
+    place(b.frame,parent,x,y,w,h)
+    place(b.label,b.frame,8,math.max(1,(h-21)/2),w-16,22)
 end
 local function focusState()
     if not panel or not panel:GetVisible() then return "hidden" end
@@ -192,6 +220,7 @@ local function selectedMessage()
 end
 local function closeDetails()
     selectedId=nil
+    detailPageIndex=1
     if detailOverlay then detailOverlay:SetVisible(false) end
     return true
 end
@@ -209,22 +238,62 @@ local function copyMessage()
     notifyUi("Copied complete message #"..tostring(row.id).." ("..#text.." bytes).")
     return true
 end
+refreshDetail=function()
+    if not selectedId or not detailBody then return end
+    local record=selectedMessage()
+    if not record then return end
+    local body=record.text
+    local columns=math.max(18,math.floor((detailBody:GetWidth()-20)/11))
+    local lines=math.max(1,math.floor(detailBody:GetHeight()/23))
+    local capacity=math.max(28,math.floor(columns*lines*0.72))
+    local pages,first={},1
+    while first<=#body do
+        local last=math.min(#body,first+capacity-1)
+        -- Split UTF-8 at a lead-byte boundary; never start on a continuation.
+        while last<#body and last>=first do
+            local nextByte=body:byte(last+1)
+            if not nextByte or nextByte<128 or nextByte>=192 then break end
+            last=last-1
+        end
+        if last<first then last=first end
+        pages[#pages+1]=body:sub(first,last)
+        first=last+1
+    end
+    if #pages==0 then pages={""} end
+    detailPageIndex=math.max(1,math.min(detailPageIndex,#pages))
+    detailBody:SetText(pages[detailPageIndex])
+    if detailPageStatus then
+        detailPageStatus:SetText("PAGE "..detailPageIndex.."/"..#pages)
+    end
+end
+local function detailPageStep(amount)
+    if not selectedId then return end
+    detailPageIndex=math.max(1,detailPageIndex+amount)
+    refreshDetail()
+end
 local function openMessage(id)
     if not model then return nil,"not_ready" end
     local row,err=model:getMessage(id)
     if not row then return nil,err end
     selectedId=id
+    detailPageIndex=1
     if detailOverlay and detailBody and detailTitle then
         detailTitle:SetText(string.format("%s  •  %s  •  #%d",
             row.kind:upper(),row.source,row.id))
-        detailBody:SetText(row.text)
         detailOverlay:SetVisible(true)
+        refreshDetail()
     end
     return true
 end
-local function render()
-    if not model or not panel then return end
+render=function()
+    if not model or not panel or not rows then return end
     local selection,total=model:getHistory(model.filter,model.search,LINES,visibleOffset)
+    if total and visibleOffset>math.max(0,total-LINES) then
+        visibleOffset=math.max(0,total-LINES)
+        selection,total=model:getHistory(model.filter,model.search,LINES,visibleOffset)
+    end
+    -- One width computation per redraw; no per-message geometry work.
+    local capacity=math.max(34,math.floor(((list and list:GetWidth() or 666)-65)/7.6))
     for i=1,LINES do
         local r=selection[i]
         rows[i].messageId=r and r.id or nil
@@ -236,7 +305,8 @@ local function render()
             end
             local msg=string.format("%s  %-7s  %-14s %s",ts,r.kind:upper(),
                 cutUtf8(r.source,14),r.text)
-            rows[i].entry:SetText(cutUtf8(msg,79))
+            -- Wider windows expose more of each message, without changing saved text.
+            rows[i].entry:SetText(cutUtf8(msg,capacity))
             ink(rows[i].entry,r.kind=="dev" and C.accent or
                 r.kind=="system" and C.warning or C.text)
         else rows[i].entry:SetText("") end
@@ -331,28 +401,151 @@ local function submit()
     if not value:match("^%s*:copy%s*$") then render() end
     return true
 end
+-- Central layout pass; parent-relative anchors are recalculated only on size change.
+local function makeRow(i)
+    local row=frame("Line"..i,list,5,6+(i-1)*ROW_H,656,ROW_H,
+        i%2==0 and C.card or C.alt)
+    row:SetMouseMasking("full")
+    rows[i]={entry=text("LineText"..i,row,"",9,2,634,22,16,C.text),
+        frame=row,messageId=nil}
+    row:EventAttach(Event.UI.Input.Mouse.Left.Click,function()
+        local id=rows[i].messageId
+        if id then openMessage(id) end
+    end,ADDON.." open message "..i)
+end
+layoutWindow=function()
+    if not panel or not list or not rows or not controls then return end
+    local w,h=W,H
+    place(header,panel,0,0,w,58)
+    place(handle,header,0,0,w-380,58)
+    place(titleFrame,handle,18,15,math.min(320,w-407),28)
+    place(focusIndicator,header,w-377,20,188,24)
+    place(versionFrame,header,w-181,19,118,22)
+    placeButton("Close",header,w-45,11,34,34)
+    place(divider,panel,0,58,w,1)
+    local tabWidth=(w-32-5*8)/6
+    for i,name in ipairs(TAB_ORDER) do
+        placeButton("Tab"..name,panel,16+(i-1)*(tabWidth+8),69,tabWidth,34)
+    end
+    place(findLabel,panel,17,118,60,25)
+    place(searchField,panel,84,111,w-254,33)
+    placeButton("FindReset",panel,w-155,111,75,33)
+    placeButton("PageUp",panel,w-74,160,64,34)
+    placeButton("PageDown",panel,w-74,205,64,34)
+    local cardW,cardH=w-94,h-292
+    place(list,panel,14,154,cardW,cardH)
+    local count=math.min(MAX_ROWS,math.max(1,math.floor((cardH-10)/ROW_H)))
+    for i=#rows+1,count do makeRow(i) end
+    LINES=count
+    for i,row in ipairs(rows) do
+        if i<=count then
+            place(row.frame,list,5,6+(i-1)*ROW_H,cardW-10,ROW_H)
+            place(row.entry,row.frame,9,2,cardW-32,22)
+            row.frame:SetVisible(true)
+        else
+            row.messageId=nil
+            row.frame:SetVisible(false)
+            -- Park hidden rows inside the card for reliable viewport tests.
+            place(row.frame,list,5,6,cardW-10,ROW_H)
+        end
+    end
+    local overlayW,overlayH=cardW-8,cardH-8
+    place(detailOverlay,list,4,4,overlayW,overlayH)
+    place(detailTitle,detailOverlay,14,13,overlayW-138,25)
+    place(detailBody,detailOverlay,14,51,overlayW-28,math.max(24,overlayH-124))
+    placeButton("DetailCopy",detailOverlay,14,overlayH-51,162,36)
+    placeButton("DetailPrev",detailOverlay,185,overlayH-51,74,36)
+    placeButton("DetailNext",detailOverlay,269,overlayH-51,74,36)
+    place(detailPageStatus,detailOverlay,352,overlayH-43,100,22)
+    placeButton("DetailClose",detailOverlay,overlayW-107,overlayH-51,94,36)
+    if selectedId then refreshDetail() end
+    -- Distribute action buttons proportionally across the available width.
+    local available=w-28-3*10
+    local x=14
+    for i,name in ipairs(ACTION_ORDER) do
+        local width=i==4 and (w-14-x) or math.floor(available*ACTION_WEIGHTS[i])
+        placeButton(name,panel,x,h-128,width,35)
+        x=x+width+10
+    end
+    place(editor,panel,14,h-83,w-128,40)
+    placeButton("Send",panel,w-105,h-83,90,40)
+    place(statusField,panel,16,h-31,w-65,24)
+    place(resizeGrip,panel,w-30,h-30,26,26)
+end
+local function resizeTo(width,height,save)
+    if not panel or not finite(width) or not finite(height) then
+        return nil,"invalid_window_size"
+    end
+    local vw,vh=UIParent:GetWidth(),UIParent:GetHeight()
+    if not finite(vw) or not finite(vh) or vw<=0 or vh<=0 then
+        return nil,"invalid_viewport"
+    end
+    -- A dragged corner cannot push the opposite edges offscreen.
+    local maxW=math.max(1,math.floor(vw-panel:GetLeft()))
+    local maxH=math.max(1,math.floor(vh-panel:GetTop()))
+    local nextW=math.max(math.min(MIN_W,maxW),math.min(maxW,math.floor(width+0.5)))
+    local nextH=math.max(math.min(MIN_H,maxH),math.min(maxH,math.floor(height+0.5)))
+    if nextW~=W or nextH~=H then
+        W,H=nextW,nextH
+        panel:SetWidth(W);panel:SetHeight(H)
+        layoutWindow()
+        render()
+    end
+    if save then saveGeometry() end
+    return true
+end
+local function startResize()
+    if drag or resize or not panel then return end
+    local m=mouse()
+    if not m then return end
+    resize={mx=m.x,my=m.y,w=W,h=H}
+    rgba(resizeGrip,C.accent)
+end
+local function resizeMove(save)
+    if not resize then return end
+    local m=mouse()
+    if m then
+        resizeTo(resize.w+m.x-resize.mx,resize.h+m.y-resize.my,save)
+    elseif save then
+        saveGeometry()
+    end
+end
+local function stopResize()
+    if not resize then return end
+    resizeMove(true)
+    resize=nil
+    if resizeGrip then rgba(resizeGrip,C.control) end
+end
 local function makeUi()
     if panel then return end
     context=UI.CreateContext("RiftChatModernContext")
+    local ui=model and type(model.saved.ui)=="table" and model.saved.ui or nil
+    local vw,vh=UIParent:GetWidth(),UIParent:GetHeight()
+    -- Sanitize old/malformed sizes without altering character history.
+    local maxW,maxH=math.max(1,math.floor(vw)),math.max(1,math.floor(vh))
+    local savedW=ui and finite(ui.w) and ui.w or DEFAULT_W
+    local savedH=ui and finite(ui.h) and ui.h or DEFAULT_H
+    W=math.min(maxW,math.max(math.min(MIN_W,maxW),math.floor(savedW+0.5)))
+    H=math.min(maxH,math.max(math.min(MIN_H,maxH),math.floor(savedH+0.5)))
     panel=UI.CreateFrame("Frame","RiftChatModernWindow",context)
     panel:SetWidth(W);panel:SetHeight(H)
     rgba(panel,C.bg)
-    local ui=model and model.saved.ui
-    local vw,vh=UIParent:GetWidth(),UIParent:GetHeight()
-    shift(ui and ui.x or math.max(0,math.floor((vw-W)/2)),
-        ui and ui.y or math.max(0,math.floor((vh-H)/3)),false)
-    local header=frame("Header",panel,0,0,W,58,C.header)
+    shift(ui and finite(ui.x) and ui.x or math.max(0,math.floor((vw-W)/2)),
+        ui and finite(ui.y) and ui.y or math.max(0,math.floor((vh-H)/3)),false)
+    lastViewportW,lastViewportH=vw,vh
+    header=frame("Header",panel,0,0,W,58,C.header)
     -- The drag surface is only over the title. The close button remains clickable.
-    local handle=frame("DragHandle",header,0,0,370,58)
+    handle=frame("DragHandle",header,0,0,370,58)
     handle:SetMouseMasking("full")
     handle:EventAttach(Event.UI.Input.Mouse.Left.Down,startDrag,ADDON.." drag start")
     handle:EventAttach(Event.UI.Input.Mouse.Left.Up,stopDrag,ADDON.." drag stop")
     handle:EventAttach(Event.UI.Input.Mouse.Left.Upoutside,stopDrag,ADDON.." drag outside")
-    text("Title",handle,"RIFT CHAT  /  MODERN",18,15,320,28,21,C.text,true)
+    titleFrame=text("Title",handle,"RIFT CHAT  /  MODERN",18,15,320,28,21,C.text,true)
     focusIndicator=text("FocusIndicator",header,"INPUT  •  HIDDEN",
         383,20,188,24,14,C.muted,true)
-    text("Version",header,"v"..VERSION,579,19,118,22,16,C.accent,true)
+    versionFrame=text("Version",header,"v"..VERSION,579,19,118,22,16,C.accent,true)
     button("Close","×",header,715,11,34,34,function()
+        if resize then stopResize() end
         drag=nil
         if editor and type(editor.SetKeyFocus)=="function" then
             pcall(editor.SetKeyFocus,editor,false)
@@ -363,7 +556,7 @@ local function makeUi()
         panel:SetVisible(false)
         updateFocusIndicator(true)
     end)
-    frame("Divider",panel,0,58,W,1,C.border)
+    divider=frame("Divider",panel,0,58,W,1,C.border)
     tabLabels={}
     local tabs={{"all","ALL"},{"chat","CHAT"},{"system","SYSTEM"},{"npc","NPC"},
         {"addons","ADDONS"},{"dev","DEV"}}
@@ -373,7 +566,7 @@ local function makeUi()
             function() model:setFilter(name);visibleOffset=0;render() end)
         tabLabels[name]=label
     end
-    text("FindLabel",panel,"SEARCH",17,118,60,25,15,C.muted,true)
+    findLabel=text("FindLabel",panel,"SEARCH",17,118,60,25,15,C.muted,true)
     searchField=UI.CreateFrame("RiftTextfield","RCMSearchField",panel)
     searchField:SetPoint("TOPLEFT",panel,"TOPLEFT",84,111)
     searchField:SetWidth(506);searchField:SetHeight(33)
@@ -396,18 +589,8 @@ local function makeUi()
         visibleOffset=math.max(0,visibleOffset-LINES);render()
     end)
     rows={}
-    local list=frame("MessageCard",panel,14,154,666,326,C.card)
-    for i=1,LINES do
-        local row=frame("Line"..i,list,5,6+(i-1)*24,656,24,
-            i%2==0 and C.card or C.alt)
-        row:SetMouseMasking("full")
-        rows[i]={entry=text("LineText"..i,row,"",9,2,634,22,16,C.text),
-            frame=row,messageId=nil}
-        row:EventAttach(Event.UI.Input.Mouse.Left.Click,function()
-            local id=rows[i].messageId
-            if id then openMessage(id) end
-        end,ADDON.." open message "..i)
-    end
+    list=frame("MessageCard",panel,14,154,666,326,C.card)
+    -- Actual message rows are created lazily by layoutWindow().
     -- Complete-message reader overlays only the message list, not the controls.
     -- The regular rows remain available immediately after CLOSE.
     detailOverlay=frame("DetailOverlay",list,4,4,658,318,C.header)
@@ -419,6 +602,12 @@ local function makeUi()
     detailBody:SetWordwrap(true)
     button("DetailCopy","COPY MESSAGE",detailOverlay,14,267,162,36,
         copyMessage,true)
+    button("DetailPrev","PREV",detailOverlay,185,267,74,36,
+        function() detailPageStep(-1) end)
+    button("DetailNext","NEXT",detailOverlay,269,267,74,36,
+        function() detailPageStep(1) end)
+    detailPageStatus=text("DetailPageStatus",detailOverlay,"PAGE 1/1",
+        352,275,100,22,14,C.muted,true)
     button("DetailClose","CLOSE",detailOverlay,551,267,94,36,closeDetails)
     detailOverlay:SetVisible(false)
     button("Copy","COPY HISTORY",panel,14,490,170,35,copyHistory,true)
@@ -451,7 +640,25 @@ local function makeUi()
     end
     button("Send","RUN",panel,655,535,90,40,submit,true)
     statusField=text("Status",panel,"",16,587,726,24,14,C.muted)
-    -- All controls remain inside the 760×618 panel, even at reduced UI scale.
+    resizeGrip=frame("ResizeGrip",panel,W-30,H-30,26,26,C.control)
+    resizeGrip:SetMouseMasking("full")
+    text("ResizeGlyph",resizeGrip,"//",4,2,18,21,17,C.text,true)
+    resizeGrip:EventAttach(Event.UI.Input.Mouse.Left.Down,startResize,
+        ADDON.." resize start")
+    resizeGrip:EventAttach(Event.UI.Input.Mouse.Left.Up,stopResize,
+        ADDON.." resize stop")
+    resizeGrip:EventAttach(Event.UI.Input.Mouse.Left.Upoutside,stopResize,
+        ADDON.." resize outside")
+    if Event.UI.Input.Mouse.Cursor and Event.UI.Input.Mouse.Cursor.In then
+        resizeGrip:EventAttach(Event.UI.Input.Mouse.Cursor.In,function()
+            if not resize then rgba(resizeGrip,C.hover) end
+        end,ADDON.." resize grip hover")
+    end
+    if Event.UI.Input.Mouse.Cursor and Event.UI.Input.Mouse.Cursor.Out then
+        resizeGrip:EventAttach(Event.UI.Input.Mouse.Cursor.Out,function()
+            if not resize then rgba(resizeGrip,C.control) end
+        end,ADDON.." resize grip leave")
+    end
     -- Explicit input focus indication; opening the window never steals focus.
     if Event.UI.Input.Mouse.Left.Click then
         searchField:EventAttach(Event.UI.Input.Mouse.Left.Click,function()
@@ -472,6 +679,7 @@ local function makeUi()
         end
     end
     model.onChange=render
+    layoutWindow()
     panel:SetVisible(false)
     updateFocusIndicator(true)
     render()
@@ -481,6 +689,7 @@ local function show(yes)
     makeUi()
     if not yes then
         closeDetails()
+        if resize then stopResize() end
         if drag then
             shift(panel:GetLeft(),panel:GetTop(),true)
             drag=nil
@@ -507,6 +716,16 @@ local function parseSlash(_,args)
     elseif verb=="hide" then show(false)
     elseif verb=="focus" then show(true);focusEditor()
     elseif verb=="copy" then copyHistory()
+    elseif verb=="size" then
+        local requestedW,requestedH=rest:match("^(%d+)%s+(%d+)$")
+        if rest=="reset" then requestedW,requestedH=DEFAULT_W,DEFAULT_H end
+        if not requestedW then
+            notice("Usage: /rcm size WIDTH HEIGHT | reset")
+        else
+            makeUi()
+            local ok,err=resizeTo(tonumber(requestedW),tonumber(requestedH),true)
+            notice(ok and ("Window size "..W.."x"..H) or ("Size failed: "..tostring(err)))
+        end
     elseif verb=="clear" then if model then model:clear() end
     elseif verb=="status" then
         if model then
@@ -522,7 +741,7 @@ local function parseSlash(_,args)
         if not ok then notice("Search rejected: "..tostring(err))
         else visibleOffset=0;render() end
     elseif verb=="help" then
-        notice("/rcm [show|hide|focus|status|copy|clear|tab KIND|find TEXT]")
+        notice("/rcm [show|hide|focus|status|copy|clear|size W H|size reset|tab KIND|find TEXT]")
         notice("Input: :help :status :mirror on/off :native :rpt ... :addon CHARACTER MESSAGE.")
     else notice("Unknown command. Use /rcm help") end
 end
@@ -724,17 +943,29 @@ local function nativeNotify(first,second)
     end
 end
 local function dragTick()
-    if drag then
+    if resize then
+        local m=mouse()
+        if not m or m.Left==false then stopResize()
+        else resizeMove(false) end
+    elseif drag then
         local m=mouse()
         if not m or m.Left==false then stopDrag()
         else dragMove(false) end
     end
     if panel and panel:GetVisible() then
         local w,h=UIParent:GetWidth(),UIParent:GetHeight()
-        if finite(w) and finite(h)
+        if finite(w) and finite(h) and w>0 and h>0
             and (lastViewportW~=w or lastViewportH~=h) then
             lastViewportW,lastViewportH=w,h
-            if not drag then shift(panel:GetLeft(),panel:GetTop(),true) end
+            if resize then stopResize() end
+            if drag then stopDrag() end
+            -- Shrink window before clamping position on resolution/UI-scale changes.
+            W,H=math.min(W,math.floor(w)),math.min(H,math.floor(h))
+            panel:SetWidth(W);panel:SetHeight(H)
+            shift(panel:GetLeft(),panel:GetTop(),false)
+            layoutWindow()
+            saveGeometry()
+            render()
         end
         updateFocusIndicator(false)
     end
@@ -755,6 +986,10 @@ _G.RiftChatModernAPI={
         data.searchFocused=state=="search"
         data.addonTransportReady=transport~=nil and transport.ready or false
         data.consoleMirrorEnabled=mirrorStatus().enabled
+        data.windowWidth=W;data.windowHeight=H
+        data.minimumWindowWidth=MIN_W;data.minimumWindowHeight=MIN_H
+        data.visibleRows=LINES
+        data.resizable=panel~=nil
         return data
     end,
     GetHistory=function(kind,search,limit,offset)
@@ -791,6 +1026,11 @@ _G.RiftChatModernAPI={
     FocusEditor=focusEditor,
     FocusSearch=focusSearch,
     GetFocusState=focusState,
+    SetWindowSize=function(width,height)
+        if not model then return nil,"not_ready" end
+        makeUi()
+        return resizeTo(width,height,true)
+    end,
     GetNativeConsoles=getNativeConsoles,
     GetConsoleMirrorStatus=mirrorStatus,
     SetConsoleMirror=setMirror,
