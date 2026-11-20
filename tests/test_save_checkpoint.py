@@ -27,7 +27,7 @@ class SaveLifecycleTests(unittest.TestCase):
         for name in FILES:
             src=(ADDON/name).read_text(encoding="utf-8")
             lua.execute("assert(loadstring("+_lua_quote(src)+
-                        "))({identifier='RiftChatModern',version='0.2.12'}, {})")
+                        "))({identifier='RiftChatModern',version='0.2.13'}, {})")
         if setup:lua.execute(setup)
         lua.execute(body)
 
@@ -203,6 +203,61 @@ assert(stat.eventSequence==2)
 assert(RiftChatModernSaved.ui.w==860)
 assert(RiftChatModernSaved.ui.h==655)
 ''')
+
+    def test_migration_and_repaired_next_id_are_unsaved_until_engine_checkpoint(self):
+        lua=LuaRuntime(unpack_returned_tuples=True)
+        lua.execute((ADDON/"Core.lua").read_text(encoding="utf-8"))
+        lua.execute(r'''
+local previous={schemaVersion=1,history={
+    {id=1,at=1700,kind="guild",source="RCMTest",text="[HOST? Guild] test"}
+},nextId=2}
+local migrated=assert(RiftChatModernCore.new(previous))
+assert(previous.schemaVersion==2)
+assert(migrated:checkpointStatus().pendingSessionChanges==true)
+assert(not migrated:checkpointStatus().saveEventReceiptAvailable)
+local checkpoint=assert(migrated:recordSaveBegin(1710))
+assert(checkpoint.pendingSessionChanges==false)
+assert(checkpoint.lastImportIdAtEvent==1)
+assert(checkpoint.onDiskVerified==false)
+local reopened=assert(RiftChatModernCore.new(previous))
+assert(reopened:checkpointStatus().pendingSessionChanges==false)
+local noId={schemaVersion=2,history={}}
+local repaired=assert(RiftChatModernCore.new(noId))
+assert(noId.nextId==1)
+assert(repaired:checkpointStatus().pendingSessionChanges==true)
+assert(repaired:recordSaveBegin(1720).pendingSessionChanges==false)
+''')
+
+    def test_full_rift_startup_marks_schema1_migration_unsaved_until_save_begin(self):
+        old_schema = r'''
+RiftChatModernSaved = {schemaVersion=1,nextId=2,history={
+    {id=1,at=1700,kind="guild",source="RCMTest",
+     text="[HOST? Guild] legacy imported text"}
+}}
+'''
+        self.run_game(r'''
+fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")
+fire(Event.Addon.Load.End,"RiftChatModern")
+local api=RiftChatModernAPI
+local before=api.GetSaveCheckpointStatus()
+assert(api.interfaceVersion==2)
+assert(RiftChatModernSaved.schemaVersion==2)
+assert(before.pendingSessionChanges==true)
+assert(before.saveEventReceiptAvailable==false)
+local imports,total=api.GetHistory("imports","",10,0)
+assert(total==1 and imports[1].kind=="import")
+assert(imports[1].origin=="host_manual")
+assert(imports[1].channelKind=="guild")
+assert(imports[1].text=="legacy imported text")
+fire(Event.Addon.SavedVariables.Save.Begin,"OtherAddon")
+assert(api.GetSaveCheckpointStatus().pendingSessionChanges==true)
+fire(Event.Addon.SavedVariables.Save.Begin,"RiftChatModern")
+local after=api.GetSaveCheckpointStatus()
+assert(after.pendingSessionChanges==false)
+assert(after.eventSequence==1 and after.lastImportIdAtEvent==1)
+assert(after.onDiskVerified==false)
+assert(RiftChatModernSaved.saveCheckpoint.schemaVersion==2)
+''', setup=old_schema)
 
 if __name__=="__main__":
     unittest.main()

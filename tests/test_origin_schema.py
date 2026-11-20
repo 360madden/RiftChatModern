@@ -32,7 +32,7 @@ class ProvenanceSchemaTests(unittest.TestCase):
         for module in MODULES:
             source=(ADDON/module).read_text(encoding="utf-8")
             lua.execute("assert(loadstring("+_lua_quote(source)+
-                        "))({identifier='RiftChatModern',version='0.2.12'}, {})")
+                        "))({identifier='RiftChatModern',version='0.2.13'}, {})")
         lua.execute(script)
 
     def test_migrate_35_legacy_records_preserves_ids_times_and_real_category(self):

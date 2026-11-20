@@ -148,8 +148,12 @@ function Core.new(saved)
         saved.history=converted
         saved.schemaVersion=2
     end
+    -- Migration and missing nextId repair mutate character SavedVariables.
+    -- They must remain marked as unsaved until an actual RIFT Save.Begin.
+    local initializedSavedState=migrating or saved.nextId==nil
     local self=setmetatable({saved=saved, handlers={}, listeners={},
-        filter="all", search="", onChange=nil, onCommand=nil, revision=0}, Model)
+        filter="all", search="", onChange=nil, onCommand=nil,
+        revision=initializedSavedState and 1 or 0}, Model)
     saved.nextId=saved.nextId or (maxId+1)
     if saved.filter~=nil and filters[saved.filter] then self.filter=saved.filter end
     if type(saved.search)=="string" and #saved.search<=60
@@ -342,7 +346,7 @@ function Model:commandCount()
     return count
 end
 function Model:status()
-    return {version="0.2.12",schemaVersion=2,
+    return {version="0.2.13",schemaVersion=2,
         provenanceRequired=true,historyCount=#self.saved.history,
         filter=self.filter,search=self.search,revision=self.revision,
         commandCount=self:commandCount(),nativeSocialSendAvailable=false,
