@@ -2,7 +2,7 @@
 -- Native player say/tell/guild transmit and full native chat interception are NOT
 -- exposed by the verified addon APIs. This UI never pretends to send those.
 local info = ...
-local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.4"
+local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.5"
 local Core = _G.RiftChatModernCore
 local MessageBridge = _G.RiftChatModernAddonMessages
 local NativeProbe = _G.RiftChatModernNativeProbe
@@ -77,7 +77,10 @@ local function shift(x,y,save)
     if not finite(vw) or not finite(vh) then return end
     x=math.max(0,math.min(math.max(0,vw-W),math.floor(x+0.5)))
     y=math.max(0,math.min(math.max(0,vh-H),math.floor(y+0.5)))
+    -- Frame:SetPoint creates permanent anchors; replace instead of stacking.
+    panel:ClearAll()
     panel:SetPoint("TOPLEFT",UIParent,"TOPLEFT",x,y)
+    panel:SetWidth(W);panel:SetHeight(H)
     if save then saveGeometry() end
 end
 local function startDrag()
@@ -141,6 +144,7 @@ local function button(name,value,parent,x,y,w,h,fn,strong)
 end
 local function place(obj,parent,x,y,w,h)
     if not obj then return end
+    obj:ClearAll()
     obj:SetPoint("TOPLEFT",parent,"TOPLEFT",math.floor(x),math.floor(y))
     obj:SetWidth(math.max(1,math.floor(w)))
     obj:SetHeight(math.max(1,math.floor(h)))
@@ -204,15 +208,15 @@ local function focusSearch()
     local state=updateFocusIndicator(true)
     return state=="search" and true or nil,state~="search" and "focus_not_acquired" or nil
 end
+local function boundedUtf8(str,maximum)
+    if Core and type(Core.utf8Prefix)=="function" then
+        return Core.utf8Prefix(str,maximum)
+    end
+    return str:sub(1,maximum)
+end
 local function cutUtf8(str,maximum)
     if #str<=maximum then return str end
-    local i=maximum
-    while i>1 do
-        local byte=str:byte(i+1)
-        if not byte or byte<128 or byte>=192 then break end
-        i=i-1
-    end
-    return str:sub(1,i).."..."
+    return boundedUtf8(str,maximum).."..."
 end
 local function selectedMessage()
     if not model or not selectedId then return nil,"no_selection" end
@@ -288,8 +292,9 @@ end
 render=function()
     if not model or not panel or not rows then return end
     local selection,total=model:getHistory(model.filter,model.search,LINES,visibleOffset)
-    if total and visibleOffset>math.max(0,total-LINES) then
-        visibleOffset=math.max(0,total-LINES)
+    local oldestOffset=total>0 and math.floor((total-1)/LINES)*LINES or 0
+    if visibleOffset>oldestOffset then
+        visibleOffset=oldestOffset
         selection,total=model:getHistory(model.filter,model.search,LINES,visibleOffset)
     end
     -- One width computation per redraw; no per-message geometry work.
@@ -311,8 +316,8 @@ render=function()
                 r.kind=="system" and C.warning or C.text)
         else rows[i].entry:SetText("") end
     end
-    local count=math.min(total,visibleOffset+LINES)
-    local first=math.max(0,count-math.min(LINES,total-visibleOffset)+1)
+    local count=math.max(0,total-visibleOffset)
+    local first=#selection>0 and (count-#selection+1) or 0
     if selectedId then
         local current=model:getMessage(selectedId)
         if not current then closeDetails() end
@@ -583,7 +588,10 @@ local function makeUi()
         searchField:SetText(""); model:setSearch("");visibleOffset=0;render()
     end)
     button("PageUp","OLDER",panel,686,160,64,34,function()
-        visibleOffset=math.min(240,visibleOffset+LINES);render()
+        local _,total=model:getHistory(model.filter,model.search,1,0)
+        local oldestOffset=total>0 and math.floor((total-1)/LINES)*LINES or 0
+        visibleOffset=math.min(oldestOffset,visibleOffset+LINES)
+        render()
     end)
     button("PageDown","NEWER",panel,686,205,64,34,function()
         visibleOffset=math.max(0,visibleOffset-LINES);render()
@@ -816,7 +824,7 @@ local function nativeProbeCommand(args)
                 or "Console metadata copy failed."
         end
         local description=table.concat(lines," | ")
-        return description:sub(1,512)
+        return boundedUtf8(description,512)
     end
     return string.format("Native windows: %d (%d visible), configured consoles: %d%s. "
         .."Console subscriptions are metadata, not readable chat messages.",
@@ -878,10 +886,10 @@ local function onSaveLoad(_,name)
             function(...) return Command.Message.Send(...) end,
             function(...) return Command.Message.Accept(...) end,
             function(from,data)
-                if model then
-                    local line= #from>40 and (from..": "..data) or data
-                    model:publish("addons",line,from:sub(1,40),clock())
-                end
+                if not model then return false end
+                local line= #from>40 and (from..": "..data) or data
+                local row=model:publish("addons",line,from:sub(1,40),clock())
+                return row~=nil
             end,
             function(note,to)
                 if model then
@@ -917,14 +925,15 @@ end
 local function nativeNpc(first,second)
     local info=eventInfo(first,second)
     if not model or not info or type(info.message)~="string" then return end
-    local source=type(info.fromName)=="string" and info.fromName:sub(1,40) or "NPC"
-    model:publish("npc",info.message:sub(1,512),source,clock())
+    local source=type(info.fromName)=="string" and boundedUtf8(info.fromName,40) or "NPC"
+    if #source==0 then source="NPC" end
+    model:publish("npc",boundedUtf8(info.message,512),source,clock())
 end
 local function nativeNotify(first,second)
     local info=eventInfo(first,second)
     if not model or not info then return end
     if type(info.message)=="string" then
-        model:publish("system",info.message:sub(1,512),"Game alert",clock())
+        model:publish("system",boundedUtf8(info.message,512),"Game alert",clock())
         return
     end
     -- Some existing RIFT addons receive a keyed unit->notification table.
@@ -937,8 +946,9 @@ local function nativeNotify(first,second)
             or type(value)=="table" and type(value.message)=="string"
                 and value.message or nil
         if message and #message>0 then
-            local from=type(unit)=="string" and unit:sub(1,40) or "Game alert"
-            model:publish("system",message:sub(1,512),from,clock())
+            local from=type(unit)=="string" and boundedUtf8(unit,40) or "Game alert"
+            if #from==0 then from="Game alert" end
+            model:publish("system",boundedUtf8(message,512),from,clock())
         end
     end
 end

@@ -9,6 +9,18 @@ local kinds = {system=true, npc=true, addons=true, dev=true,
 local filters = {all=true, chat=true, system=true, npc=true, addons=true,
     dev=true, combat=true}
 local chatKinds = {general=true, party=true, guild=true, tell=true}
+-- Preserve whole UTF-8 code points when bounding external strings by bytes.
+-- RIFT text normally arrives as valid UTF-8; this never guesses missing bytes.
+local function utf8Prefix(value,limit)
+    if #value<=limit then return value end
+    local last=limit
+    while last>0 do
+        local nextByte=value:byte(last+1)
+        if not nextByte or nextByte<128 or nextByte>=192 then break end
+        last=last-1
+    end
+    return value:sub(1,last)
+end
 local function validString(v, min, max)
     return type(v)=="string" and #v>=min and #v<=max
         and not v:find("[%z\1-\8\11\12\14-\31]")
@@ -33,6 +45,7 @@ function Core.new(saved)
     if type(saved)~="table" or saved.schemaVersion~=1
         or type(saved.history)~="table" then return nil,"invalid_saved_schema" end
     local size, maximum, maxId=0,0,0
+    local seenIds={}
     for k,row in pairs(saved.history) do
         if type(k)~="number" or k<1 or k%1~=0
             or type(row)~="table" or not kinds[row.kind]
@@ -40,9 +53,11 @@ function Core.new(saved)
             or not validString(row.text,1,MAX_TEXT)
             or type(row.id)~="number" or row.id<1 or row.id%1~=0
             or type(row.at)~="number" or row.at~=row.at
-            or row.at<0 or row.at==math.huge then
+            or row.at<0 or row.at==math.huge
+            or seenIds[row.id] then
             return nil,"invalid_saved_history"
         end
+        seenIds[row.id]=true
         size=size+1
         maximum=math.max(maximum,k)
         maxId=math.max(maxId,row.id)
@@ -54,7 +69,8 @@ function Core.new(saved)
         filter="all", search="", onChange=nil, onCommand=nil, revision=0}, Model)
     saved.nextId=saved.nextId or (maxId+1)
     if saved.filter~=nil and filters[saved.filter] then self.filter=saved.filter end
-    if type(saved.search)=="string" and #saved.search<=60 then
+    if type(saved.search)=="string" and #saved.search<=60
+        and not saved.search:find("[%z\1-\8\11\12\14-\31]") then
         self.search=saved.search
     end
     return self
@@ -138,7 +154,9 @@ function Model:clear()
 end
 function Model:exportText(filter, search, maximum)
     maximum=maximum or 48000
-    if type(maximum)~="number" or maximum<512 or maximum>120000 then
+    if type(maximum)~="number" or maximum~=maximum
+        or maximum<=-math.huge or maximum>=math.huge
+        or maximum%1~=0 or maximum<512 or maximum>120000 then
         return nil,"invalid_limit"
     end
     local rows,total=self:getHistory(filter,search,MAX_HISTORY,0)
@@ -219,7 +237,7 @@ function Model:execute(text, clock)
         local ok, result=pcall(fn,args)
         if not ok then return nil,"extension_error" end
         if result==false then return nil,"extension_refused" end
-        response=type(result)=="string" and result:sub(1,MAX_TEXT) or
+        response=type(result)=="string" and utf8Prefix(result,MAX_TEXT) or
             "Extension command accepted (actual effect unverified)."
     end
     if response and response~="" then
@@ -234,12 +252,13 @@ function Model:commandCount()
     return count
 end
 function Model:status()
-    return {version="0.2.4",historyCount=#self.saved.history,
+    return {version="0.2.5",historyCount=#self.saved.history,
         filter=self.filter,search=self.search,revision=self.revision,
         commandCount=self:commandCount(),nativeSocialSendAvailable=false,
         nativePlayerChatCaptureAvailable=false}
 end
 Core.filters=filters
+Core.utf8Prefix=utf8Prefix
 Core.maxHistory=MAX_HISTORY
 Core.kinds=kinds
 _G.RiftChatModernCore = Core

@@ -5,6 +5,16 @@ local Mirror={}
 Mirror.__index=Mirror
 
 local function pack(...) return {n=select("#",...), ...} end
+local function utf8Prefix(value,limit)
+    if #value<=limit then return value end
+    local last=limit
+    while last>0 do
+        local nextByte=value:byte(last+1)
+        if not nextByte or nextByte<128 or nextByte>=192 then break end
+        last=last-1
+    end
+    return value:sub(1,last)
+end
 local function plain(value,html)
     if type(value)~="string" or #value==0 then return nil end
     local line=value
@@ -16,7 +26,7 @@ local function plain(value,html)
     end
     line=line:gsub("[%z\1-\8\11\12\14-\31]"," ")
     line=line:gsub("[\r\n]"," ")
-    if #line>512 then line=line:sub(1,509).."..." end
+    if #line>512 then line=utf8Prefix(line,509).."..." end
     if #line==0 then return nil end
     -- Our own startup/errors are already in native RIFT chat; avoid loops.
     if line:sub(1,16)=="RiftChatModern v" then return nil end

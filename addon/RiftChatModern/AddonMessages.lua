@@ -19,7 +19,8 @@ local function copyStatus(self)
     return {ready=self.ready,identifier=Bridge.identifier,
         pending=self.pending~=nil,submitted=self.submitted,
         accepted=self.accepted,rejected=self.rejected,unknown=self.unknown,
-        received=self.received,invalid=self.invalid}
+        received=self.received,invalid=self.invalid,
+        receiveFailed=self.receiveFailed}
 end
 
 -- All dependencies injected, so this module can be exercised under Lua 5.1
@@ -32,6 +33,7 @@ function Bridge.new(send,accept,onReceive,onNotice,clock)
         send=send,accept=accept,onReceive=onReceive,onNotice=onNotice,
         clock=clock,ready=false,pending=nil,lastSent=nil,sequence=0,
         submitted=0,accepted=0,rejected=0,unknown=0,received=0,invalid=0,
+        receiveFailed=0,
     },Bridge)
     return self
 end
@@ -52,8 +54,13 @@ function Bridge:receive(from,kind,channel,identifier,data)
         self.invalid=self.invalid+1
         return nil,"invalid_addon_message"
     end
+    -- A callback exception or explicit refusal must not count as captured.
+    local ok,recorded=pcall(self.onReceive,from,data)
+    if not ok or recorded==false then
+        self.receiveFailed=self.receiveFailed+1
+        return nil,"receive_storage_failed"
+    end
     self.received=self.received+1
-    pcall(self.onReceive,from,data)
     return true
 end
 
@@ -117,7 +124,7 @@ function Bridge:sendTo(target,data)
         end
         -- May already have been queued. Never silently retry.
         if self.pending and self.pending.id==seq then self.pending=nil end
-        self.rejected=self.rejected+1
+        self.unknown=self.unknown+1
         pcall(self.onNotice,"Addon message submission uncertain; no automatic retry.",target)
         return nil,"submission_uncertain"
     end

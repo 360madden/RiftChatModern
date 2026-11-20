@@ -105,7 +105,8 @@ assert(calls==0)
 local sent,reason=bridge:sendTo("Atank","once")
 assert(sent==nil and reason=="submission_uncertain")
 assert(calls==1)
-assert(bridge:status().pending==false and bridge:status().rejected==1)
+assert(bridge:status().pending==false and bridge:status().unknown==1
+    and bridge:status().rejected==0)
 local later,why=bridge:sendTo("Atank","blind retry")
 assert(later==nil and why=="rate_limited")
 assert(calls==1)
@@ -211,6 +212,17 @@ local ok,why=bridge:enable()
 assert(ok==nil and why=="accept_unavailable")
 assert(bridge:status().ready==false)
 ''')
+
+    def test_valid_receive_failure_is_not_wire_format_failure(self):
+        self.run_lua(r"""
+local b=assert(RiftChatModernAddonMessages.new(
+    function() end,function() return true end,
+    function() return false end,function() end,function() return 1 end))
+assert(b:enable())
+assert(not b:receive("Atank","send",nil,"RCMDevV1","x"))
+local status=b:status()
+assert(status.received==0 and status.invalid==0 and status.receiveFailed==1)
+""")
 
     def test_no_remote_command_execution_in_received_payload(self):
         self.run_lua(r'''
