@@ -6,7 +6,7 @@
 
 A compact, dark-mode chat window that can receive addon diagnostics, record event history, filter/search, copy to clipboard, and expose a command API to **all our RIFT repositories**. LuaPadModern inspired the editor focus design; this is **original code** with no LuaPadModern dependency or source modifications.
 
-**Development record:** [concept through v0.2.2, including failures and live proof](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md), [v0.2.3 navigation](docs/V0_2_3_NAVIGATION_AND_RELEASE.md), [v0.2.4 resizing](docs/V0_2_4_RESIZE.md), [v0.2.5 codebase bug hunt](docs/V0_2_5_CODEBASE_BUGHUNT.md), [v0.2.6 editor improvements / deployment receipt](docs/V0_2_6_EDITOR_HISTORY_AND_SEARCH.md), [v0.2.7 console subscription discovery](docs/V0_2_7_NATIVE_CHANNEL_DISCOVERY.md), [v0.2.8 Log.txt probe pilot](docs/V0_2_8_LOG_PROBE_HANDOFF.md), [host chat observer research / tests](docs/HOST_CHAT_OBSERVER_20261120.md), [v0.2.9 manual host ingress](docs/V0_2_9_MANUAL_HOST_INGRESS.md), and [v0.2.10 transfer recovery / guarded deployment](docs/V0_2_10_IMPORT_RECOVERY_AND_DEPLOYMENT.md).
+**Development record:** [concept through v0.2.2, including failures and live proof](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md), [v0.2.3 navigation](docs/V0_2_3_NAVIGATION_AND_RELEASE.md), [v0.2.4 resizing](docs/V0_2_4_RESIZE.md), [v0.2.5 codebase bug hunt](docs/V0_2_5_CODEBASE_BUGHUNT.md), [v0.2.6 editor improvements / deployment receipt](docs/V0_2_6_EDITOR_HISTORY_AND_SEARCH.md), [v0.2.7 console subscription discovery](docs/V0_2_7_NATIVE_CHANNEL_DISCOVERY.md), [v0.2.8 Log.txt probe pilot](docs/V0_2_8_LOG_PROBE_HANDOFF.md), [host chat observer research / tests](docs/HOST_CHAT_OBSERVER_20261120.md), [v0.2.9 manual host ingress](docs/V0_2_9_MANUAL_HOST_INGRESS.md), [v0.2.10 transfer recovery / guarded deployment](docs/V0_2_10_IMPORT_RECOVERY_AND_DEPLOYMENT.md), and [player-chat transport alternatives (historical REST, logging, native API)](docs/CHAT_TRANSPORT_ALTERNATIVES_20261120.md).
 
 ## Implemented
 
@@ -282,3 +282,7 @@ After manually pasting a long `/rcm import` transfer in original RIFT chat, the 
 **Verification:** 107/107 Python/Lua tests plus 22/22 Node.js tests. The actual AMD-DESKTOP deployment replaced only four changed files, backed up the prior installed copies and verified **10/10 source/deployed SHA-256 matches**. No SavedVariables or unrelated addons were touched. **The running physical RIFT client has not yet been independently accepted for v0.2.10.**
 
 See [v0.2.10 release notes, tests, deployment proof and live checklist](docs/V0_2_10_IMPORT_RECOVERY_AND_DEPLOYMENT.md).
+
+## Native player-chat reception research
+
+The [November 20 transport alternatives report](docs/CHAT_TRANSPORT_ALTERNATIVES_20261120.md) compares historical RIFT mobile REST chat, actual addon chat APIs, the local `Log.txt` watcher, and a bounded external client-inspection fallback. An older `rift.net` C# client did implement remote RIFT guild chat in 2015, but the RIFT Mobile app was retired and only certain event-tracker API functions were reportedly retained. **No old remote chat endpoint has been verified working in 2026.** The highest-value acceptance work remains obtaining a *real* RIFT player-chat log sample and independently proving one manual RCM import inside the game, not adding another unverified proxy layer.
