@@ -10,10 +10,58 @@ local function read(obj,name)
     if good and type(value)=="boolean" then return value end
     return nil
 end
-function Probe.capture(ui)
+local channelFlags={"say","yell","tell","party","raid","guild","officer",
+    "system","npc","channel","emote","combatGood","combatBad"}
+local function readable(value,maximum)
+    return type(value)=="string" and #value>0 and #value<=maximum
+        and not value:find("[%z\1-\31\127]")
+end
+local function channels(info)
+    local out={}
+    if type(info)~="table" then return out end
+    for _,name in ipairs(channelFlags) do
+        local value=info[name]
+        if type(value)=="boolean" then out[name]=value end
+    end
+    return out
+end
+local function readConsoles(out,inspect)
+    if type(inspect)~="table" or type(inspect.Console)~="table"
+        or type(inspect.Console.List)~="function"
+        or type(inspect.Console.Detail)~="function" then return end
+    local ok,listing=pcall(inspect.Console.List)
+    if not ok or type(listing)~="table" then return end
+    out.consoleListReady=true
+    local ids,seen={},{}
+    local scanned=0
+    for key,value in pairs(listing) do
+        scanned=scanned+1
+        if scanned>32 then out.consoleListTruncated=true; break end
+        local id=type(value)=="string" and value
+            or type(key)=="string" and key or nil
+        if readable(id,80) and not seen[id] then
+            seen[id]=true
+            ids[#ids+1]=id
+        end
+    end
+    table.sort(ids)
+    for _,id in ipairs(ids) do
+        local good,info=pcall(inspect.Console.Detail,id)
+        local row={id=id,detailAvailable=good and type(info)=="table"}
+        if row.detailAvailable then
+            if readable(info.name,60) then row.name=info.name end
+            row.channels=channels(info)
+        end
+        out.consoles[#out.consoles+1]=row
+    end
+    out.consoleCount=#out.consoles
+end
+function Probe.capture(ui,inspect)
     local out={windowCount=0,visibleCount=0,focusCount=0,
-        windows={},nativeTranscriptReadable=false,nativeSocialSendAvailable=false,
-        scope="native_frame_metadata_only"}
+        windows={},consoles={},consoleCount=0,consoleListReady=false,
+        nativeTranscriptReadable=false,nativeSocialSendAvailable=false,
+        scope="native_frame_and_channel_metadata_only"}
+    readConsoles(out,inspect)
     if type(ui)~="table" and type(ui)~="userdata" then return out end
     local ok,native=pcall(function() return ui.Native end)
     if not ok or (type(native)~="table" and type(native)~="userdata") then

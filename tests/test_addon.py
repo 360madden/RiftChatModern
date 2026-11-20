@@ -229,14 +229,15 @@ class AddonRuntimeTests(unittest.TestCase):
         lua.execute(self.core)
         lua.execute((ADDON / "AddonMessages.lua").read_text(encoding="utf-8"))
         lua.execute((ADDON / "NativeChatProbe.lua").read_text(encoding="utf-8"))
-        lua.execute('assert(loadstring('+_lua_quote(self.main)+'))({identifier="RiftChatModern",version="0.2.0"})')
+        lua.execute((ADDON / "ConsoleMirror.lua").read_text(encoding="utf-8"))
+        lua.execute('assert(loadstring('+_lua_quote(self.main)+'))({identifier="RiftChatModern",version="0.2.1"})')
         lua.execute(scenario)
 
     def test_startup_ui_theme_drag_focus_and_version(self):
         self.run_lua(r'''
 fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")
 fire(Event.Addon.Load.End,"RiftChatModern")
-assert(#displays==1 and displays[1]:find("v0.2.0",1,true))
+assert(#displays==1 and displays[1]:find("v0.2.1",1,true))
 local api=RiftChatModernAPI
 assert(api.interfaceVersion==1 and api.GetStatus().ready)
 assert(api.GetStatus().historyCount==1)
@@ -244,7 +245,7 @@ local active=assert(api.Show())
 assert(frames.RiftChatModernWindow.visible)
 assert(frames.RiftChatModernWindow.width==760)
 assert(frames.RiftChatModernWindow.height==618)
-assert(frames.RCMVersion.text=="v0.2.0")
+assert(frames.RCMVersion.text=="v0.2.1")
 assert(frames.RCMInput.kind=="RiftTextfield")
 assert(api.FocusEditor())
 assert(api.GetStatus().editorFocused==true)
@@ -418,8 +419,90 @@ assert(probe.focusCount==1)
 assert(probe.nativeTranscriptReadable==false)
 assert(api.Submit(":native"))
 local response=api.GetHistory("dev","",1,0)[1]
-assert(response.text:find("No native transcript",1,true))
+assert(response.text:find("Console subscriptions are metadata",1,true))
 assert(api.GetStatus().nativePlayerChatCaptureAvailable==false)
+''')
+
+    def test_both_chat_event_callback_shapes_and_grouped_notifications(self):
+        self.run_lua(r'''
+fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")
+fire(Event.Addon.Load.End,"RiftChatModern")
+local api=RiftChatModernAPI
+-- RIFT API docs document one event-info argument; some addons use event+info.
+fireMessage(Event.Chat.Npc,{message="Direct NPC",fromName="Merchant"})
+fire(Event.Chat.Npc,{message="Attached NPC",fromName="Keeper"})
+fireMessage(Event.Chat.Notify,{message="Direct warning"})
+fire(Event.Chat.Notify,{
+    ["unit-A"]={message="A warning"},
+    ["unit-B"]="B warning",
+    ["unit-C"]=true
+})
+local npc,count=api.GetHistory("npc","",10,0)
+assert(count==2 and npc[1].source=="Merchant" and npc[2].source=="Keeper")
+local sys,total=api.GetHistory("system","",10,0)
+assert(total==4) -- startup + direct notification + 2 grouped notifications
+local byText={}
+for _,row in ipairs(sys) do byText[row.text]=row.source end
+assert(byText["Direct warning"]=="Game alert")
+assert(byText["A warning"]=="unit-A")
+assert(byText["B warning"]=="unit-B")
+assert(not byText["true"])
+''')
+
+    def test_optional_addon_console_mirror_captures_other_repo_output(self):
+        self.run_lua(r'''
+fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")
+fire(Event.Addon.Load.End,"RiftChatModern")
+local api=RiftChatModernAPI
+assert(api.Show())
+assert(api.GetConsoleMirrorStatus().enabled==false)
+assert(frames.RCMMirrorLabel.text=="MIRROR OFF")
+assert(api.Submit(":mirror on"))
+assert(api.GetConsoleMirrorStatus().enabled==true)
+assert(frames.RCMMirrorLabel.text=="MIRROR ON")
+Command.Console.Display("general",true,"RRECollector snapshot ready",false)
+local lines,count=api.GetHistory("addons","",12,0)
+assert(count==1 and lines[1].text=="RRECollector snapshot ready")
+assert(lines[1].source=="Console:general")
+assert(api.GetConsoleMirrorStatus().captured==1)
+-- Own notices are still sent to the native game console, never recursively mirrored.
+fire(slash.rcm,"status")
+assert(api.GetConsoleMirrorStatus().captured==1)
+-- The mirror is disabled through the visible button as well as through :mirror.
+triggerFrame(frames.RCMMirror,Event.UI.Input.Mouse.Left.Click)
+assert(api.GetConsoleMirrorStatus().enabled==false)
+assert(frames.RCMMirrorLabel.text=="MIRROR OFF")
+Command.Console.Display("general",true,"after mirror stopped",false)
+local records,total=api.GetHistory("addons","",10,0)
+assert(total==1)
+assert(api.GetStatus().nativePlayerChatCaptureAvailable==false)
+''')
+
+    def test_native_console_channel_summary_and_copy(self):
+        self.run_lua(r'''
+Inspect.Console={
+    List=function() return {"v001","v002"} end,
+    Detail=function(id)
+        if id=="v001" then return {id=id,name="General",
+            say=true,tell=true,party=false,system=true,npc=true} end
+        return {id=id,name="Guild",guild=true,officer=false}
+    end
+}
+fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")
+fire(Event.Addon.Load.End,"RiftChatModern")
+local api=RiftChatModernAPI
+local state=api.GetNativeConsoles()
+assert(state.consoleListReady and state.consoleCount==2)
+assert(state.consoles[1].channels.say==true)
+assert(state.nativeTranscriptReadable==false)
+assert(api.Submit(":native channels"))
+local line=api.GetHistory("dev","",1,0)[1].text
+assert(line:find("General: say, tell",1,true))
+assert(line:find("Guild: guild",1,true))
+assert(api.Submit(":native copy"))
+assert(copied:find("RIFT native console subscriptions",1,true))
+assert(copied:find("Guild: guild",1,true))
+assert(not copied:find("player chat transcript",1,true))
 ''')
 
     def test_saved_records_are_preserved_and_wrong_addon_event_ignored(self):
@@ -448,10 +531,10 @@ def _lua_quote(text):
 class ManifestTests(unittest.TestCase):
     def test_loader_contract(self):
         text=MANIFEST.read_text(encoding="utf-8")
-        for key,value in {"Identifier":"RiftChatModern","Version":"0.2.0","Environment":"4.3"}.items():
+        for key,value in {"Identifier":"RiftChatModern","Version":"0.2.1","Environment":"4.3"}.items():
             self.assertRegex(text,rf'(?m)^{key} = "{re.escape(value)}"$')
         self.assertRegex(text,r'(?m)^Email = "placeholder@example.com"')
-        self.assertIn('"Core.lua", "AddonMessages.lua", "NativeChatProbe.lua", "Main.lua"',text)
+        self.assertIn('"Core.lua", "AddonMessages.lua", "NativeChatProbe.lua", "ConsoleMirror.lua", "Main.lua"',text)
         self.assertIn('RiftChatModernSaved = "character"',text)
 
 if __name__=="__main__":

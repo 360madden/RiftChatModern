@@ -2,7 +2,7 @@
 
 **Standalone chat-style console and addon diagnostics hub for RIFT Live**
 
-![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Version](https://img.shields.io/badge/Version-0.2.0-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
+![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Version](https://img.shields.io/badge/Version-0.2.1-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
 
 A compact, dark-mode chat window that can receive addon diagnostics, record event history, filter/search, copy to clipboard, and expose a command API to **all our RIFT repositories**. LuaPadModern inspired the editor focus design; this is **original code** with no LuaPadModern dependency or source modifications.
 
@@ -16,7 +16,10 @@ A compact, dark-mode chat window that can receive addon diagnostics, record even
 | Bundled Lato Regular/Bold fonts and original OFL license | ✅ SHA-256 verified |
 | All / Chat / System / NPC / Addons / Dev tabs | ✅ |
 | Timestamped history, paging, search | ✅ |
-| Copy all filtered chat history to clipboard | ✅ Via Command.CopyToClipboard |
+| Copy filtered chat history to clipboard, including `:copy` | ✅ Via Command.CopyToClipboard |
+| **Click-to-expand full messages** and copy one message | ✅ Lua 5.1 UI tests |
+| Opt-in capture of other addons' `Command.Console.Display` output | ✅ Mocked runtime; live acceptance pending |
+| Inspect real native console channel subscriptions | ✅ `Inspect.Console.List/Detail` read-only tests |
 | RIFT NPC lines and screen notifications | ✅ Via documented Event.Chat APIs |
 | Addon diagnostic publication and subscriptions | ✅ |
 | Register local commands from sibling addons | ✅ |
@@ -36,7 +39,8 @@ The source addon is **C:\work\RiftChatModern\addon\RiftChatModern**:
 - **RiftAddon.toc:** identity, version, placeholder contact, startup and SavedVariables.
 - **Core.lua:** bounded model, search, filters, history, subscriptions and local commands.
 - **AddonMessages.lua:** dedicated `RCMDevV1` addon-data channel, send/receive validation, queue acknowledgment and timeout handling.
-- **NativeChatProbe.lua:** read-only capability inventory of up to seven native console frames; never modifies them or reads social-chat text.
+- **NativeChatProbe.lua:** read-only native-frame and actual console subscription inventory; does not modify consoles or read native player-chat text.
+- **ConsoleMirror.lua:** disabled-by-default pass-through of RIFT `Command.Console.Display` calls into searchable addon-output history. It restores the original function when safely possible and does not intercept player chat.
 - **Main.lua:** draggable dark frame, getter-backed focus indicator, editor, event adapters and RPT Lab integration.
 - **fonts/**: bundled Lato Regular/Bold and original SIL Open Font License. The app uses native font fallback if custom fonts aren't available.
 
@@ -77,7 +81,11 @@ After that, the new editor handles its **own local commands**.
 | :rpt last | Summarize last completed RPT trial |
 | :rpt stop | Stop active RPT observation |
 | :addon Atank@Deepwood TEST MESSAGE | Request reliable addon-data send to that character; **not ordinary player chat** |
-| :native | Inspect native console frame visibility/focus getter availability; no message transcript |
+| :native | Summarize native console handles and subscription availability |
+| :native channels | Show names and configured chat subscriptions (metadata, not transcript) |
+| :native copy | Copy the native console configuration report to clipboard |
+| :mirror on / off / status | Opt-in mirroring of other addons' console output; never player chat |
+| :copy | Copy all currently filtered history via the game clipboard API |
 
 A plain social-chat draft or native slash command entered into the new editor **is not silently sent**. It remains in the editor with a clear status explaining the missing native send route.
 
@@ -106,6 +114,8 @@ end
 | --- | --- |
 | Publish(kind, message, source) | Add a timestamped message and notify subscribers |
 | GetHistory(kind, search, limit, offset) | Return copies, never mutable history references |
+| GetMessage(id) / OpenMessage(id) | Look up a retained message by stable ID and open its full-text reader |
+| GetSelectedMessage() / CopySelectedMessage() / CloseMessage() | Inspect/copy the full selected message without losing history context |
 | GetStatus() | Version, ready/visible state, **editorFocusState** (`focused`, `search`, `unfocused`, `hidden`, `unavailable`), focus flags, filter, count and capabilities |
 | RegisterCommand(name, callback) | Register local colon-command |
 | Subscribe(name, callback) / Unsubscribe(name) | Receive copied event data |
@@ -114,7 +124,8 @@ end
 | Show() / Hide() / FocusEditor() / FocusSearch() | Explicit own-window GUI focus operations |
 | SendAddon(target, message) | Request reliable addon-data send with server queue acknowledgment (not peer delivery) |
 | GetAddonTransportStatus() | Read queue-ready, pending, accepted/rejected/unknown, received and invalid counters |
-| GetNativeConsoles() | Read-only frame metadata of Console1–Console7; **never** claims ordinary social chat access |
+| GetNativeConsoles() | Read-only native-frame and console-channel metadata; **never** claims ordinary chat-message access |
+| SetConsoleMirror(boolean) / GetConsoleMirrorStatus() | Explicit optional pass-through interception of addon console output, preserving native behavior |
 | GetFocusState() | Read the addon-owned input/search focus state; does not infer native RIFT chat focus |
 
 Channel labels include **general, party, guild, tell, system, npc, combat, addons, dev**. They are *categories* for records, not assertions that the game server transmitted them.
@@ -129,7 +140,7 @@ Run in **PowerShell 7** in this repository:
 & "C:\work\riftreader2\.venv\Scripts\python.exe" -B -m unittest discover -s tests -v
 ~~~
 
-The tests exercise Lua 5.1 with game UI mocks, **control bounds, 21/18/16pt font sizes, input/search getter states, drag outside release and viewport clamping**, Enter input, history, 1,200-message model stress, clipboard, NPC/alerts, addon commands, RPT integration, addon-data send/receive with timeout/acknowledgment semantics, and read-only native-console inspection. They do **not** substitute for actual physical RIFT UI acceptance.
+The tests exercise actual Lua 5.1 with game API mocks, **control bounds, 21/18/16pt text, input/search focus getters, drag outside release, complete-message reading, copy-selected/filtered history, 1,200-message stress**, NPC/alerts (both callback forms), addon commands and RPT integration, reliable addon-data messaging, bounded native console configuration discovery and optional console-output mirroring. These remain **offline** tests, not physical UI acceptance. They do **not** substitute for actual physical RIFT UI acceptance.
 
 ## RIFT API findings
 
@@ -137,7 +148,9 @@ The historical documented RIFT addon API provides Event.Chat.Npc, Event.Chat.Not
 
 Reference: https://github-wiki-see.page/m/chrisbecke/Igor/wiki/RIFT-API-Documents
 
-**Next priority:** verify physical window/editor and clipboard, prove an end-to-end `RCMDevV1` addon message between two real clients, and reuse the existing LuaPadModern read-only Log.txt watcher when investigating actual social-chat reception. Keep native chat intact until a full replacement is independently demonstrated.
+**Next priority:** verify the physical window/editor/copy and optional console mirror; prove end-to-end `RCMDevV1` delivery between two real clients; reuse the mature LuaPadModern read-only Log.txt watcher when investigating actual social-chat reception. Keep native chat intact until a full replacement is independently demonstrated.
+
+[Version 0.2.1 developer notes](docs/V0_2_1.md) explain message details, mirror behavior and native subscription metadata.
 
 See [addon messaging and native-console probe](docs/ADDON_TRANSPORT.md) for the exact APIs, reliable-send restrictions and evidence limits.
 

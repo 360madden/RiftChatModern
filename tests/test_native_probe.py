@@ -64,5 +64,65 @@ assert(result.windows[1].loaded==nil)
 assert(result.windows[1].elementKeyFocus==nil)
 ''')
 
+    def test_console_list_and_chat_channel_configuration(self):
+        self.run_lua(r'''
+local listCalls,detailCalls=0,0
+local observed=RiftChatModernNativeProbe.capture({Native={}},
+  {Console={
+    List=function()
+        listCalls=listCalls+1
+        return {"v001","v005","v002"}
+    end,
+    Detail=function(id)
+        detailCalls=detailCalls+1
+        if id=="v001" then return {
+            id=id,name="General",guild=true,tell=true,party=false,
+            system=true,say=true,chatHistory="do not inspect",channel={"World"}
+        } elseif id=="v005" then return {
+            id=id,name="Combat",combatGood=true,combatBad=true
+        } end
+        return {id=id,name="Guild",guild=true,officer=false}
+    end
+  }})
+assert(listCalls==1 and detailCalls==3)
+assert(observed.consoleListReady==true)
+assert(observed.consoleCount==3)
+assert(observed.consoles[1].id=="v001")
+assert(observed.consoles[1].name=="General")
+assert(observed.consoles[1].channels.guild==true)
+assert(observed.consoles[1].channels.tell==true)
+assert(observed.consoles[1].channels.party==false)
+assert(observed.consoles[2].id=="v002")
+assert(observed.consoles[3].channels.combatGood==true)
+assert(observed.nativeTranscriptReadable==false)
+''')
+
+    def test_console_detail_errors_and_large_list_are_bounded(self):
+        self.run_lua(r'''
+local count=0
+local source={}
+for i=1,99 do source[i]=string.format("v%03d",i) end
+local observed=RiftChatModernNativeProbe.capture(nil,
+    {Console={
+        List=function() return source end,
+        Detail=function(id) count=count+1;error("inaccessible") end
+    }})
+assert(observed.consoleListReady==true)
+assert(observed.consoleListTruncated==true)
+assert(observed.consoleCount<=32 and count<=32)
+for _,row in ipairs(observed.consoles) do
+    assert(row.detailAvailable==false)
+end
+assert(observed.nativeSocialSendAvailable==false)
+''')
+
+    def test_console_api_missing_never_promotes_unavailable(self):
+        self.run_lua(r'''
+local observed=RiftChatModernNativeProbe.capture(nil,{Console={}})
+assert(observed.consoleListReady==false)
+assert(observed.consoleCount==0)
+assert(observed.nativeTranscriptReadable==false)
+''')
+
 if __name__=="__main__":
     unittest.main()

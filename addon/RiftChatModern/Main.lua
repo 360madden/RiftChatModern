@@ -2,10 +2,11 @@
 -- Native player say/tell/guild transmit and full native chat interception are NOT
 -- exposed by the verified addon APIs. This UI never pretends to send those.
 local info = ...
-local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.0"
+local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.1"
 local Core = _G.RiftChatModernCore
 local MessageBridge = _G.RiftChatModernAddonMessages
 local NativeProbe = _G.RiftChatModernNativeProbe
+local ConsoleMirror = _G.RiftChatModernConsoleMirror
 local W,H,LINES=760,618,13
 local C = {
     bg={0.065,0.080,0.11,0.98}, header={0.090,0.111,0.15,1},
@@ -16,6 +17,8 @@ local C = {
     warning={1.0,0.73,0.43,1}, good={0.40,0.91,0.70,1}
 }
 local model,panel,editor,searchField,statusField,focusIndicator,rows,tabLabels,drag
+local selectedId,detailOverlay,detailTitle,detailBody
+local mirror,mirrorButtonLabel
 local transport
 local context,visibleOffset,lastFocusState= nil,0,nil
 local lastViewportW,lastViewportH
@@ -183,11 +186,48 @@ local function cutUtf8(str,maximum)
     end
     return str:sub(1,i).."..."
 end
+local function selectedMessage()
+    if not model or not selectedId then return nil,"no_selection" end
+    return model:getMessage(selectedId)
+end
+local function closeDetails()
+    selectedId=nil
+    if detailOverlay then detailOverlay:SetVisible(false) end
+    return true
+end
+local function copyMessage()
+    local row,err=selectedMessage()
+    if not row then return nil,err end
+    if not Command or type(Command.CopyToClipboard)~="function" then
+        notifyUi("Clipboard unavailable.");return nil,"clipboard_unavailable"
+    end
+    local text=row.source..": "..row.text
+    local ok,result=pcall(Command.CopyToClipboard,text)
+    if not ok or result==false then
+        notifyUi("Copy message failed.");return nil,"clipboard_failed"
+    end
+    notifyUi("Copied complete message #"..tostring(row.id).." ("..#text.." bytes).")
+    return true
+end
+local function openMessage(id)
+    if not model then return nil,"not_ready" end
+    local row,err=model:getMessage(id)
+    if not row then return nil,err end
+    selectedId=id
+    if detailOverlay and detailBody and detailTitle then
+        detailTitle:SetText(string.format("%s  •  %s  •  #%d",
+            row.kind:upper(),row.source,row.id))
+        detailBody:SetText(row.text)
+        detailOverlay:SetVisible(true)
+    end
+    return true
+end
 local function render()
     if not model or not panel then return end
     local selection,total=model:getHistory(model.filter,model.search,LINES,visibleOffset)
     for i=1,LINES do
         local r=selection[i]
+        rows[i].messageId=r and r.id or nil
         if r then
             local ts="--:--"
             if os and os.date then
@@ -203,6 +243,10 @@ local function render()
     end
     local count=math.min(total,visibleOffset+LINES)
     local first=math.max(0,count-math.min(LINES,total-visibleOffset)+1)
+    if selectedId then
+        local current=model:getMessage(selectedId)
+        if not current then closeDetails() end
+    end
     notifyUi(string.format("%d messages  •  showing %d–%d  •  %s  •  native chat separate",
         total,first,count,model.filter))
     for key,label in pairs(tabLabels or {}) do
@@ -223,11 +267,58 @@ local function copyHistory()
     notifyUi("Copied filtered history to clipboard ("..#out.." bytes)")
     return true
 end
+local function executeLocal(value)
+    if not model then return nil,"not_ready" end
+    -- Clipboard is an actual in-game feature, not a placeholder console line.
+    if type(value)=="string" and value:match("^%s*:copy%s*$") then
+        return copyHistory()
+    end
+    return model:execute(value,clock())
+end
+local function mirrorStatus()
+    return mirror and mirror:status()
+        or {enabled=false,ownsHook=false,captured=0,rejected=0,
+            type="addon_console_output_only",nativePlayerChatCaptured=false}
+end
+local function setMirror(enabled)
+    if not mirror then return nil,"console_mirror_unavailable" end
+    if type(enabled)~="boolean" then return nil,"invalid_state" end
+    local ok,err
+    if enabled then ok,err=mirror:enable() else ok,err=mirror:disable() end
+    local state=mirror:status()
+    if mirrorButtonLabel then
+        mirrorButtonLabel:SetText(state.enabled and "MIRROR ON" or "MIRROR OFF")
+    end
+    if ok then
+        notifyUi(state.enabled and "Mirroring addon console output, not player chat."
+            or "Addon console mirroring disabled.")
+        return true
+    end
+    notifyUi("Addon console mirror unavailable: "..tostring(err))
+    return nil,err
+end
+local function mirrorCommand(args)
+    args=(args or ""):lower()
+    if args=="on" then
+        local ok,err=setMirror(true)
+        return ok and "Mirroring addon console output, not player chat."
+            or "Mirror unavailable: "..tostring(err)
+    elseif args=="off" then
+        local ok,err=setMirror(false)
+        return ok and "Addon console mirror disabled."
+            or "Mirror disabled; another wrapper may remain: "..tostring(err)
+    elseif args=="" or args=="status" then
+        local state=mirrorStatus()
+        return string.format("Console mirror %s | captured=%d | hook-owned=%s | not player chat",
+            state.enabled and "ON" or "OFF",state.captured,tostring(state.ownsHook))
+    end
+    return "Usage: :mirror on | off | status"
+end
 local function submit()
     if not model or not editor then return nil,"not_ready" end
     local value=editor:GetText() or ""
     if #value==0 then return nil,"empty" end
-    local ok,err=model:execute(value,clock())
+    local ok,err=executeLocal(value)
     if not ok then
         if err=="native_send_unavailable" then
             notifyUi("Normal chat/send and native slash commands are not yet routed. Use :commands.")
@@ -236,7 +327,8 @@ local function submit()
     end
     editor:SetText("")
     visibleOffset=0
-    render()
+    -- Copy writes a useful receipt into the footer; preserve it until changed.
+    if not value:match("^%s*:copy%s*$") then render() end
     return true
 end
 local function makeUi()
@@ -308,14 +400,36 @@ local function makeUi()
     for i=1,LINES do
         local row=frame("Line"..i,list,5,6+(i-1)*24,656,24,
             i%2==0 and C.card or C.alt)
-        rows[i]={entry=text("LineText"..i,row,"",9,2,634,22,16,C.text)}
+        row:SetMouseMasking("full")
+        rows[i]={entry=text("LineText"..i,row,"",9,2,634,22,16,C.text),
+            frame=row,messageId=nil}
+        row:EventAttach(Event.UI.Input.Mouse.Left.Click,function()
+            local id=rows[i].messageId
+            if id then openMessage(id) end
+        end,ADDON.." open message "..i)
     end
+    -- Complete-message reader overlays only the message list, not the controls.
+    -- The regular rows remain available immediately after CLOSE.
+    detailOverlay=frame("DetailOverlay",list,4,4,658,318,C.header)
+    detailOverlay:SetMouseMasking("full")
+    detailTitle=text("DetailTitle",detailOverlay,"MESSAGE DETAILS",
+        14,13,520,25,18,C.accent,true)
+    detailBody=text("DetailBody",detailOverlay,"",
+        14,51,630,194,16,C.text)
+    detailBody:SetWordwrap(true)
+    button("DetailCopy","COPY MESSAGE",detailOverlay,14,267,162,36,
+        copyMessage,true)
+    button("DetailClose","CLOSE",detailOverlay,551,267,94,36,closeDetails)
+    detailOverlay:SetVisible(false)
     button("Copy","COPY HISTORY",panel,14,490,170,35,copyHistory,true)
     button("Clear","CLEAR",panel,195,490,98,35,function()
-        model:clear();visibleOffset=0;render()
+        closeDetails();model:clear();visibleOffset=0;render()
     end)
     button("Focus","FOCUS INPUT",panel,304,490,145,35,focusEditor)
-    text("Meta",panel,"Addon diagnostics  •  :help",466,499,275,23,14,C.muted)
+    local _,caption=button("Mirror","MIRROR OFF",panel,465,490,174,35,
+        function() setMirror(not mirrorStatus().enabled) end)
+    mirrorButtonLabel=caption
+    mirrorButtonLabel:SetText(mirrorStatus().enabled and "MIRROR ON" or "MIRROR OFF")
     editor=UI.CreateFrame("RiftTextfield","RCMInput",panel)
     editor:SetPoint("TOPLEFT",panel,"TOPLEFT",14,535)
     editor:SetWidth(632);editor:SetHeight(40)
@@ -366,6 +480,7 @@ local function show(yes)
     if not model then return nil,"not_ready" end
     makeUi()
     if not yes then
+        closeDetails()
         if drag then
             shift(panel:GetLeft(),panel:GetTop(),true)
             drag=nil
@@ -408,7 +523,7 @@ local function parseSlash(_,args)
         else visibleOffset=0;render() end
     elseif verb=="help" then
         notice("/rcm [show|hide|focus|status|copy|clear|tab KIND|find TEXT]")
-        notice("Input: :help :status :native :rpt ... :addon CHARACTER MESSAGE (addon data only).")
+        notice("Input: :help :status :mirror on/off :native :rpt ... :addon CHARACTER MESSAGE.")
     else notice("Unknown command. Use /rcm help") end
 end
 
@@ -447,17 +562,47 @@ end
 
 local function getNativeConsoles()
     if NativeProbe and type(NativeProbe.capture)=="function" then
-        return NativeProbe.capture(UI)
+        return NativeProbe.capture(UI,Inspect)
     end
     return {scope="unavailable",windowCount=0,visibleCount=0,
         focusCount=0,windows={},nativeTranscriptReadable=false,
         nativeSocialSendAvailable=false}
 end
-local function nativeProbeCommand(_)
+local nativeChannelNames={"say","tell","guild","party","officer","raid",
+    "system","npc","channel","combatGood","combatBad"}
+local function nativeProbeCommand(args)
     local data=getNativeConsoles()
-    return string.format("Native console handles: %d, visible: %d, focus-getter true: %d. "
-        .."No native transcript or social-send API verified.",
-        data.windowCount,data.visibleCount,data.focusCount)
+    args=(args or ""):lower()
+    if args=="channels" or args=="copy" then
+        if not data.consoleListReady then return "Console list API unavailable." end
+        local lines={"RIFT native console subscriptions (metadata, not chat text):"}
+        for _,entry in ipairs(data.consoles or {}) do
+            local enabled={}
+            for _,key in ipairs(nativeChannelNames) do
+                if entry.channels and entry.channels[key]==true then
+                    enabled[#enabled+1]=key
+                end
+            end
+            lines[#lines+1]=(entry.name or entry.id)..": "
+                ..(#enabled>0 and table.concat(enabled,", ") or "(none/unknown)")
+        end
+        if args=="copy" then
+            if not Command or type(Command.CopyToClipboard)~="function" then
+                return "Clipboard API unavailable."
+            end
+            local output=table.concat(lines,"\n")
+            local ok,result=pcall(Command.CopyToClipboard,output)
+            return ok and result~=false and
+                ("Copied "..tostring(#lines-1).." console descriptions (metadata only).")
+                or "Console metadata copy failed."
+        end
+        local description=table.concat(lines," | ")
+        return description:sub(1,512)
+    end
+    return string.format("Native windows: %d (%d visible), configured consoles: %d%s. "
+        .."Console subscriptions are metadata, not readable chat messages.",
+        data.windowCount,data.visibleCount,data.consoleCount or 0,
+        data.consoleListReady and "" or " (list unavailable)")
 end
 
 local function sendAddonCommand(args)
@@ -495,6 +640,17 @@ local function onSaveLoad(_,name)
     model:registerCommand("rpt",optionalRPT)
     model:registerCommand("addon",sendAddonCommand)
     model:registerCommand("native",nativeProbeCommand)
+    model:registerCommand("mirror",mirrorCommand)
+    if ConsoleMirror and type(ConsoleMirror.new)=="function"
+        and Command and Command.Console
+        and type(Command.Console.Display)=="function" then
+        mirror=ConsoleMirror.new(Command.Console,function(line,channel)
+            if model then
+                return model:publish("addons",line,
+                    ("Console:"..channel):sub(1,40),clock())
+            end
+        end)
+    end
     if MessageBridge and type(MessageBridge.new)=="function"
         and Command and Command.Message
         and type(Command.Message.Send)=="function"
@@ -534,15 +690,37 @@ local function onLoaded(_,name)
     end
     notice("Loaded. /rcm opens the console. Version "..VERSION)
 end
-local function nativeNpc(_,info)
-    if model and type(info)=="table" and type(info.message)=="string" then
-        model:publish("npc",info.message:sub(1,512),
-            type(info.fromName)=="string" and info.fromName:sub(1,40) or "NPC",clock())
-    end
+local function eventInfo(first,second)
+    if type(second)=="table" then return second end
+    if type(first)=="table" then return first end
+    return nil
 end
-local function nativeNotify(_,info)
-    if model and type(info)=="table" and type(info.message)=="string" then
+local function nativeNpc(first,second)
+    local info=eventInfo(first,second)
+    if not model or not info or type(info.message)~="string" then return end
+    local source=type(info.fromName)=="string" and info.fromName:sub(1,40) or "NPC"
+    model:publish("npc",info.message:sub(1,512),source,clock())
+end
+local function nativeNotify(first,second)
+    local info=eventInfo(first,second)
+    if not model or not info then return end
+    if type(info.message)=="string" then
         model:publish("system",info.message:sub(1,512),"Game alert",clock())
+        return
+    end
+    -- Some existing RIFT addons receive a keyed unit->notification table.
+    -- Only record explicit strings/text; never stringify arbitrary units.
+    local count=0
+    for unit,value in pairs(info) do
+        count=count+1
+        if count>16 then break end
+        local message=type(value)=="string" and value
+            or type(value)=="table" and type(value.message)=="string"
+                and value.message or nil
+        if message and #message>0 then
+            local from=type(unit)=="string" and unit:sub(1,40) or "Game alert"
+            model:publish("system",message:sub(1,512),from,clock())
+        end
     end
 end
 local function dragTick()
@@ -576,12 +754,21 @@ _G.RiftChatModernAPI={
         data.editorFocused=state=="focused"
         data.searchFocused=state=="search"
         data.addonTransportReady=transport~=nil and transport.ready or false
+        data.consoleMirrorEnabled=mirrorStatus().enabled
         return data
     end,
     GetHistory=function(kind,search,limit,offset)
         if not model then return nil,"not_ready" end
         return model:getHistory(kind,search,limit or 50,offset or 0)
     end,
+    GetMessage=function(id)
+        if not model then return nil,"not_ready" end
+        return model:getMessage(id)
+    end,
+    OpenMessage=openMessage,
+    GetSelectedMessage=selectedMessage,
+    CopySelectedMessage=copyMessage,
+    CloseMessage=closeDetails,
     RegisterCommand=function(name,fn)
         if not model then return nil,"not_ready" end
         return model:registerCommand(name,fn)
@@ -594,10 +781,7 @@ _G.RiftChatModernAPI={
         if not model then return nil,"not_ready" end
         return model:unsubscribe(name)
     end,
-    Submit=function(command)
-        if not model then return nil,"not_ready" end
-        return model:execute(command,clock())
-    end,
+    Submit=executeLocal,
     Copy=function()
         if not model then return nil,"not_ready" end
         return copyHistory()
@@ -608,6 +792,8 @@ _G.RiftChatModernAPI={
     FocusSearch=focusSearch,
     GetFocusState=focusState,
     GetNativeConsoles=getNativeConsoles,
+    GetConsoleMirrorStatus=mirrorStatus,
+    SetConsoleMirror=setMirror,
     GetAddonTransportStatus=function()
         return transport and transport:status()
             or {ready=false,identifier="RCMDevV1",pending=false}

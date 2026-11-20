@@ -103,6 +103,17 @@ function Model:getHistory(filter, search, limit, offset)
     end
     return result,total
 end
+-- Stable-ID lookup survives paging and filtering; returns an isolated row copy.
+function Model:getMessage(id)
+    if type(id)~="number" or id~=id or id%1~=0 or id<1 then
+        return nil,"invalid_message_id"
+    end
+    for _,row in ipairs(self.saved.history) do
+        if row.id==id then return copyRow(row) end
+    end
+    return nil,"message_not_retained"
+end
+
 function Model:setFilter(filter)
     if not filters[filter] then return nil,"invalid_filter" end
     self.filter=filter
@@ -223,7 +234,7 @@ function Model:commandCount()
     return count
 end
 function Model:status()
-    return {version="0.2.0",historyCount=#self.saved.history,
+    return {version="0.2.1",historyCount=#self.saved.history,
         filter=self.filter,search=self.search,revision=self.revision,
         commandCount=self:commandCount(),nativeSocialSendAvailable=false,
         nativePlayerChatCaptureAvailable=false}
