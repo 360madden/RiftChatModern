@@ -6,7 +6,7 @@
 
 A compact, dark-mode chat window that can receive addon diagnostics, record event history, filter/search, copy to clipboard, and expose a command API to **all our RIFT repositories**. LuaPadModern inspired the editor focus design; this is **original code** with no LuaPadModern dependency or source modifications.
 
-**Development record:** [concept through v0.2.2, including failures and live proof](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md), [v0.2.3 navigation](docs/V0_2_3_NAVIGATION_AND_RELEASE.md), [v0.2.4 resizing](docs/V0_2_4_RESIZE.md), [v0.2.5 codebase bug hunt](docs/V0_2_5_CODEBASE_BUGHUNT.md), [v0.2.6 editor improvements / deployment receipt](docs/V0_2_6_EDITOR_HISTORY_AND_SEARCH.md), [v0.2.7 console subscription discovery](docs/V0_2_7_NATIVE_CHANNEL_DISCOVERY.md), and [v0.2.8 Log.txt probe pilot](docs/V0_2_8_LOG_PROBE_HANDOFF.md).
+**Development record:** [concept through v0.2.2, including failures and live proof](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md), [v0.2.3 navigation](docs/V0_2_3_NAVIGATION_AND_RELEASE.md), [v0.2.4 resizing](docs/V0_2_4_RESIZE.md), [v0.2.5 codebase bug hunt](docs/V0_2_5_CODEBASE_BUGHUNT.md), [v0.2.6 editor improvements / deployment receipt](docs/V0_2_6_EDITOR_HISTORY_AND_SEARCH.md), [v0.2.7 console subscription discovery](docs/V0_2_7_NATIVE_CHANNEL_DISCOVERY.md), [v0.2.8 Log.txt probe pilot](docs/V0_2_8_LOG_PROBE_HANDOFF.md), and [host chat observer research / tests](docs/HOST_CHAT_OBSERVER_20261120.md).
 
 ## Implemented
 
@@ -31,6 +31,7 @@ A compact, dark-mode chat window that can receive addon diagnostics, record even
 | Register local commands from sibling addons | ✅ |
 | Built-in optional RPT Lab status/arm/mark/stop/last | ✅ |
 | **Reliable RIFT addon-data messaging to another client** | ✅ Lua 5.1 API mock; physical acceptance pending |
+| Windows-side **candidate social-chat observer**, using existing LuaPadModern log decoder | ✅ 13/13 Node tests; historical format only, physical Log.txt receipt pending |
 | **Opt-in log feasibility probe** compatible with LuaPadModern `LogTailProbe` | ✅ v0.2.8 tests and cross-repo parser smoke; real RIFT disk transport unverified |
 | **Native console read-only capability probe** | ✅ Lua 5.1 getter/mock tests |
 | Saves up to 240 messages, character scoped | ✅ |
@@ -225,3 +226,19 @@ From RCM's focused editor, type `:logprobe RCM_TEST_20261120` to print a bounded
 When RIFT is intentionally configured to write a verified `Log.txt`, remove `-Preview` to start one bounded watcher; then enter the matching `:logprobe` command in the already-loaded RCM editor. The watcher reports receipts but never sends game input. **Do not blindly type `/log`**: it toggles logging state.
 
 **Tests:** 87/87 Lua 5.1 cases; 4 new cases test valid/invalid marker emission, unavailable APIs and missing server clock. The Windows PowerShell 5.1 preview and rejection paths were tested, and the exact marker was recognized by LuaPadModern's `LogTailProbe.readLine` against a synthetic string. No RIFT Live `Log.txt` receipt or player-chat ingestion has been demonstrated. See [v0.2.8 notes](docs/V0_2_8_LOG_PROBE_HANDOFF.md).
+
+## Windows host candidate-chat observer (source-only; in-game version remains v0.2.8)
+
+The independent `tools/rcm-chat-observer.cjs` listens for new records in a RIFT `Log.txt` using LuaPadModern's existing bounded file decoder; it does **not** copy or replace that decoder. It parses historical bracketed sender/channel formats and emits structured *candidate* events to the Windows terminal. `--include-text` is required to output message bodies; by default the tool emits metadata only. It handles UTF-8/UTF-16, partial appends, log truncation and newly created files. A matched `LPB_PROBE` nonce ends the bounded run.
+
+From a **Windows PowerShell** terminal in `C:\work\RiftChatModern`:
+
+```powershell
+node .\tools\rcm-chat-observer.cjs --help
+node .\tools\rcm-chat-observer.cjs --nonce RCM_CHAT_20261120 --timeout-ms 120000
+node --test .\tests\test_chat_observer.cjs .\tests\test_chat_observer_cli.cjs
+```
+
+**Verification:** 13/13 separate Node tests using synthetic files and child processes; original 87/87 Lua addon tests unchanged. RIFT's current `Log.txt` is not yet verified, so the parser's records explicitly mark `verifiedLiveFormat=false`. The observer does not ingest messages back into the in-game addon and does not send native social chat. **No new .toc version or addon deployment was required.**
+
+See [host observer implementation, historical sources, known failures and live protocol checklist](docs/HOST_CHAT_OBSERVER_20261120.md).
