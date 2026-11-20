@@ -2,7 +2,7 @@
 -- Native player say/tell/guild transmit and full native chat interception are NOT
 -- exposed by the verified addon APIs. This UI never pretends to send those.
 local info = ...
-local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.10"
+local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.11"
 local Core = _G.RiftChatModernCore
 local MessageBridge = _G.RiftChatModernAddonMessages
 local NativeProbe = _G.RiftChatModernNativeProbe
@@ -11,7 +11,7 @@ local HostIngress = _G.RiftChatModernHostIngress
 local DEFAULT_W, DEFAULT_H, MIN_W, MIN_H=760,618,680,480
 local W,H,LINES=DEFAULT_W,DEFAULT_H,13
 local ROW_H,MAX_ROWS=24,80
-local TAB_ORDER={"all","chat","system","npc","addons","dev"}
+local TAB_ORDER={"all","chat","imports","system","npc","addons","dev"}
 local ACTION_ORDER={"Copy","Clear","Focus","Mirror"}
 local ACTION_WEIGHTS={170/587,98/587,145/587,174/587}
 local C = {
@@ -289,7 +289,8 @@ local function copyMessage()
     if not Command or type(Command.CopyToClipboard)~="function" then
         notifyUi("Clipboard unavailable.");return nil,"clipboard_unavailable"
     end
-    local text=row.source..": "..row.text
+    local text=row.kind=="import" and (Core.rowLabel(row).." "..row.source..": "..row.text)
+        or (row.source..": "..row.text)
     local ok,result=pcall(Command.CopyToClipboard,text)
     if not ok or result==false then
         notifyUi("Copy message failed.");return nil,"clipboard_failed"
@@ -338,7 +339,7 @@ local function openMessage(id)
     detailPageIndex=1
     if detailOverlay and detailBody and detailTitle then
         detailTitle:SetText(string.format("%s  •  %s  •  #%d",
-            row.kind:upper(),row.source,row.id))
+            Core.rowLabel(row),row.source,row.id))
         detailOverlay:SetVisible(true)
         refreshDetail()
     end
@@ -368,11 +369,11 @@ render=function()
                 local ok,value=pcall(os.date,"%H:%M",math.floor(r.at))
                 if ok and type(value)=="string" then ts=value end
             end
-            local msg=string.format("%s  %-7s  %-14s %s",ts,r.kind:upper(),
-                cutUtf8(r.source,14),r.text)
+            local msg=string.format("%s  %-18s  %-14s %s",ts,
+                cutUtf8(Core.rowShortLabel(r),18),cutUtf8(r.source,14),r.text)
             -- Wider windows expose more of each message, without changing saved text.
             rows[i].entry:SetText(cutUtf8(msg,capacity))
-            ink(rows[i].entry,r.kind=="dev" and C.accent or
+            ink(rows[i].entry,(r.kind=="dev" or r.kind=="import") and C.accent or
                 r.kind=="system" and C.warning or C.text)
         else rows[i].entry:SetText("") end
     end
@@ -489,7 +490,7 @@ layoutWindow=function()
     place(versionFrame,header,w-181,19,118,22)
     placeButton("Close",header,w-45,11,34,34)
     place(divider,panel,0,58,w,1)
-    local tabWidth=(w-32-5*8)/6
+    local tabWidth=(w-32-(#TAB_ORDER-1)*8)/#TAB_ORDER
     for i,name in ipairs(TAB_ORDER) do
         placeButton("Tab"..name,panel,16+(i-1)*(tabWidth+8),69,tabWidth,34)
     end
@@ -624,8 +625,8 @@ local function makeUi()
     end)
     divider=frame("Divider",panel,0,58,W,1,C.border)
     tabLabels={}
-    local tabs={{"all","ALL"},{"chat","CHAT"},{"system","SYSTEM"},{"npc","NPC"},
-        {"addons","ADDONS"},{"dev","DEV"}}
+    local tabs={{"all","ALL"},{"chat","CHAT"},{"imports","IMPORTS"},
+        {"system","SYSTEM"},{"npc","NPC"},{"addons","ADDONS"},{"dev","DEV"}}
     for i,tab in ipairs(tabs) do
         local name,display=tab[1],tab[2]
         local b,label=button("Tab"..name,display,panel,16+(i-1)*122,69,110,34,
@@ -1011,7 +1012,7 @@ end
 local function onSaveLoad(_,name)
     if name~=ADDON then return end
     if RiftChatModernSaved==nil then
-        RiftChatModernSaved={schemaVersion=1,history={}}
+        RiftChatModernSaved={schemaVersion=2,history={}}
     end
     if not Core or type(Core.new)~="function" then
         notice("Core module missing. Recording disabled.");return
@@ -1020,8 +1021,10 @@ local function onSaveLoad(_,name)
     if not m then notice("Saved data rejected: "..tostring(err));return end
     model=m
     if HostIngress and type(HostIngress.new)=="function" then
-        hostIngress=HostIngress.new(function(kind,source,message,at)
-            return model:publish(kind,message,source,at)
+        hostIngress=HostIngress.new(function(row,at)
+            return model:publish(row.kind,row.text,row.source,at,{
+                origin=row.origin,channelKind=row.channelKind,
+                channelName=row.channelName})
         end)
     end
     -- Optional cross-repository adapter; no hard dependency or input injection.
@@ -1037,7 +1040,7 @@ local function onSaveLoad(_,name)
         mirror=ConsoleMirror.new(Command.Console,function(line,channel)
             if model then
                 return model:publish("addons",line,
-                    ("Console:"..channel):sub(1,40),clock())
+                    ("Console:"..channel):sub(1,40),clock(),{origin="addon_data"})
             end
         end)
     end
@@ -1051,12 +1054,12 @@ local function onSaveLoad(_,name)
             function(from,data)
                 if not model then return false end
                 local line= #from>40 and (from..": "..data) or data
-                local row=model:publish("addons",line,from:sub(1,40),clock())
+                local row=model:publish("addons",line,from:sub(1,40),clock(),{origin="addon_data"})
                 return row~=nil
             end,
             function(note,to)
                 if model then
-                    model:publish("dev",note,("RCM to "..to):sub(1,40),clock())
+                    model:publish("dev",note,("RCM to "..to):sub(1,40),clock(),{origin="local_addon"})
                 end
             end,
             function()
@@ -1076,7 +1079,7 @@ local function onLoaded(_,name)
     if model then
         makeUi()
         model:publish("system","Modern chat window ready. :help lists local commands.",
-            "RiftChatModern",clock())
+            "RiftChatModern",clock(),{origin="local_addon"})
     end
     notice("Loaded. /rcm opens the console. Version "..VERSION)
 end
@@ -1090,13 +1093,13 @@ local function nativeNpc(first,second)
     if not model or not info or type(info.message)~="string" then return end
     local source=type(info.fromName)=="string" and boundedUtf8(info.fromName,40) or "NPC"
     if #source==0 then source="NPC" end
-    model:publish("npc",boundedUtf8(info.message,512),source,clock())
+    model:publish("npc",boundedUtf8(info.message,512),source,clock(),{origin="game_event"})
 end
 local function nativeNotify(first,second)
     local info=eventInfo(first,second)
     if not model or not info then return end
     if type(info.message)=="string" then
-        model:publish("system",boundedUtf8(info.message,512),"Game alert",clock())
+        model:publish("system",boundedUtf8(info.message,512),"Game alert",clock(),{origin="game_event"})
         return
     end
     -- Some existing RIFT addons receive a keyed unit->notification table.
@@ -1111,7 +1114,7 @@ local function nativeNotify(first,second)
         if message and #message>0 then
             local from=type(unit)=="string" and boundedUtf8(unit,40) or "Game alert"
             if #from==0 then from="Game alert" end
-            model:publish("system",boundedUtf8(message,512),from,clock())
+            model:publish("system",boundedUtf8(message,512),from,clock(),{origin="game_event"})
         end
     end
 end
@@ -1144,7 +1147,7 @@ local function dragTick()
     end
 end
 _G.RiftChatModernAPI={
-    interfaceVersion=1,version=VERSION,
+    interfaceVersion=2,version=VERSION,
     Publish=function(kind,msg,source)
         if not model then return nil,"not_ready" end
         return model:publish(kind,msg,source,clock())

@@ -7,7 +7,7 @@ local Receiver={}
 Receiver.__index=Receiver
 
 local ALPHABET="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
-local KINDS={S="general",P="party",G="guild",T="tell",C="general"}
+local KINDS={S="general",P="party",G="guild",T="tell",C="public"}
 local MAX_PARTS,MAX_PART_LEN,MAX_DECODED,MAX_SECONDS=12,88,780,45
 local MAX_RECENT=32
 
@@ -80,16 +80,11 @@ local function parsePayload(data)
     if #code~=1 or not KINDS[code] or
         not validText(sender,1,40) or not validText(channel,1,72)
         or not validText(body,1,512) then return nil,"invalid_fields" end
-    -- Always mark the unverified outside origin in the displayed text.
-    local header="[HOST? "..channel.."] "
-    local full=header..body
-    local Core=_G.RiftChatModernCore
-    if #full>512 and Core and type(Core.utf8Prefix)=="function" then
-        full=Core.utf8Prefix(full,512)
-    end
-    if #full>512 or #full==0 then return nil,"invalid_render" end
-    return {kind=KINDS[code],source=sender,text=full,
-        originalBytes=#body,unverified=true,channel=channel}
+    -- Channel is only an UNVERIFIED claim; never store imported text as
+    -- native Guild/Party/Tell or hide provenance in an editable text prefix.
+    return {kind="import",source=sender,text=body,origin="host_manual",
+        channelKind=KINDS[code],channelName=channel,
+        originalBytes=#body,unverified=true}
 end
 
 function Ingress.new(publish)
@@ -165,7 +160,7 @@ function Receiver:receiveLine(line,at)
     local row,parseErr=parsePayload(payload)
     if not row then
         self.rejected=self.rejected+1;return nil,parseErr end
-    local ok,result=pcall(self.publish,row.kind,row.source,row.text,at)
+    local ok,result=pcall(self.publish,row,at)
     if not ok or not result then
         self.publishFailed=self.publishFailed+1
         return nil,"publisher_refused"

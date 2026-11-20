@@ -2,11 +2,11 @@
 
 **Standalone chat-style console and addon diagnostics hub for RIFT Live**
 
-![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Version](https://img.shields.io/badge/Version-0.2.10-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
+![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Version](https://img.shields.io/badge/Version-0.2.11-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
 
 A compact, dark-mode chat window that can receive addon diagnostics, record event history, filter/search, copy to clipboard, and expose a command API to **all our RIFT repositories**. LuaPadModern inspired the editor focus design; this is **original code** with no LuaPadModern dependency or source modifications.
 
-**Development record:** [concept through v0.2.2, including failures and live proof](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md), [v0.2.3 navigation](docs/V0_2_3_NAVIGATION_AND_RELEASE.md), [v0.2.4 resizing](docs/V0_2_4_RESIZE.md), [v0.2.5 codebase bug hunt](docs/V0_2_5_CODEBASE_BUGHUNT.md), [v0.2.6 editor improvements / deployment receipt](docs/V0_2_6_EDITOR_HISTORY_AND_SEARCH.md), [v0.2.7 console subscription discovery](docs/V0_2_7_NATIVE_CHANNEL_DISCOVERY.md), [v0.2.8 Log.txt probe pilot](docs/V0_2_8_LOG_PROBE_HANDOFF.md), [host chat observer research / tests](docs/HOST_CHAT_OBSERVER_20261120.md), [v0.2.9 manual host ingress](docs/V0_2_9_MANUAL_HOST_INGRESS.md), [v0.2.10 transfer recovery / guarded deployment](docs/V0_2_10_IMPORT_RECOVERY_AND_DEPLOYMENT.md), [player-chat transport alternatives (historical REST, logging, native API)](docs/CHAT_TRANSPORT_ALTERNATIVES_20261120.md), and [legacy addon audit / raw log-format discovery](docs/CHAT_REFERENCE_AUDIT_AND_LOG_DISCOVERY_20261120.md).
+**Development record:** [concept through v0.2.2, including failures and live proof](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md), [v0.2.3 navigation](docs/V0_2_3_NAVIGATION_AND_RELEASE.md), [v0.2.4 resizing](docs/V0_2_4_RESIZE.md), [v0.2.5 codebase bug hunt](docs/V0_2_5_CODEBASE_BUGHUNT.md), [v0.2.6 editor improvements / deployment receipt](docs/V0_2_6_EDITOR_HISTORY_AND_SEARCH.md), [v0.2.7 console subscription discovery](docs/V0_2_7_NATIVE_CHANNEL_DISCOVERY.md), [v0.2.8 Log.txt probe pilot](docs/V0_2_8_LOG_PROBE_HANDOFF.md), [host chat observer research / tests](docs/HOST_CHAT_OBSERVER_20261120.md), [v0.2.9 manual host ingress](docs/V0_2_9_MANUAL_HOST_INGRESS.md), [v0.2.10 transfer recovery / guarded deployment](docs/V0_2_10_IMPORT_RECOVERY_AND_DEPLOYMENT.md), [player-chat transport alternatives (historical REST, logging, native API)](docs/CHAT_TRANSPORT_ALTERNATIVES_20261120.md), [legacy addon audit / raw log-format discovery](docs/CHAT_REFERENCE_AUDIT_AND_LOG_DISCOVERY_20261120.md), and [v0.2.11 structured provenance and schema migration](docs/V0_2_11_STRUCTURED_PROVENANCE.md).
 
 ## Implemented
 
@@ -20,7 +20,7 @@ A compact, dark-mode chat window that can receive addon diagnostics, record even
 | **Resizable window**, responsive message-history rows and saved width/height | ✅ v0.2.4 Lua 5.1 geometry tests; physical acceptance pending |
 | **Paged detail reading** for long messages at compact window sizes | ✅ v0.2.4 Lua 5.1 tests |
 | Bundled Lato Regular/Bold fonts and original OFL license | ✅ SHA-256 verified |
-| All / Chat / System / NPC / Addons / Dev tabs | ✅ |
+| All / Chat / **Imports** / System / NPC / Addons / Dev tabs | ✅ |
 | Timestamped history, paging, search | ✅ |
 | Copy filtered chat history to clipboard, including `:copy` | ✅ Via Command.CopyToClipboard |
 | **Click-to-expand full messages** and copy one message | ✅ Lua 5.1 UI tests |
@@ -33,11 +33,11 @@ A compact, dark-mode chat window that can receive addon diagnostics, record even
 | **Reliable RIFT addon-data messaging to another client** | ✅ Lua 5.1 API mock; physical acceptance pending |
 | Windows-side **candidate social-chat observer**, using existing LuaPadModern log decoder | ✅ Node observer tests; historical format only, physical Log.txt receipt pending |
 | **Physical RIFT session and log-path preflight** | ✅ read-only Windows process, HWND/PID, Documents and log checks; reports a crashed/exited client explicitly |
-| **Manual host-to-RCM chat import**, UTF-8/base64url chunks and `HOST?` provenance | ✅ v0.2.10 adds visible chunk receipts, transfer status/cancel; physical acceptance pending |
+| **Manual host-to-RCM import** with separate kind, origin, and claimed channel | ✅ v0.2.10 physically accepted; v0.2.11 structural model and migration tested; live v0.2.11 pending |
 | **Guarded installation**, hostname check, backups, manifest contract and SHA-256 | ✅ v0.2.10 fixture tests and actual AMD-DESKTOP deployment |
 | **Opt-in log feasibility probe** compatible with LuaPadModern `LogTailProbe` | ✅ v0.2.8 tests and cross-repo parser smoke; real RIFT disk transport unverified |
 | **Native console read-only capability probe** | ✅ Lua 5.1 getter/mock tests |
-| Saves up to 240 messages, character scoped | ✅ |
+| Saves up to 240 messages, character scoped; validated **schema v1 → v2 migration** | ✅ Six dedicated provenance/migration tests |
 | Capture ordinary native player chat (say/party/guild/tell) | ⏳ Not verified |
 | Transmit ordinary native player chat / arbitrary native slash | ⏳ Not available through the verified addon APIs |
 
@@ -48,11 +48,11 @@ A compact, dark-mode chat window that can receive addon diagnostics, record even
 The source addon is **C:\work\RiftChatModern\addon\RiftChatModern**:
 
 - **RiftAddon.toc:** identity, version, placeholder contact, startup and SavedVariables.
-- **Core.lua:** bounded model, search, filters, history, subscriptions and local commands.
+- **Core.lua:** bounded **schema-v2 provenance-aware** model, versioned migration, search, filters, history, subscriptions and local commands.
 - **AddonMessages.lua:** dedicated `RCMDevV1` addon-data channel, send/receive validation, queue acknowledgment and timeout handling.
 - **NativeChatProbe.lua:** read-only native-frame and actual console subscription inventory; does not modify consoles or read native player-chat text.
 - **ConsoleMirror.lua:** disabled-by-default pass-through of RIFT `Command.Console.Display` calls into searchable addon-output history. It restores the original function when safely possible and does not intercept player chat.
-- **HostIngress.lua:** validated, bounded, transient manual host-to-addon chat import; imported text is visibly tagged as unverified.
+- **HostIngress.lua:** bounded manual host-to-addon import; writes `kind=import`, `origin=host_manual`, plus separate unverified `channelKind` and `channelName` metadata.
 - **Main.lua:** draggable dark frame, getter-backed focus indicator, editor, event adapters and RPT Lab integration.
 - **fonts/**: bundled Lato Regular/Bold and original SIL Open Font License. The app uses native font fallback if custom fonts aren't available.
 
@@ -122,7 +122,7 @@ Then use direct dot calls:
 
 ~~~lua
 local chat = _G.RiftChatModernAPI
-if chat and chat.interfaceVersion == 1 then
+if chat and chat.interfaceVersion == 2 then
     chat.Publish("addons", "Position sampler ready", "RR2")
     chat.RegisterCommand("rr2", function(args)
         if args == "status" then return "RR2: running" end
@@ -133,8 +133,8 @@ end
 
 | API | Description |
 | --- | --- |
-| Publish(kind, message, source) | Add a timestamped message and notify subscribers |
-| GetHistory(kind, search, limit, offset) | Return copies, never mutable history references |
+| Publish(kind, message, source) | Add a timestamped **non-social** message; unverified native Guild/Party/Tell/Say kinds are rejected |
+| GetHistory(filter, search, limit, offset) | Return isolated rows with `kind`, `origin`, `channelKind`, and `channelName`. Use `imports` to filter imports |
 | GetMessage(id) / OpenMessage(id) | Look up a retained message by stable ID and open its full-text reader |
 | GetSelectedMessage() / CopySelectedMessage() / CloseMessage() | Inspect/copy the full selected message without losing history context |
 | GetStatus() | Version, UI/focus, search, counts, transport flags, **hostManualImportReady**, **hostAutoImportAvailable=false**, **hostImportNativeChatVerified=false**, and capabilities |
@@ -151,9 +151,9 @@ end
 | GetFocusState() | Read the addon-owned input/search focus state; does not infer native RIFT chat focus |
 | SetWindowSize(width, height) | Resize and persist a window's dimensions; requires initialized addon |
 
-Channel labels include **general, party, guild, tell, system, npc, combat, addons, dev**. They are *categories* for records, not assertions that the game server transmitted them.
+**v0.2.11 contract:** `kind=import` denotes external candidate messages; `origin=host_manual` and `channelKind=guild|party|tell|general|public` record separate provenance and claimed channel. The **HOST/GUILD** row is never stored or exported as native Guild chat. Other kinds include system, npc, addons, dev, and combat. Ordinary native social reception and sending remain unverified. `interfaceVersion=2` is a breaking change; [migration and dependent-consumer instructions](docs/V0_2_11_STRUCTURED_PROVENANCE.md).
 
-Limits: 240 saved rows, 512-byte messages, 40-byte sources, 60-byte search, 48 KB clipboard export. Stored data is character-scoped. Corrupted saved histories cause a refusal rather than a silent reset.
+Limits: 240 saved rows, 512-byte messages, 40-byte sources, 60-byte search, 48 KB clipboard export. Character-scoped SavedVariables now use **schemaVersion=2**; valid schema-v1 data migrates atomically on load. Invalid histories fail closed without resetting data. A pre-migration disk backup is retained locally (not committed).
 
 ## Validation
 

@@ -1,4 +1,4 @@
-"""RCM v0.2.10 resize/viewport and persistence contracts using Lua 5.1 mocks.
+"""RCM v0.2.11 resize/viewport and persistence contracts using Lua 5.1 mocks.
 
 These tests verify code geometry and event handling, not physical RIFT mouse behavior.
 """
@@ -26,7 +26,7 @@ class ResizeTests(unittest.TestCase):
                      "ConsoleMirror.lua", "HostIngress.lua", "Main.lua"):
             source = (ADDON / name).read_text(encoding="utf-8")
             lua.execute("assert(loadstring(" + _lua_quote(source) +
-                        "))({identifier='RiftChatModern',version='0.2.10'}, {})")
+                        "))({identifier='RiftChatModern',version='0.2.11'}, {})")
         lua.execute(script)
 
     def test_every_active_child_fits_parent_across_window_sizes(self):
@@ -200,7 +200,7 @@ assert(p.width<=850 and p.height<=600)
 assert(p.x>=0 and p.y>=0)
 assert(p.x+p.width<=850 and p.y+p.height<=600)
 assert(RiftChatModernSaved.ui.w==p.width and RiftChatModernSaved.ui.h==p.height)
-assert(RiftChatModernSaved.schemaVersion==1)
+assert(RiftChatModernSaved.schemaVersion==2)
 ''')
 
     def test_focus_drag_detail_and_resizing_independent(self):

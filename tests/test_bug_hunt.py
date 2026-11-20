@@ -27,7 +27,7 @@ class BugHuntTests(unittest.TestCase):
                          "ConsoleMirror.lua", "HostIngress.lua", "Main.lua"):
                 module = (ADDON / name).read_text(encoding="utf-8")
                 lua.execute("assert(loadstring("+_lua_quote(module)+
-                            "))({identifier='RiftChatModern',version='0.2.10'}, {})")
+                            "))({identifier='RiftChatModern',version='0.2.11'}, {})")
         else:
             lua.execute((ADDON / source).read_text(encoding="utf-8"))
         lua.execute(script)
@@ -70,7 +70,7 @@ end
                      "ConsoleMirror.lua", "HostIngress.lua", "Main.lua"):
             src = (ADDON / name).read_text(encoding="utf-8")
             lua.execute("assert(loadstring("+_lua_quote(src)+
-                        "))({identifier='RiftChatModern',version='0.2.10'}, {})")
+                        "))({identifier='RiftChatModern',version='0.2.11'}, {})")
         lua.execute(r'''
 fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")
 fire(Event.Addon.Load.End,"RiftChatModern")
@@ -210,7 +210,7 @@ fire(Event.System.Update.Begin)
 assert(p.x+p.width<=600)
 assert(p.y+p.height<=400)
 assert(api.GetStatus().windowWidth<=600)
-assert(RiftChatModernSaved.schemaVersion==1)
+assert(RiftChatModernSaved.schemaVersion==2)
 assert(api.GetStatus().historyCount>=1)
 ''')
 

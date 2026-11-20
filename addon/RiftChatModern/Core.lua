@@ -4,11 +4,67 @@ local Core = {}
 local Model = {}
 Model.__index = Model
 local MAX_HISTORY, MAX_TEXT, MAX_SOURCE = 240, 512, 40
+-- Version 2 separates message family from the *claimed* social channel.
+-- No verified ordinary native player-chat receiver is implemented.
 local kinds = {system=true, npc=true, addons=true, dev=true,
-    general=true, party=true, guild=true, tell=true, combat=true}
-local filters = {all=true, chat=true, system=true, npc=true, addons=true,
-    dev=true, combat=true}
-local chatKinds = {general=true, party=true, guild=true, tell=true}
+    combat=true, import=true}
+local oldSocialKinds = {general=true, party=true, guild=true, tell=true}
+local channelKinds = {general=true, party=true, guild=true, tell=true, public=true}
+local origins = {local_addon=true, game_event=true, addon_data=true,
+    external_api=true, host_manual=true, legacy_unknown=true}
+local filters = {all=true, chat=true, imports=true, system=true,
+    npc=true, addons=true, dev=true, combat=true}
+local originLabels = {host_manual="HOST IMPORT",legacy_unknown="UNVERIFIED",
+    external_api="EXTERNAL",local_addon="LOCAL",game_event="GAME EVENT",
+    addon_data="ADDON DATA"}
+local function channelTitle(kind)
+    return ({general="General",party="Party",guild="Guild",
+        tell="Tell",public="Public"})[kind]
+end
+local function isImport(row)
+    return row.kind=="import"
+end
+local function rowLabel(row)
+    if isImport(row) then
+        local title=row.channelName or channelTitle(row.channelKind) or "Unknown"
+        return (originLabels[row.origin] or "UNVERIFIED").." / "..title
+    end
+    return row.kind:upper()
+end
+local function rowShortLabel(row)
+    if row.kind=="import" then
+        local origin=row.origin=="host_manual" and "HOST"
+            or row.origin=="legacy_unknown" and "LEGACY" or "EXTERNAL"
+        return origin.."/"..(row.channelKind or "UNKNOWN"):upper()
+    end
+    return row.kind:upper()
+end
+local function importFromLegacy(row)
+    local kind=row.kind
+    local name,body
+    if type(row.text)=="string" then
+        -- v1 host imports embedded the only provenance in this marker.
+        name,body=row.text:match("^%[HOST%? ([^%]]+)%] (.+)$")
+    end
+    local channelKind=kind
+    if name and #name<=72 and not name:find("[%z\1-\31\127]") then
+        if kind=="general" and name~="General" and name~="Say"
+            and name~="Yell" and name~="Local" then
+            channelKind="public"
+        end
+        return {kind="import",origin="host_manual",
+            channelKind=channelKind,channelName=name,
+            source=row.source,text=body,id=row.id,at=row.at}
+    end
+    return {kind="import",origin="legacy_unknown",
+        channelKind=kind,channelName=channelTitle(kind),
+        source=row.source,text=row.text,id=row.id,at=row.at}
+end
+local function oldRow(row)
+    if oldSocialKinds[row.kind] then return importFromLegacy(row) end
+    return {kind=row.kind,origin="legacy_unknown",source=row.source,
+        text=row.text,id=row.id,at=row.at}
+end
 -- Preserve whole UTF-8 code points when bounding external strings by bytes.
 -- RIFT text normally arrives as valid UTF-8; this never guesses missing bytes.
 local function utf8Prefix(value,limit)
@@ -28,36 +84,57 @@ end
 local function singleLine(v)
     return (v:gsub("\r", " "):gsub("\n", " "))
 end
+local function validRow(row)
+    if type(row)~="table" or not kinds[row.kind]
+        or not origins[row.origin] or not validString(row.source,1,MAX_SOURCE)
+        or not validString(row.text,1,MAX_TEXT)
+        or type(row.id)~="number" or row.id<1 or row.id%1~=0
+        or type(row.at)~="number" or row.at~=row.at
+        or row.at<0 or row.at==math.huge then return false end
+    if isImport(row) then
+        return (row.origin=="host_manual" or row.origin=="legacy_unknown"
+                or row.origin=="external_api")
+            and channelKinds[row.channelKind]
+            and validString(row.channelName,1,72)
+    end
+    return row.channelKind==nil and row.channelName==nil
+end
 local function copyRow(row)
-    return {id=row.id, at=row.at, kind=row.kind, source=row.source, text=row.text}
+    return {id=row.id,at=row.at,kind=row.kind,source=row.source,
+        text=row.text,origin=row.origin,channelKind=row.channelKind,
+        channelName=row.channelName,nativePlayerChatVerified=false}
 end
 local function match(row, filter, search)
-    if filter~="all" and not (filter=="chat" and chatKinds[row.kind])
+    if filter~="all" and not (filter=="chat" and isImport(row))
+        and not (filter=="imports" and isImport(row))
         and row.kind~=filter then return false end
     if search~="" then
-        local target=(row.source.." "..row.text):lower()
+        local target=(row.source.." "..row.text.." "..rowLabel(row)):lower()
         if not target:find(search:lower(), 1, true) then return false end
     end
     return true
 end
 
 function Core.new(saved)
-    if type(saved)~="table" or saved.schemaVersion~=1
-        or type(saved.history)~="table" then return nil,"invalid_saved_schema" end
-    local size, maximum, maxId=0,0,0
-    local seenIds={}
+    if type(saved)~="table" or (saved.schemaVersion~=1
+        and saved.schemaVersion~=2) or type(saved.history)~="table" then
+        return nil,"invalid_saved_schema"
+    end
+    local migrating=saved.schemaVersion==1
+    local size,maximum,maxId=0,0,0
+    local seenIds,converted={},{}
     for k,row in pairs(saved.history) do
         if type(k)~="number" or k<1 or k%1~=0
-            or type(row)~="table" or not kinds[row.kind]
-            or not validString(row.source,1,MAX_SOURCE)
-            or not validString(row.text,1,MAX_TEXT)
-            or type(row.id)~="number" or row.id<1 or row.id%1~=0
-            or type(row.at)~="number" or row.at~=row.at
-            or row.at<0 or row.at==math.huge
-            or seenIds[row.id] then
+            or type(row)~="table" or seenIds[row.id] then
             return nil,"invalid_saved_history"
         end
+        if migrating and not (kinds[row.kind] or oldSocialKinds[row.kind]) then
+            return nil,"invalid_saved_history"
+        end
+        local candidate=migrating and oldRow(row) or row
+        if not validRow(candidate) then return nil,"invalid_saved_history" end
         seenIds[row.id]=true
+        converted[k]=candidate
         size=size+1
         maximum=math.max(maximum,k)
         maxId=math.max(maxId,row.id)
@@ -65,6 +142,12 @@ function Core.new(saved)
     if size~=maximum or size>MAX_HISTORY then return nil,"invalid_history_bounds" end
     if saved.nextId~=nil and (type(saved.nextId)~="number"
         or saved.nextId<=maxId or saved.nextId%1~=0) then return nil,"invalid_sequence" end
+    -- Commit the complete v1->v2 migration only after ALL rows validate.
+    -- Never mutate/destroy a partially invalid SavedVariables history.
+    if migrating then
+        saved.history=converted
+        saved.schemaVersion=2
+    end
     local self=setmetatable({saved=saved, handlers={}, listeners={},
         filter="all", search="", onChange=nil, onCommand=nil, revision=0}, Model)
     saved.nextId=saved.nextId or (maxId+1)
@@ -79,15 +162,22 @@ function Model:_changed()
     self.revision=self.revision+1
     if type(self.onChange)=="function" then pcall(self.onChange) end
 end
-function Model:publish(kind, text, source, at)
+function Model:publish(kind, text, source, at, metadata)
+    -- Native social delivery is not proven, so no caller can mint a normal
+    -- "guild", "tell", "party" or "general" record from an external string.
+    if oldSocialKinds[kind] then return nil,"native_chat_not_available" end
     if not kinds[kind] then return nil,"invalid_kind" end
     if not validString(text,1,MAX_TEXT) then return nil,"invalid_text" end
     if not validString(source,1,MAX_SOURCE) then return nil,"invalid_source" end
     if type(at)~="number" or at~=at or at<0 or at==math.huge then
         return nil,"invalid_time"
     end
+    metadata=metadata or {}
+    if type(metadata)~="table" then return nil,"invalid_metadata" end
     local row={id=self.saved.nextId,at=at,kind=kind,source=source,
-        text=singleLine(text)}
+        text=singleLine(text),origin=metadata.origin or "external_api",
+        channelKind=metadata.channelKind,channelName=metadata.channelName}
+    if not validRow(row) then return nil,"invalid_metadata" end
     local history=self.saved.history
     if #history>=MAX_HISTORY then table.remove(history,1) end
     history[#history+1]=row
@@ -161,7 +251,7 @@ function Model:exportText(filter, search, maximum)
     end
     local rows,total=self:getHistory(filter,search,MAX_HISTORY,0)
     if not rows then return nil,total end
-    local result={"RiftChatModern v1 | filtered messages: "..total}
+    local result={"RiftChatModern export v2 | filtered messages: "..total}
     local size=#result[1]
     for _,row in ipairs(rows) do
         local time
@@ -169,7 +259,7 @@ function Model:exportText(filter, search, maximum)
             local ok,value=pcall(os.date,"%H:%M:%S",math.floor(row.at))
             time=ok and value or "??:??:??"
         else time="??:??:??" end
-        local line=string.format("[%s] [%s] %s: %s",time,row.kind,
+        local line=string.format("[%s] [%s] %s: %s",time,rowLabel(row),
             row.source,row.text)
         if size+#line+1>maximum-90 then
             result[#result+1]="[Truncated: clipboard export byte limit reached]"
@@ -241,7 +331,7 @@ function Model:execute(text, clock)
             "Extension command accepted (actual effect unverified)."
     end
     if response and response~="" then
-        local row,err=self:publish("dev",response,"Console",clock)
+        local row,err=self:publish("dev",response,"Console",clock,{origin="local_addon"})
         if not row then return nil,err end
     end
     return handled
@@ -252,12 +342,15 @@ function Model:commandCount()
     return count
 end
 function Model:status()
-    return {version="0.2.10",historyCount=#self.saved.history,
+    return {version="0.2.11",schemaVersion=2,
+        provenanceRequired=true,historyCount=#self.saved.history,
         filter=self.filter,search=self.search,revision=self.revision,
         commandCount=self:commandCount(),nativeSocialSendAvailable=false,
         nativePlayerChatCaptureAvailable=false}
 end
 Core.filters=filters
+Core.rowLabel=rowLabel
+Core.rowShortLabel=rowShortLabel
 Core.utf8Prefix=utf8Prefix
 Core.maxHistory=MAX_HISTORY
 Core.kinds=kinds

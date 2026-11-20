@@ -31,8 +31,8 @@ class ManualHostIngressTests(unittest.TestCase):
     def encode(self, kind, sender, channel, text, token="ABCDEF123456"):
         args = [NODE, str(ENCODER), "--kind", kind, "--sender", sender,
                 "--channel", channel, "--text", text, "--id", token]
-        proc = subprocess.run(args, capture_output=True, text=True, timeout=10,
-                              check=False)
+        proc = subprocess.run(args, capture_output=True, text=True,
+                              encoding="utf-8", timeout=10, check=False)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         record = json.loads(proc.stdout)
         self.assertEqual(record["event"], "rcm_manual_import")
@@ -50,7 +50,7 @@ class ManualHostIngressTests(unittest.TestCase):
             source = (ADDON / filename).read_text(encoding="utf-8")
             chunk = ("local f=assert(loadstring(" + _lua_quote(source)
                      + "));assert(f({identifier='RiftChatModern',"
-                     "version='0.2.10'}, {})==nil)")
+                     "version='0.2.11'}, {})==nil)")
             lua.execute(chunk)
         lua.execute('fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")')
         lua.execute('fire(Event.Addon.Load.End,"RiftChatModern")')
@@ -78,7 +78,12 @@ local stat=RiftChatModernAPI.GetHostIngressStatus()
 assert(stat.imported==1 and stat.pending==false)
 local rows,total=RiftChatModernAPI.GetHistory("chat","host",10,0)
 assert(total==1 and rows[1].source=="Atank")
-assert(rows[1].text=="[HOST? Guild] hello from host")
+assert(rows[1].text=="hello from host")
+assert(rows[1].kind=="import" and rows[1].origin=="host_manual")
+assert(rows[1].channelKind=="guild" and rows[1].channelName=="Guild")
+assert(RiftChatModernSaved.schemaVersion==2)
+assert(RiftChatModernCore.rowLabel(rows[1])=="HOST IMPORT / Guild")
+assert(RiftChatModernAPI.interfaceVersion==2)
 assert(RiftChatModernSaved.hostIngress==nil)
 ''')
 
@@ -92,16 +97,18 @@ assert(RiftChatModernSaved.hostIngress==nil)
         lua.execute('''
 local stat=RiftChatModernAPI.GetHostIngressStatus()
 assert(stat.imported==1 and stat.pending==false)
-local rows,total=RiftChatModernAPI.GetHistory("chat","HOST?",10,0)
+local rows,total=RiftChatModernAPI.GetHistory("chat","HOST IMPORT",10,0)
 assert(total==1 and rows[1].source=="Iño")
-assert(rows[1].text:find("[HOST? World@Deepwood]",1,true)==1)
+assert(rows[1].kind=="import" and rows[1].channelKind=="public")
+assert(rows[1].channelName=="World@Deepwood")
+assert(rows[1].text:find("🌋",1,true)==1)
 assert(#rows[1].text<=512)
 ''')
         self.send(lua, record["commands"])
         lua.execute('''
 local stat=RiftChatModernAPI.GetHostIngressStatus()
 assert(stat.imported==1 and stat.duplicates>=1)
-local rows,total=RiftChatModernAPI.GetHistory("chat","HOST?",10,0)
+local rows,total=RiftChatModernAPI.GetHistory("chat","HOST IMPORT",10,0)
 assert(total==1)
 ''')
 
@@ -164,7 +171,7 @@ assert(RiftChatModernHostIngress.parsePayload("broken") == nil)
                  "verifiedLiveFormat": False}
         proc = subprocess.run([NODE, str(ENCODER), "--stdin-json"],
                               input=json.dumps(event, ensure_ascii=False) + "\n",
-                              capture_output=True, text=True, timeout=10)
+                              capture_output=True, text=True, encoding="utf-8", timeout=10)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         lines = [json.loads(line) for line in proc.stdout.splitlines()]
         self.assertEqual(lines[0]["event"], "rcm_manual_import")
@@ -175,8 +182,10 @@ assert(RiftChatModernHostIngress.parsePayload("broken") == nil)
         self.send(lua, lines[0]["commands"])
         lua.execute('''
 local rows,total=RiftChatModernAPI.GetHistory("chat","External observer",5,0)
-assert(total==1 and rows[1].kind=="party" and rows[1].source=="Friend")
-assert(rows[1].text:find("HOST? Party",1,true))
+assert(total==1 and rows[1].kind=="import" and rows[1].source=="Friend")
+assert(rows[1].channelKind=="party" and rows[1].origin=="host_manual")
+assert(rows[1].text=="External observer fixture — not live RIFT")
+assert(RiftChatModernCore.rowLabel(rows[1])=="HOST IMPORT / Party")
 assert(RiftChatModernAPI.GetHostIngressStatus().imported==1)
 ''')
 
@@ -245,8 +254,8 @@ assert(displays[#displays]:find("NOT verified native chat",1,true))
 assert(RiftChatModernAPI.GetHostIngressStatus().imported==1)
 fire(slash.rcm,"import status")
 assert(displays[#displays]:find("Host import idle",1,true))
-local rows,total=RiftChatModernAPI.GetHistory("chat","HOST?",10,0)
-assert(total==1 and rows[1].kind=="tell")
+local rows,total=RiftChatModernAPI.GetHistory("chat","HOST IMPORT",10,0)
+assert(total==1 and rows[1].kind=="import" and rows[1].channelKind=="tell")
 ''')
 
     def test_manual_cancel_native_and_editor_only_clears_transient_parts(self):
