@@ -2,7 +2,7 @@
 
 **Standalone chat-style console and addon diagnostics hub for RIFT Live**
 
-![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Version](https://img.shields.io/badge/Version-0.2.1-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
+![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Version](https://img.shields.io/badge/Version-0.2.2-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
 
 A compact, dark-mode chat window that can receive addon diagnostics, record event history, filter/search, copy to clipboard, and expose a command API to **all our RIFT repositories**. LuaPadModern inspired the editor focus design; this is **original code** with no LuaPadModern dependency or source modifications.
 
@@ -30,7 +30,7 @@ A compact, dark-mode chat window that can receive addon diagnostics, record even
 | Capture ordinary native player chat (say/party/guild/tell) | ⏳ Not verified |
 | Transmit ordinary native player chat / arbitrary native slash | ⏳ Not available through the verified addon APIs |
 
-**Important:** The first build is a useful chat-style window and developer console, **not yet a full social-chat replacement**. Native RIFT chat remains untouched as fallback. A Windows/Python host input/output adapter is a follow-up, not something simulated as success.
+**Important:** RiftChatModern is a chat-style window and developer console, **not yet a full social-chat replacement**. Native RIFT chat remains untouched as fallback. A Windows/Python host input/output adapter is a follow-up, not something simulated as success.
 
 ## Install / start
 
@@ -153,5 +153,7 @@ Reference: https://github-wiki-see.page/m/chrisbecke/Igor/wiki/RIFT-API-Document
 [Version 0.2.1 developer notes](docs/V0_2_1.md) explain message details, mirror behavior and native subscription metadata.
 
 See [addon messaging and native-console probe](docs/ADDON_TRANSPORT.md) for the exact APIs, reliable-send restrictions and evidence limits.
+
+**v0.2.2 startup hotfix (November 20):** RIFT reported four real addon-load errors in v0.2.1 (Core, AddonMessages, NativeChatProbe and ConsoleMirror). Their top-level module return values were removed from RunOnStartup execution, and a dedicated loader-contract regression test was added. This is offline-validated and deployed, but **live RIFT reloading is still required to confirm the four errors are gone**. See [live startup fix](docs/V0_2_2_LIVE_STARTUP_FIX.md).
 
 Built on AMD-DESKTOP for reusable RIFT development tooling.

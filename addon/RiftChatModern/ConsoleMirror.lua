@@ -102,4 +102,4 @@ function Mirror:status()
 end
 
 _G.RiftChatModernConsoleMirror=Mirror
-return Mirror
+-- RIFT RunOnStartup scripts must not return module values.

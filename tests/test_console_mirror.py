@@ -53,7 +53,7 @@ assert(mirror:enable())
 api.Display("general",true,
     '<font color="#00ff00">RRE &lt;ready&gt; &amp; loaded</font>',true)
 api.Display("general",true,
-    '<font color="#ffffff">RiftChatModern v0.2.1 | Loaded</font>',true)
+    '<font color="#ffffff">RiftChatModern v0.2.2 | Loaded</font>',true)
 assert(#captured==1)
 assert(captured[1]=="RRE <ready> & loaded")
 assert(mirror:status().captured==1)

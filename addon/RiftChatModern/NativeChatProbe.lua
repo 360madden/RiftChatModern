@@ -83,4 +83,4 @@ function Probe.capture(ui,inspect)
     return out
 end
 _G.RiftChatModernNativeProbe=Probe
-return Probe
+-- RIFT RunOnStartup scripts must not return module values.

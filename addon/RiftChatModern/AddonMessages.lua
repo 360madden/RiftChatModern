@@ -137,4 +137,4 @@ function Bridge:status()
 end
 
 _G.RiftChatModernAddonMessages = Bridge
-return Bridge
+-- RIFT RunOnStartup scripts must not return module values.

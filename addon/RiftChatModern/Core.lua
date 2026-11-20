@@ -234,7 +234,7 @@ function Model:commandCount()
     return count
 end
 function Model:status()
-    return {version="0.2.1",historyCount=#self.saved.history,
+    return {version="0.2.2",historyCount=#self.saved.history,
         filter=self.filter,search=self.search,revision=self.revision,
         commandCount=self:commandCount(),nativeSocialSendAvailable=false,
         nativePlayerChatCaptureAvailable=false}
@@ -243,4 +243,4 @@ Core.filters=filters
 Core.maxHistory=MAX_HISTORY
 Core.kinds=kinds
 _G.RiftChatModernCore = Core
-return Core
+-- RIFT RunOnStartup scripts must not return module values.
