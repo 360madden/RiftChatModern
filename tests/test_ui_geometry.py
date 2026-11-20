@@ -1,4 +1,4 @@
-"""RiftChatModern v0.1.1 visual geometry, drag and key-focus contracts.
+"""RiftChatModern v0.2.0 visual geometry, drag and key-focus contracts.
 
 Actual Lua 5.1 with mocked game UI. Does not inject keyboard/mouse into RIFT.
 """
@@ -22,9 +22,11 @@ class UiGeometryTests(unittest.TestCase):
         lua = LuaRuntime(unpack_returned_tuples=True)
         lua.execute(RIFT_MOCK)
         lua.execute((ADDON / "Core.lua").read_text(encoding="utf-8"))
+        lua.execute((ADDON / "AddonMessages.lua").read_text(encoding="utf-8"))
+        lua.execute((ADDON / "NativeChatProbe.lua").read_text(encoding="utf-8"))
         source = (ADDON / "Main.lua").read_text(encoding="utf-8")
         lua.execute("assert(loadstring(" + _lua_quote(source) +
-                    "))({identifier='RiftChatModern',version='0.1.1'})")
+                    "))({identifier='RiftChatModern',version='0.2.0'})")
         lua.execute(script)
 
     def test_every_control_fits_and_fonts_are_legible(self):

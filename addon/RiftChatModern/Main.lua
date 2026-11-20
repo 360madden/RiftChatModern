@@ -2,8 +2,10 @@
 -- Native player say/tell/guild transmit and full native chat interception are NOT
 -- exposed by the verified addon APIs. This UI never pretends to send those.
 local info = ...
-local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.1.1"
+local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.0"
 local Core = _G.RiftChatModernCore
+local MessageBridge = _G.RiftChatModernAddonMessages
+local NativeProbe = _G.RiftChatModernNativeProbe
 local W,H,LINES=760,618,13
 local C = {
     bg={0.065,0.080,0.11,0.98}, header={0.090,0.111,0.15,1},
@@ -14,6 +16,7 @@ local C = {
     warning={1.0,0.73,0.43,1}, good={0.40,0.91,0.70,1}
 }
 local model,panel,editor,searchField,statusField,focusIndicator,rows,tabLabels,drag
+local transport
 local context,visibleOffset,lastFocusState= nil,0,nil
 local lastViewportW,lastViewportH
 local initialized=false
@@ -405,7 +408,7 @@ local function parseSlash(_,args)
         else visibleOffset=0;render() end
     elseif verb=="help" then
         notice("/rcm [show|hide|focus|status|copy|clear|tab KIND|find TEXT]")
-        notice("Input owns :help :status :filter :find :echo plus addon extension commands.")
+        notice("Input: :help :status :native :rpt ... :addon CHARACTER MESSAGE (addon data only).")
     else notice("Unknown command. Use /rcm help") end
 end
 
@@ -442,6 +445,41 @@ local function optionalRPT(args)
     return "RPT "..verb.." accepted by addon API; in-game outcome unverified."
 end
 
+local function getNativeConsoles()
+    if NativeProbe and type(NativeProbe.capture)=="function" then
+        return NativeProbe.capture(UI)
+    end
+    return {scope="unavailable",windowCount=0,visibleCount=0,
+        focusCount=0,windows={},nativeTranscriptReadable=false,
+        nativeSocialSendAvailable=false}
+end
+local function nativeProbeCommand(_)
+    local data=getNativeConsoles()
+    return string.format("Native console handles: %d, visible: %d, focus-getter true: %d. "
+        .."No native transcript or social-send API verified.",
+        data.windowCount,data.visibleCount,data.focusCount)
+end
+
+local function sendAddonCommand(args)
+    if not transport or not transport.ready then
+        return "Addon-data transport unavailable (normal chat unchanged)."
+    end
+    local target,message=args:match("^(%S+)%s+(.+)$")
+    if not target or not message then
+        return "Usage: :addon CHARACTER MESSAGE (addon data, not player chat)"
+    end
+    local outcome,err=transport:sendTo(target,message)
+    if not outcome then return "Addon message refused: "..tostring(err) end
+    return "Addon-data send submitted to RIFT API for "..target
+        .." (#"..outcome.id.."); server acknowledgment/delivery pending."
+end
+
+local function onAddonReceived(from,kind,channel,identifier,data)
+    -- Unlike most addon lifecycle callbacks, Event.Message.Receive provides
+    -- from/type/channel/identifier/data directly, without event handle.
+    if transport then transport:receive(from,kind,channel,identifier,data) end
+end
+
 local function onSaveLoad(_,name)
     if name~=ADDON then return end
     if RiftChatModernSaved==nil then
@@ -455,6 +493,36 @@ local function onSaveLoad(_,name)
     model=m
     -- Optional cross-repository adapter; no hard dependency or input injection.
     model:registerCommand("rpt",optionalRPT)
+    model:registerCommand("addon",sendAddonCommand)
+    model:registerCommand("native",nativeProbeCommand)
+    if MessageBridge and type(MessageBridge.new)=="function"
+        and Command and Command.Message
+        and type(Command.Message.Send)=="function"
+        and type(Command.Message.Accept)=="function" then
+        local bridge=MessageBridge.new(
+            function(...) return Command.Message.Send(...) end,
+            function(...) return Command.Message.Accept(...) end,
+            function(from,data)
+                if model then
+                    local line= #from>40 and (from..": "..data) or data
+                    model:publish("addons",line,from:sub(1,40),clock())
+                end
+            end,
+            function(note,to)
+                if model then
+                    model:publish("dev",note,("RCM to "..to):sub(1,40),clock())
+                end
+            end,
+            function()
+                local ok,now=pcall(Inspect.Time.Real)
+                if ok and finite(now) then return now end
+                return nil
+            end)
+        if bridge then
+            local ok=bridge:enable()
+            if ok then transport=bridge end
+        end
+    end
 end
 local function onLoaded(_,name)
     if name~=ADDON or initialized then return end
@@ -507,6 +575,7 @@ _G.RiftChatModernAPI={
         data.editorFocusState=state
         data.editorFocused=state=="focused"
         data.searchFocused=state=="search"
+        data.addonTransportReady=transport~=nil and transport.ready or false
         return data
     end,
     GetHistory=function(kind,search,limit,offset)
@@ -538,6 +607,15 @@ _G.RiftChatModernAPI={
     FocusEditor=focusEditor,
     FocusSearch=focusSearch,
     GetFocusState=focusState,
+    GetNativeConsoles=getNativeConsoles,
+    GetAddonTransportStatus=function()
+        return transport and transport:status()
+            or {ready=false,identifier="RCMDevV1",pending=false}
+    end,
+    SendAddon=function(target,message)
+        if not transport then return nil,"transport_unavailable" end
+        return transport:sendTo(target,message)
+    end,
 }
 Command.Event.Attach(Event.Addon.SavedVariables.Load.End,onSaveLoad,"RCM history load")
 Command.Event.Attach(Event.Addon.Load.End,onLoaded,"RCM initialized")
@@ -546,6 +624,9 @@ if Event.Chat and Event.Chat.Npc then
 end
 if Event.Chat and Event.Chat.Notify then
     Command.Event.Attach(Event.Chat.Notify,nativeNotify,"RCM game alerts")
+end
+if Event.Message and Event.Message.Receive then
+    Command.Event.Attach(Event.Message.Receive,onAddonReceived,"RCM addon data")
 end
 Command.Event.Attach(Event.System.Update.Begin,dragTick,"RCM drag tracking")
 local slash=Command.Slash.Register("rcm")

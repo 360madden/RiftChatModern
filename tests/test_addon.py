@@ -15,10 +15,12 @@ except ImportError:
 RIFT_MOCK = r'''
 frames, handlers, slash, displays = {}, {}, {}, {}
 copied, now, mx, my, held = nil, 1700, 100, 100, false
+accepts, sends = {}, {}
 Event = {
     Addon={SavedVariables={Load={End={}}},Load={End={}}},
     System={Update={Begin={}}},
     Chat={Notify={},Npc={}},
+    Message={Receive={}},
     UI={Input={Mouse={Left={Click={},Down={},Up={},Upoutside={}},
             Cursor={In={},Out={}}}},Textfield={Change={}}},
 }
@@ -28,6 +30,9 @@ local function attach(store,event,fn)
 end
 function fire(event,...)
     for _,fn in ipairs(handlers[event] or {}) do fn(event,...) end
+end
+function fireMessage(event,...)
+    for _,fn in ipairs(handlers[event] or {}) do fn(...) end
 end
 local f={}; f.__index=f
 function f:SetPoint(where,parent,point,x,y)
@@ -73,14 +78,21 @@ UI={
     end
 }
 Inspect={
-    Time={Server=function() return now end},
+    Time={Server=function() return now end,Real=function() return now end},
     Mouse=function() return {x=mx,y=my,Left=held} end
 }
 Command={
     Event={Attach=function(event,fn) attach(handlers,event,fn) end},
     Slash={Register=function(name) slash[name]={};return slash[name] end},
     Console={Display=function(channel,flag,msg,html) displays[#displays+1]=msg end},
-    CopyToClipboard=function(value) copied=value return true end
+    CopyToClipboard=function(value) copied=value return true end,
+    Message={
+        Accept=function(kind,id) accepts[#accepts+1]={kind=kind,id=id}; return true end,
+        Send=function(target,id,data,callback)
+            sends[#sends+1]={target=target,id=id,data=data,callback=callback}
+            return true
+        end
+    }
 }
 function triggerFrame(frame,event)
     for _,fn in ipairs(frame.localEvents[event] or {}) do fn(event) end
@@ -215,14 +227,16 @@ class AddonRuntimeTests(unittest.TestCase):
         lua=LuaRuntime(unpack_returned_tuples=True)
         lua.execute(RIFT_MOCK)
         lua.execute(self.core)
-        lua.execute('assert(loadstring('+_lua_quote(self.main)+'))({identifier="RiftChatModern",version="0.1.1"})')
+        lua.execute((ADDON / "AddonMessages.lua").read_text(encoding="utf-8"))
+        lua.execute((ADDON / "NativeChatProbe.lua").read_text(encoding="utf-8"))
+        lua.execute('assert(loadstring('+_lua_quote(self.main)+'))({identifier="RiftChatModern",version="0.2.0"})')
         lua.execute(scenario)
 
     def test_startup_ui_theme_drag_focus_and_version(self):
         self.run_lua(r'''
 fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")
 fire(Event.Addon.Load.End,"RiftChatModern")
-assert(#displays==1 and displays[1]:find("v0.1.1",1,true))
+assert(#displays==1 and displays[1]:find("v0.2.0",1,true))
 local api=RiftChatModernAPI
 assert(api.interfaceVersion==1 and api.GetStatus().ready)
 assert(api.GetStatus().historyCount==1)
@@ -230,7 +244,7 @@ local active=assert(api.Show())
 assert(frames.RiftChatModernWindow.visible)
 assert(frames.RiftChatModernWindow.width==760)
 assert(frames.RiftChatModernWindow.height==618)
-assert(frames.RCMVersion.text=="v0.1.1")
+assert(frames.RCMVersion.text=="v0.2.0")
 assert(frames.RCMInput.kind=="RiftTextfield")
 assert(api.FocusEditor())
 assert(api.GetStatus().editorFocused==true)
@@ -326,6 +340,88 @@ assert(api.Submit(":rpt status"))
 assert(api.GetHistory("dev","",1,0)[1].text=="RPT Travel Lab is not loaded.")
 ''')
 
+
+    def test_addon_data_send_receive_with_receipts(self):
+        self.run_lua(r'''
+fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")
+fire(Event.Addon.Load.End,"RiftChatModern")
+local api=RiftChatModernAPI
+assert(api.GetStatus().addonTransportReady==true)
+assert(#accepts==1 and accepts[1].kind=="send" and accepts[1].id=="RCMDevV1")
+local first=assert(api.SendAddon("Atank","RR2 is active"))
+assert(first.status=="api_submitted" and first.delivery_verified==false)
+assert(#sends==1 and sends[1].id=="RCMDevV1")
+assert(api.GetAddonTransportStatus().pending==true)
+local refused,reason=api.SendAddon("Atank","cannot overlap")
+assert(refused==nil and reason=="send_pending")
+fireMessage(Event.Message.Receive,"Atank","send",nil,"OTHER","unrelated")
+assert(api.GetAddonTransportStatus().received==0)
+fireMessage(Event.Message.Receive,"Atank","send",nil,"RCMDevV1","RPT observation ready")
+assert(api.GetAddonTransportStatus().received==1)
+local incoming=api.GetHistory("addons","",5,0)
+assert(#incoming==1 and incoming[1].text=="RPT observation ready")
+-- Identifier does not become an executable command, even for colon-prefixed text.
+fireMessage(Event.Message.Receive,"Atank","send",nil,"RCMDevV1",":rpt arm")
+assert(api.GetHistory("addons","",1,0)[1].text==":rpt arm")
+sends[1].callback(false,"accepted for queue")
+assert(api.GetAddonTransportStatus().accepted==1)
+assert(api.GetAddonTransportStatus().pending==false)
+now=now+2.2
+assert(api.Submit(":addon Atank probe reply"))
+assert(#sends==2 and sends[2].data=="probe reply")
+sends[2].callback(true,"rejected")
+assert(api.GetAddonTransportStatus().rejected==1)
+assert(api.GetStatus().nativeSocialSendAvailable==false)
+''')
+
+    def test_long_peer_name_is_not_lost_in_message_history(self):
+        self.run_lua(r'''
+fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")
+fire(Event.Addon.Load.End,"RiftChatModern")
+local from=string.rep("A",55)
+fireMessage(Event.Message.Receive,from,"send",nil,"RCMDevV1","hello")
+local row=RiftChatModernAPI.GetHistory("addons","",1,0)[1]
+assert(row.source==from:sub(1,40))
+assert(row.text==from..": hello")
+assert(RiftChatModernAPI.GetAddonTransportStatus().received==1)
+''')
+
+    def test_transport_unavailable_keeps_local_console_working(self):
+        self.run_lua(r'''
+Command.Message=nil
+fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")
+fire(Event.Addon.Load.End,"RiftChatModern")
+local api=RiftChatModernAPI
+assert(api.GetStatus().ready)
+assert(api.GetStatus().addonTransportReady==false)
+local result,why=api.SendAddon("Atank","test")
+assert(result==nil and why=="transport_unavailable")
+assert(api.Submit(":addon Atank message"))
+assert(api.GetHistory("dev","",1,0)[1].text:find("unavailable",1,true))
+assert(api.Submit(":rpt status"))
+''')
+
+    def test_native_console_probe_is_readonly_not_social_capture(self):
+        self.run_lua(r'''
+UI.Native={Console1={
+    GetVisible=function() return true end,
+    GetLoaded=function() return true end,
+    GetKeyFocus=function() return true end,
+    GetText=function() error("Native transcript must not be accessed") end
+}}
+fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")
+fire(Event.Addon.Load.End,"RiftChatModern")
+local api=RiftChatModernAPI
+local probe=api.GetNativeConsoles()
+assert(probe.windowCount==1 and probe.visibleCount==1)
+assert(probe.focusCount==1)
+assert(probe.nativeTranscriptReadable==false)
+assert(api.Submit(":native"))
+local response=api.GetHistory("dev","",1,0)[1]
+assert(response.text:find("No native transcript",1,true))
+assert(api.GetStatus().nativePlayerChatCaptureAvailable==false)
+''')
+
     def test_saved_records_are_preserved_and_wrong_addon_event_ignored(self):
         self.run_lua(r'''
 RiftChatModernSaved={schemaVersion=1,history={{id=3,kind="dev",
@@ -352,10 +448,10 @@ def _lua_quote(text):
 class ManifestTests(unittest.TestCase):
     def test_loader_contract(self):
         text=MANIFEST.read_text(encoding="utf-8")
-        for key,value in {"Identifier":"RiftChatModern","Version":"0.1.1","Environment":"4.3"}.items():
+        for key,value in {"Identifier":"RiftChatModern","Version":"0.2.0","Environment":"4.3"}.items():
             self.assertRegex(text,rf'(?m)^{key} = "{re.escape(value)}"$')
         self.assertRegex(text,r'(?m)^Email = "placeholder@example.com"')
-        self.assertIn('"Core.lua", "Main.lua"',text)
+        self.assertIn('"Core.lua", "AddonMessages.lua", "NativeChatProbe.lua", "Main.lua"',text)
         self.assertIn('RiftChatModernSaved = "character"',text)
 
 if __name__=="__main__":

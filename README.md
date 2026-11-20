@@ -2,7 +2,7 @@
 
 **Standalone chat-style console and addon diagnostics hub for RIFT Live**
 
-![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Version](https://img.shields.io/badge/Version-0.1.1-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
+![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Version](https://img.shields.io/badge/Version-0.2.0-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
 
 A compact, dark-mode chat window that can receive addon diagnostics, record event history, filter/search, copy to clipboard, and expose a command API to **all our RIFT repositories**. LuaPadModern inspired the editor focus design; this is **original code** with no LuaPadModern dependency or source modifications.
 
@@ -21,6 +21,8 @@ A compact, dark-mode chat window that can receive addon diagnostics, record even
 | Addon diagnostic publication and subscriptions | ✅ |
 | Register local commands from sibling addons | ✅ |
 | Built-in optional RPT Lab status/arm/mark/stop/last | ✅ |
+| **Reliable RIFT addon-data messaging to another client** | ✅ Lua 5.1 API mock; physical acceptance pending |
+| **Native console read-only capability probe** | ✅ Lua 5.1 getter/mock tests |
 | Saves up to 240 messages, character scoped | ✅ |
 | Capture ordinary native player chat (say/party/guild/tell) | ⏳ Not verified |
 | Transmit ordinary native player chat / arbitrary native slash | ⏳ Not available through the verified addon APIs |
@@ -33,6 +35,8 @@ The source addon is **C:\work\RiftChatModern\addon\RiftChatModern**:
 
 - **RiftAddon.toc:** identity, version, placeholder contact, startup and SavedVariables.
 - **Core.lua:** bounded model, search, filters, history, subscriptions and local commands.
+- **AddonMessages.lua:** dedicated `RCMDevV1` addon-data channel, send/receive validation, queue acknowledgment and timeout handling.
+- **NativeChatProbe.lua:** read-only capability inventory of up to seven native console frames; never modifies them or reads social-chat text.
 - **Main.lua:** draggable dark frame, getter-backed focus indicator, editor, event adapters and RPT Lab integration.
 - **fonts/**: bundled Lato Regular/Bold and original SIL Open Font License. The app uses native font fallback if custom fonts aren't available.
 
@@ -72,6 +76,8 @@ After that, the new editor handles its **own local commands**.
 | :rpt mark clicked | Timestamp an operator event |
 | :rpt last | Summarize last completed RPT trial |
 | :rpt stop | Stop active RPT observation |
+| :addon Atank@Deepwood TEST MESSAGE | Request reliable addon-data send to that character; **not ordinary player chat** |
+| :native | Inspect native console frame visibility/focus getter availability; no message transcript |
 
 A plain social-chat draft or native slash command entered into the new editor **is not silently sent**. It remains in the editor with a clear status explaining the missing native send route.
 
@@ -106,6 +112,9 @@ end
 | Submit(":command args") | Execute a local command |
 | Copy() | Copy filtered history to Windows clipboard |
 | Show() / Hide() / FocusEditor() / FocusSearch() | Explicit own-window GUI focus operations |
+| SendAddon(target, message) | Request reliable addon-data send with server queue acknowledgment (not peer delivery) |
+| GetAddonTransportStatus() | Read queue-ready, pending, accepted/rejected/unknown, received and invalid counters |
+| GetNativeConsoles() | Read-only frame metadata of Console1–Console7; **never** claims ordinary social chat access |
 | GetFocusState() | Read the addon-owned input/search focus state; does not infer native RIFT chat focus |
 
 Channel labels include **general, party, guild, tell, system, npc, combat, addons, dev**. They are *categories* for records, not assertions that the game server transmitted them.
@@ -120,7 +129,7 @@ Run in **PowerShell 7** in this repository:
 & "C:\work\riftreader2\.venv\Scripts\python.exe" -B -m unittest discover -s tests -v
 ~~~
 
-The tests exercise Lua 5.1 with game UI mocks, **control bounds, 21/18/16pt font sizes, actual input/search getter states, drag outside release and viewport clamping**, Enter input, history, 1,200-message model stress, clipboard, NPC/alerts, addon commands and RPT integration. They do **not** substitute for actual physical RIFT UI acceptance.
+The tests exercise Lua 5.1 with game UI mocks, **control bounds, 21/18/16pt font sizes, input/search getter states, drag outside release and viewport clamping**, Enter input, history, 1,200-message model stress, clipboard, NPC/alerts, addon commands, RPT integration, addon-data send/receive with timeout/acknowledgment semantics, and read-only native-console inspection. They do **not** substitute for actual physical RIFT UI acceptance.
 
 ## RIFT API findings
 
@@ -128,6 +137,8 @@ The historical documented RIFT addon API provides Event.Chat.Npc, Event.Chat.Not
 
 Reference: https://github-wiki-see.page/m/chrisbecke/Igor/wiki/RIFT-API-Documents
 
-**Next priority:** verify physical window/editor and clipboard, then investigate a separately qualified host adapter for native social-chat input/output. Keep existing native chat intact until the replacement is independently demonstrated.
+**Next priority:** verify physical window/editor and clipboard, prove an end-to-end `RCMDevV1` addon message between two real clients, and reuse the existing LuaPadModern read-only Log.txt watcher when investigating actual social-chat reception. Keep native chat intact until a full replacement is independently demonstrated.
+
+See [addon messaging and native-console probe](docs/ADDON_TRANSPORT.md) for the exact APIs, reliable-send restrictions and evidence limits.
 
 Built on AMD-DESKTOP for reusable RIFT development tooling.
