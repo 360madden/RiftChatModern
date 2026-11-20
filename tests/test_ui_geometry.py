@@ -1,4 +1,4 @@
-"""RiftChatModern v0.2.2 visual geometry, drag and key-focus contracts.
+"""RiftChatModern v0.2.3 visual geometry, drag and key-focus contracts.
 
 Actual Lua 5.1 with mocked game UI. Does not inject keyboard/mouse into RIFT.
 """
@@ -27,7 +27,7 @@ class UiGeometryTests(unittest.TestCase):
         lua.execute((ADDON / "ConsoleMirror.lua").read_text(encoding="utf-8"))
         source = (ADDON / "Main.lua").read_text(encoding="utf-8")
         lua.execute("assert(loadstring(" + _lua_quote(source) +
-                    "))({identifier='RiftChatModern',version='0.2.2'})")
+                    "))({identifier='RiftChatModern',version='0.2.3'})")
         lua.execute(script)
 
     def test_every_control_fits_and_fonts_are_legible(self):
@@ -43,6 +43,9 @@ assert(frames.RCMLineText1.fontSize>=16)
 assert(frames.RCMFocusIndicator.fontSize>=14)
 assert(frames.RCMDragHandle.mouseMask=="full")
 assert(frames.RCMTitle.mouseMask=="limited")
+assert(frames.RCMPageUpLabel.text=="OLDER")
+assert(frames.RCMPageDownLabel.text=="NEWER")
+assert(frames.RCMPageUp.width>=60 and frames.RCMPageDown.width>=60)
 for name,control in pairs(frames) do
     if name:sub(1,3)=="RCM" and control~=p
         and control.width and control.height then

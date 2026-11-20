@@ -2,7 +2,7 @@
 -- Native player say/tell/guild transmit and full native chat interception are NOT
 -- exposed by the verified addon APIs. This UI never pretends to send those.
 local info = ...
-local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.2"
+local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.3"
 local Core = _G.RiftChatModernCore
 local MessageBridge = _G.RiftChatModernAddonMessages
 local NativeProbe = _G.RiftChatModernNativeProbe
@@ -389,10 +389,10 @@ local function makeUi()
     button("FindReset","RESET",panel,605,111,75,33,function()
         searchField:SetText(""); model:setSearch("");visibleOffset=0;render()
     end)
-    button("PageUp","▲",panel,694,160,50,34,function()
+    button("PageUp","OLDER",panel,686,160,64,34,function()
         visibleOffset=math.min(240,visibleOffset+LINES);render()
     end)
-    button("PageDown","▼",panel,694,205,50,34,function()
+    button("PageDown","NEWER",panel,686,205,64,34,function()
         visibleOffset=math.max(0,visibleOffset-LINES);render()
     end)
     rows={}
