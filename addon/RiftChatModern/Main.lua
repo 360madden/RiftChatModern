@@ -2,7 +2,7 @@
 -- Native player say/tell/guild transmit and full native chat interception are NOT
 -- exposed by the verified addon APIs. This UI never pretends to send those.
 local info = ...
-local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.9"
+local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.10"
 local Core = _G.RiftChatModernCore
 local MessageBridge = _G.RiftChatModernAddonMessages
 local NativeProbe = _G.RiftChatModernNativeProbe
@@ -788,6 +788,28 @@ local function show(yes)
     if yes then render() end
     return true
 end
+local function hostStatusSummary()
+    if not hostIngress then return "Host manual import unavailable." end
+    local state=hostIngress:status(clock())
+    local summary=string.format("host candidate imports=%d | rejects=%d | duplicates=%d | cancelled=%d | expired=%d",
+        state.imported,state.rejected,state.duplicates,state.cancelled,state.expired)
+    if state.pending then
+        return string.format("Host import %s: %d/%d chunks | %s",
+            state.pendingId,state.pendingParts,state.pendingTotal,summary)
+    end
+    return "Host import idle | "..summary
+end
+local function hostCommand(args)
+    args=(args or ""):lower()
+    if args=="" or args=="status" then return hostStatusSummary() end
+    if args=="cancel" then
+        if not hostIngress then return "Host manual import unavailable." end
+        local ok,reason=hostIngress:cancelPending()
+        return ok and "Pending host import cancelled; saved chat unchanged."
+            or "No pending host import to cancel ("..tostring(reason)..")."
+    end
+    return "Usage: :host status | cancel (manual import only)"
+end
 local function parseSlash(_,args)
     args=type(args)=="string" and args or ""
     if #args>160 then notice("Command too long");return end
@@ -809,17 +831,26 @@ local function parseSlash(_,args)
             notice(ok and ("Window size "..W.."x"..H) or ("Size failed: "..tostring(err)))
         end
     elseif verb=="import" then
-        -- Manual slash import is a bounded host-to-addon bridge, not a
-        -- claim that native RIFT chat was intercepted automatically.
-        if not hostIngress then notice("Host import unavailable.")
+        -- Every intermediate receipt must be visible in native chat even if
+        -- the RCM addon window is hidden during the manual transfer.
+        if rest=="status" then notice(hostStatusSummary())
+        elseif rest=="cancel" then notice(hostCommand("cancel"))
+        elseif rest=="help" then
+            notice("/rcm import ID INDEX/TOTAL BASE64URL | status | cancel")
+        elseif not hostIngress then notice("Host import unavailable.")
         else
             local ok,result=hostIngress:receiveLine(rest,clock())
             if not ok then
                 notice("Host import rejected: "..tostring(result))
             elseif result=="imported_unverified" then
                 notice("Host candidate imported into RCM (NOT verified native chat).")
+            elseif result=="already_imported" or result=="already_received" then
+                notice("Host import duplicate chunk ignored ("..result..").")
             else
-                notifyUi("Host import: "..tostring(result))
+                local progress=hostIngress:status(clock())
+                notice(string.format("Host import %s: %d/%d chunks received (NOT verified native chat)",
+                    tostring(progress.pendingId or "unknown"),
+                    progress.pendingParts,progress.pendingTotal))
             end
         end
     elseif verb=="clear" then if model then model:clear() end
@@ -837,7 +868,7 @@ local function parseSlash(_,args)
         if not ok then notice("Search rejected: "..tostring(err))
         else visibleOffset=0;render() end
     elseif verb=="help" then
-        notice("/rcm [show|hide|focus|status|copy|clear|import TOKEN PART/TOTAL B64|size W H|size reset|tab KIND|find TEXT]")
+        notice("/rcm [show|hide|focus|status|copy|clear|import ID PART/TOTAL B64|import status|import cancel|size W H|size reset]")
         notice("Input: :help :status :mirror on/off :native :logprobe TOKEN :rpt ... :addon CHARACTER MESSAGE.")
     else notice("Unknown command. Use /rcm help") end
 end
@@ -998,6 +1029,7 @@ local function onSaveLoad(_,name)
     model:registerCommand("addon",sendAddonCommand)
     model:registerCommand("native",nativeProbeCommand)
     model:registerCommand("logprobe",logProbeCommand)
+    model:registerCommand("host",hostCommand)
     model:registerCommand("mirror",mirrorCommand)
     if ConsoleMirror and type(ConsoleMirror.new)=="function"
         and Command and Command.Console
@@ -1181,7 +1213,7 @@ _G.RiftChatModernAPI={
         return resizeTo(width,height,true)
     end,
     GetHostIngressStatus=function()
-        return hostIngress and hostIngress:status()
+        return hostIngress and hostIngress:status(clock())
             or {ready=false,mode="unavailable",liveChatVerified=false,
                 autoInputAvailable=false}
     end,

@@ -96,7 +96,7 @@ function Ingress.new(publish)
     if type(publish)~="function" then return nil,"invalid_publisher" end
     return setmetatable({publish=publish,pending=nil,recent={},seen={},
         acceptedChunks=0,imported=0,rejected=0,duplicates=0,
-        expired=0,publishFailed=0},Receiver)
+        expired=0,cancelled=0,publishFailed=0},Receiver)
 end
 function Receiver:_remember(id)
     self.recent[#self.recent+1]=id
@@ -105,6 +105,23 @@ function Receiver:_remember(id)
         local oldest=table.remove(self.recent,1)
         self.seen[oldest]=nil
     end
+end
+-- Status may be queried after a transfer stalls; expire it without waiting
+-- for another data chunk. Only the transient fragment buffer is discarded.
+function Receiver:expirePending(at)
+    local p=self.pending
+    if p and finite(at) and at>=p.at and at-p.at>MAX_SECONDS then
+        self.pending=nil
+        self.expired=self.expired+1
+        return true
+    end
+    return false
+end
+function Receiver:cancelPending()
+    if not self.pending then return nil,"no_pending_import" end
+    self.pending=nil
+    self.cancelled=self.cancelled+1
+    return true,"pending_cancelled"
 end
 function Receiver:receiveLine(line,at)
     if type(line)~="string" or #line>145 then
@@ -121,10 +138,8 @@ function Receiver:receiveLine(line,at)
         self.rejected=self.rejected+1;return nil,"invalid_index" end
     if self.seen[id] then
         self.duplicates=self.duplicates+1;return true,"already_imported" end
+    self:expirePending(at)
     local pending=self.pending
-    if pending and at>=pending.at and at-pending.at>MAX_SECONDS then
-        self.pending=nil;self.expired=self.expired+1;pending=nil
-    end
     if pending and (pending.id~=id or pending.total~=total) then
         self.rejected=self.rejected+1;return nil,"import_busy" end
     if not pending then
@@ -159,13 +174,14 @@ function Receiver:receiveLine(line,at)
     self.imported=self.imported+1
     return true,"imported_unverified"
 end
-function Receiver:status()
+function Receiver:status(at)
+    self:expirePending(at)
     local p=self.pending
     return {ready=true,mode="manual_slash_only",liveChatVerified=false,
         autoInputAvailable=false,imported=self.imported,
         acceptedChunks=self.acceptedChunks,rejected=self.rejected,
         duplicates=self.duplicates,expired=self.expired,
-        publishFailed=self.publishFailed,
+        cancelled=self.cancelled,publishFailed=self.publishFailed,
         pending=p~=nil,pendingId=p and p.id or nil,
         pendingParts=p and p.count or 0,
         pendingTotal=p and p.total or 0}

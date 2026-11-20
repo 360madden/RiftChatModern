@@ -50,7 +50,7 @@ class ManualHostIngressTests(unittest.TestCase):
             source = (ADDON / filename).read_text(encoding="utf-8")
             chunk = ("local f=assert(loadstring(" + _lua_quote(source)
                      + "));assert(f({identifier='RiftChatModern',"
-                     "version='0.2.9'}, {})==nil)")
+                     "version='0.2.10'}, {})==nil)")
             lua.execute(chunk)
         lua.execute('fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")')
         lua.execute('fire(Event.Addon.Load.End,"RiftChatModern")')
@@ -215,6 +215,81 @@ assert(stat.duplicates>=1 and stat.acceptedChunks==1)
         lua.execute('''
 local stat=RiftChatModernAPI.GetHostIngressStatus()
 assert(stat.imported==1 and stat.pending==false)
+''')
+
+
+    def test_native_chat_receipts_remain_visible_with_rcm_window_hidden(self):
+        record = self.encode("tell", "Sam", "Tell", "progress message " * 15)
+        self.assertGreater(record["parts"], 1)
+        lua = self.lua()
+        self.send(lua, [record["commands"][0]])
+        lua.execute(r'''
+assert(RiftChatModernAPI.GetStatus().windowVisible==false)
+assert(displays[#displays]:find("1/",1,true))
+assert(displays[#displays]:find("NOT verified native chat",1,true))
+fire(slash.rcm,"import status")
+local stat=RiftChatModernAPI.GetHostIngressStatus()
+assert(stat.pending==true and stat.pendingParts==1)
+assert(displays[#displays]:find("host candidate imports=0",1,true))
+''')
+        # Repeated parts must generate a native-chat receipt without publishing.
+        self.send(lua, [record["commands"][0]])
+        lua.execute(r'''
+assert(displays[#displays]:find("duplicate chunk ignored",1,true))
+assert(RiftChatModernAPI.GetHostIngressStatus().duplicates==1)
+assert(RiftChatModernAPI.GetHostIngressStatus().imported==0)
+''')
+        self.send(lua, record["commands"][1:])
+        lua.execute(r'''
+assert(displays[#displays]:find("NOT verified native chat",1,true))
+assert(RiftChatModernAPI.GetHostIngressStatus().imported==1)
+fire(slash.rcm,"import status")
+assert(displays[#displays]:find("Host import idle",1,true))
+local rows,total=RiftChatModernAPI.GetHistory("chat","HOST?",10,0)
+assert(total==1 and rows[1].kind=="tell")
+''')
+
+    def test_manual_cancel_native_and_editor_only_clears_transient_parts(self):
+        record = self.encode("party", "Friend", "Party", "long message " * 25)
+        self.assertGreater(record["parts"], 1)
+        lua = self.lua()
+        self.send(lua, [record["commands"][0]])
+        lua.execute(r'''
+assert(RiftChatModernAPI.GetHostIngressStatus().pending)
+fire(slash.rcm,"import cancel")
+local st=RiftChatModernAPI.GetHostIngressStatus()
+assert(st.pending==false and st.cancelled==1 and st.imported==0)
+assert(displays[#displays]:find("saved chat unchanged",1,true))
+assert(RiftChatModernSaved.hostIngress==nil)
+fire(slash.rcm,"import cancel")
+assert(RiftChatModernAPI.GetHostIngressStatus().cancelled==1)
+assert(displays[#displays]:find("No pending host import",1,true))
+''')
+        # Starting the transfer again uses the same record ID and succeeds.
+        self.send(lua, record["commands"])
+        lua.execute(r'''
+assert(RiftChatModernAPI.GetHostIngressStatus().imported==1)
+assert(RiftChatModernAPI.Submit(":host status"))
+local rows=RiftChatModernAPI.GetHistory("dev","host candidate imports",1,0)
+assert(rows and #rows==1)
+assert(RiftChatModernAPI.Submit(":host cancel"))
+local more=RiftChatModernAPI.GetHistory("dev","No pending host import",1,0)
+assert(more and #more==1)
+assert(RiftChatModernAPI.GetHostIngressStatus().imported==1)
+''')
+
+    def test_expired_buffer_is_reclaimed_on_status_query_without_new_chunk(self):
+        lua = self.lua()
+        lua.execute(r'''
+local recv=assert(RiftChatModernHostIngress.new(function() return true end))
+assert(not recv:cancelPending())
+local ok,message=recv:receiveLine("ABCDEF123456 1/2 AAAA",1700)
+assert(ok and message=="part 1/2")
+assert(recv:status(1745).pending==true)
+assert(recv:status(1746).pending==false)
+assert(recv:status(1800).expired==1)
+assert(recv:status(1800).cancelled==0)
+assert(recv:status(1800).imported==0)
 ''')
 
 if __name__ == "__main__":
