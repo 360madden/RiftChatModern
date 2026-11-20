@@ -314,3 +314,11 @@ From **Windows PowerShell** at `C:\work\RiftChatModern`:
 ```
 
 On November 20, this preflight confirmed **RIFT had exited while its Error Handler remained open**, and no noncombat `Log.txt` existed at the game's **explicitly configured** Documents directory or fallback candidates. The real `Rift.cfg` contained `LogConsole=False` and `LogCombatConsole=False`; those are recorded configuration values, **not yet verified runtime log state**. Exit code `2` denotes a **blocked preflight**, not a diagnosis. Do not reuse a previous PID/HWND after restarting RIFT. See [physical-session evidence, known limitations, and recovery checklist](docs/SESSION_PREFLIGHT_AND_RIFT_ERROR_20261120.md).
+
+## Authoritative chat-log directory (Windows tooling only)
+
+The host observer now selects `Log.txt` from **RIFT's own `%APPDATA%\RIFT\Rift.cfg` `[Client] DocumentsDirectory`** when available, instead of silently following an unrelated Documents fallback. Explicit `--path` and deliberate `LUAPAD_LOG_CANDIDATES` overrides take priority. The `started` JSON event reports `pathSelection` and the selected path.
+
+When the configured file does not exist yet, the observer waits for it to appear and reads newly created content without treating synthetic or stale data as live evidence. This behavior is backed by **27/27 Node.js tests**, including an actual child-process test; **129/129 Lua/Python tests** remain green. The installed RCM addon is still v0.2.10 with no Lua or manifest changes.
+
+See [host observer configured-path implementation, verification and supervised live-test procedure](docs/HOST_CHAT_LOG_PATH_SELECTION_20261120.md).

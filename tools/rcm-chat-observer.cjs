@@ -116,6 +116,61 @@ function validLogPath(value) {
   }
   return path.resolve(value);
 }
+// RIFT's [Client] DocumentsDirectory overrides the conventional Windows
+// Documents location. Select that exact output root before guessing other
+// paths. This is bounded read-only configuration inspection, not game input.
+function readConfiguredLogPath(env=process.env) {
+  const roaming=env.APPDATA ||
+    (env.USERPROFILE ? path.join(env.USERPROFILE,"AppData","Roaming") : null);
+  if(typeof roaming!=="string" || !path.isAbsolute(roaming))return null;
+  const config=path.join(roaming,"RIFT","Rift.cfg");
+  let value;
+  try {
+    const info=fs.statSync(config);
+    if(!info.isFile() || info.size>512*1024)return null;
+    value=fs.readFileSync(config,"utf8").replace(/^\uFEFF/,"");
+  }catch(_){return null}
+  let section="",root=null;
+  for(const line of value.split(/\r?\n/)) {
+    const hdr=/^\s*\[([A-Za-z_0-9]+)\]\s*$/.exec(line);
+    if(hdr){section=hdr[1].toLowerCase();continue}
+    if(section!=="client")continue;
+    const item=/^\s*DocumentsDirectory\s*=\s*(.*?)\s*$/.exec(line);
+    if(!item)continue;
+    root=item[1].trim().replace(/^"(.*)"$/,"$1");
+  }
+  if(typeof root!=="string" || root.length===0 || root.length>2048 ||
+    /[\x00-\x1F\x7F]/.test(root))return null;
+  root=root.replace(/%([A-Za-z_0-9]+)%/g,(_,key)=>{
+    const match=Object.keys(env).find(name=>name.toLowerCase()===key.toLowerCase());
+    return match ? env[match] : "%"+key+"%";
+  });
+  if(!path.isAbsolute(root) || root.includes("%"))return null;
+  return path.join(root,"Log.txt");
+}
+function resolveLogSelection(cfg,env=process.env) {
+  if(cfg.filePath){
+    return {filePath:cfg.filePath,candidates:[cfg.filePath],source:"explicit_path"};
+  }
+  // Keep LuaPadModern's explicit test/user override semantics intact.
+  if(env.LUAPAD_LOG_CANDIDATES){
+    const candidates=defaultLogPaths(env);
+    return {filePath:candidates.find(f=>fs.existsSync(f))||
+      candidates.find(f=>fs.existsSync(path.dirname(f)))||candidates[0],
+      candidates,source:"luapad_override"};
+  }
+  const configured=readConfiguredLogPath(env);
+  if(configured){
+    // An absent configured file is more useful than silently tailing an
+    // unrelated stale log under some other historical Documents folder.
+    return {filePath:configured,candidates:[configured],
+      source:"rift_cfg_documents_directory"};
+  }
+  const candidates=defaultLogPaths(env);
+  return {filePath:candidates.find(f=>fs.existsSync(f))||
+    candidates.find(f=>fs.existsSync(path.dirname(f)))||candidates[0],
+    candidates,source:"generic_documents_fallback"};
+}
 function options(argv) {
   const out={timeoutMs:120000,pollMs:100,maxCandidates:200,includeText:false,
     prepareImport:false,rawSampleLines:0,
@@ -159,9 +214,9 @@ function start(argv=process.argv.slice(2)) {
     return;
   }
   const emit=(item)=>process.stdout.write(JSON.stringify(item)+"\n");
-  const candidates=cfg.filePath?[]:defaultLogPaths();
-  let filePath=cfg.filePath||candidates.find(x=>fs.existsSync(x))||
-    candidates.find(x=>fs.existsSync(path.dirname(x)))||candidates[0];
+  const selection=resolveLogSelection(cfg);
+  const candidates=selection.candidates;
+  let filePath=selection.filePath;
   let remainingCandidates=candidates.length>0&&!fs.existsSync(filePath);
   const startAt=Date.now();
   let count=0,ignoredCount=0,rawSamples=0,completed=false,timer=null;
@@ -195,7 +250,8 @@ function start(argv=process.argv.slice(2)) {
   // Establish baseline before declaring readiness, so new messages can't be
   // missed because of a race between "started" and the initial EOF probe.
   let initial=tailer.poll();
-  emit({event:"started",source:"RIFT_Log.txt",path:filePath,nonce:cfg.nonce,
+  emit({event:"started",source:"RIFT_Log.txt",path:filePath,
+    pathSelection:selection.source,nonce:cfg.nonce,
     gameInputSent:false,gameLoggingChanged:false,transportVerified:false,
     candidateFormatVerified:false,includeText:cfg.includeText,
     prepareImport:cfg.prepareImport,rawSampleLines:cfg.rawSampleLines,
@@ -239,4 +295,5 @@ function start(argv=process.argv.slice(2)) {
   process.once("SIGINT",()=>finish("interrupted",130));
 }
 if(require.main===module)start();
-module.exports={parseCandidateLine,attachChatObserver,safePrefix,validLogPath,options,start};
+module.exports={parseCandidateLine,attachChatObserver,safePrefix,validLogPath,
+  readConfiguredLogPath,resolveLogSelection,options,start};

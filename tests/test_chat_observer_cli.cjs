@@ -113,6 +113,67 @@ test("raw sample truncates long decoded text at UTF-8 boundaries",async()=>{
   assert.equal(Buffer.byteLength(sample.decodedLine,"utf8"),1024);
   assert.equal(sample.lineTruncated,true);
 });
+
+test("CLI follows RIFT configured path when the log file is created after startup",async()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),"rcm-cfg-cli-"));
+  const configuredRoot=path.join(dir,"RIFT configured data");
+  const file=path.join(configuredRoot,"Log.txt");
+  const roaming=path.join(dir,"home","AppData","Roaming");
+  const conf=path.join(roaming,"RIFT","Rift.cfg");
+  fs.mkdirSync(configuredRoot,{recursive:true});
+  fs.mkdirSync(path.dirname(conf),{recursive:true});
+  fs.writeFileSync(conf,["[Client]","DocumentsDirectory = "+configuredRoot,
+    "LogConsole = False",""].join("\n"));
+  const legacy=path.join(dir,"home","OneDrive","Documents","RIFT");
+  fs.mkdirSync(legacy,{recursive:true});
+  fs.writeFileSync(path.join(legacy,"Log.txt"),"old fallback content\n");
+  const env={...process.env,APPDATA:roaming,USERPROFILE:path.join(dir,"home"),
+    LUAPAD_LOG_CANDIDATES:""};
+  const args=[observer,"--nonce","RCM_CLI_20261120","--timeout-ms","2500",
+    "--poll-ms","25","--sample-raw-lines","1"];
+  try{
+    const run=await new Promise((resolve,reject)=>{
+      const proc=spawn(process.execPath,args,{
+        windowsHide:true,env,stdio:["ignore","pipe","pipe"]
+      });
+      let buffer="",stderr="",events=[],started=false,closed=false;
+      const abort=setTimeout(()=>{if(!closed)proc.kill();},4500);
+      proc.stdout.on("data",chunk=>{
+        buffer+=chunk.toString();
+        let index;
+        while((index=buffer.indexOf("\n"))>=0){
+          const raw=buffer.slice(0,index);buffer=buffer.slice(index+1);
+          if(!raw)continue;
+          let event;
+          try{event=JSON.parse(raw)}catch(err){reject(err);return}
+          events.push(event);
+          if(event.event==="started" && !started){
+            started=true;
+            assert.equal(event.pathSelection,"rift_cfg_documents_directory");
+            assert.equal(event.path,file);
+            assert.equal(fs.existsSync(file),false);
+            fs.appendFileSync(file,"unrecognized RIFT log format example\n");
+          }
+        }
+      });
+      proc.stderr.on("data",chunk=>{stderr+=chunk.toString()});
+      proc.on("error",err=>{clearTimeout(abort);reject(err)});
+      proc.on("close",code=>{
+        closed=true;clearTimeout(abort);
+        if(stderr)reject(new Error(stderr));
+        else resolve({code,events,started});
+      });
+    });
+    assert.equal(run.code,0);
+    assert.equal(run.started,true);
+    const lines=run.events.filter(e=>e.event==="raw_log_sample");
+    assert.equal(lines.length,1);
+    assert.equal(lines[0].decodedLine,"unrecognized RIFT log format example");
+    assert.ok(run.events.some(e=>e.event==="finished" && e.reason==="raw_sample_limit"));
+    assert.equal(JSON.stringify(run.events).includes("old fallback content"),false);
+  }finally{fs.rmSync(dir,{recursive:true,force:true})}
+});
+
 test("CLI includes bounded message body only after explicit --include-text",async()=>{
   const r=await launchFixture(
     "[Tell][NewPlayer]: こんにちは from chat\n"+

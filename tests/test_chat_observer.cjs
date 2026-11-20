@@ -5,7 +5,8 @@ const fs=require("node:fs");
 const os=require("node:os");
 const path=require("node:path");
 const {
-  parseCandidateLine,attachChatObserver,safePrefix,validLogPath,options
+  parseCandidateLine,attachChatObserver,safePrefix,validLogPath,
+  readConfiguredLogPath,resolveLogSelection,options
 }=require("../tools/rcm-chat-observer.cjs");
 const {LogTailProbe}=require("../../LuaPadModern/tools/rift-log-probe.cjs");
 
@@ -137,6 +138,61 @@ test("reads a new chat record after the log has been truncated or replaced",()=>
     assert.equal(messages[1].text,"after rotation");
     tail.close();
   }finally{fs.rmSync(path.dirname(location),{recursive:true,force:true})}
+});
+test("Rift.cfg DocumentsDirectory overrides stale fallback logs and reports source",()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),"rcm-config-"));
+  try{
+    const user=path.join(dir,"home"), roaming=path.join(user,"AppData","Roaming");
+    const root=path.join(dir,"RIFT Custom Data");
+    fs.mkdirSync(path.join(roaming,"RIFT"),{recursive:true});
+    fs.mkdirSync(root,{recursive:true});
+    const legacy=path.join(user,"OneDrive","Documents","RIFT");
+    fs.mkdirSync(legacy,{recursive:true});
+    fs.writeFileSync(path.join(legacy,"Log.txt"),"old unrelated log\n");
+    const cfg=path.join(roaming,"RIFT","Rift.cfg");
+    fs.writeFileSync(cfg,["[Client]",'DocumentsDirectory = "'+root+'"',
+      "LogConsole = False",""].join("\n"));
+    const env={APPDATA:roaming,USERPROFILE:user};
+    const chosen=readConfiguredLogPath(env);
+    assert.equal(chosen,path.join(root,"Log.txt"));
+    const selection=resolveLogSelection({},env);
+    assert.equal(selection.source,"rift_cfg_documents_directory");
+    assert.deepEqual(selection.candidates,[chosen]);
+    assert.equal(selection.filePath,chosen);
+    assert.equal(fs.existsSync(chosen),false);
+    // An explicit command-line override always takes precedence.
+    const explicit=resolveLogSelection({filePath:path.join(legacy,"Log.txt")},env);
+    assert.equal(explicit.source,"explicit_path");
+    assert.equal(explicit.filePath,path.join(legacy,"Log.txt"));
+    const override=resolveLogSelection({}, {...env,LUAPAD_LOG_CANDIDATES:path.join(legacy,"Log.txt")});
+    assert.equal(override.source,"luapad_override");
+    assert.equal(override.filePath,path.join(legacy,"Log.txt"));
+  }finally{fs.rmSync(dir,{recursive:true,force:true})}
+});
+test("invalid or oversized RIFT config fails safely to bounded default candidates",()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),"rcm-config-"));
+  try{
+    const roaming=path.join(dir,"AppData","Roaming"),user=path.join(dir,"home");
+    const cfg=path.join(roaming,"RIFT","Rift.cfg");
+    fs.mkdirSync(path.dirname(cfg),{recursive:true});
+    const env={APPDATA:roaming,USERPROFILE:user};
+    for(const bad of [
+      ["[Client]","DocumentsDirectory = ..\\relative",""].join("\n"),
+      ["[Other]","DocumentsDirectory = "+dir,""].join("\n"),
+      ["[Client]","DocumentsDirectory = %NOT_DEFINED%\\RIFT",""].join("\n"),
+      ["[Client]","DocumentsDirectory = "+("x".repeat(2400)),""].join("\n")
+    ]){
+      fs.writeFileSync(cfg,bad);
+      assert.equal(readConfiguredLogPath(env),null);
+      assert.equal(resolveLogSelection({},env).source,"generic_documents_fallback");
+    }
+    fs.writeFileSync(cfg,"x".repeat(512*1024+1));
+    assert.equal(readConfiguredLogPath(env),null);
+    assert.equal(resolveLogSelection({},env).source,"generic_documents_fallback");
+    // Literal environment expansion is supported when it resolves absolutely.
+    fs.writeFileSync(cfg,["[Client]","DocumentsDirectory = %USERPROFILE%\\RIFT",""].join("\n"));
+    assert.equal(readConfiguredLogPath(env),path.join(user,"RIFT","Log.txt"));
+  }finally{fs.rmSync(dir,{recursive:true,force:true})}
 });
 test("rejects unsafe/relative output paths and unbounded CLI options",()=>{
   assert.throws(()=>validLogPath("relative/Log.txt"));
