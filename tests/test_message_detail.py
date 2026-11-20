@@ -1,4 +1,4 @@
-"""RiftChatModern v0.2.8 complete-message reader and clipboard controls."""
+"""RiftChatModern v0.2.9 complete-message reader and clipboard controls."""
 from pathlib import Path
 import sys
 import unittest
@@ -19,11 +19,11 @@ class MessageReaderTests(unittest.TestCase):
     def run_lua(self,source):
         lua=LuaRuntime(unpack_returned_tuples=True)
         lua.execute(RIFT_MOCK)
-        for name in ("Core.lua","AddonMessages.lua","NativeChatProbe.lua","ConsoleMirror.lua"):
+        for name in ("Core.lua","AddonMessages.lua","NativeChatProbe.lua","ConsoleMirror.lua","HostIngress.lua"):
             lua.execute((ADDON / name).read_text(encoding="utf-8"))
         main=(ADDON/"Main.lua").read_text(encoding="utf-8")
         lua.execute("assert(loadstring("+_lua_quote(main)+"))"
-                    "({identifier='RiftChatModern',version='0.2.8'})")
+                    "({identifier='RiftChatModern',version='0.2.9'})")
         lua.execute(source)
 
     def test_click_row_opens_full_text_and_copy_selected(self):

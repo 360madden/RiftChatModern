@@ -2,11 +2,12 @@
 -- Native player say/tell/guild transmit and full native chat interception are NOT
 -- exposed by the verified addon APIs. This UI never pretends to send those.
 local info = ...
-local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.8"
+local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.9"
 local Core = _G.RiftChatModernCore
 local MessageBridge = _G.RiftChatModernAddonMessages
 local NativeProbe = _G.RiftChatModernNativeProbe
 local ConsoleMirror = _G.RiftChatModernConsoleMirror
+local HostIngress = _G.RiftChatModernHostIngress
 local DEFAULT_W, DEFAULT_H, MIN_W, MIN_H=760,618,680,480
 local W,H,LINES=DEFAULT_W,DEFAULT_H,13
 local ROW_H,MAX_ROWS=24,80
@@ -27,7 +28,7 @@ local list, findLabel, controls, layoutWindow, render
 local selectedId,detailOverlay,detailTitle,detailBody,detailPageStatus
 local detailPageIndex,refreshDetail=1,nil
 local mirror,mirrorButtonLabel
-local transport
+local transport,hostIngress
 local context,visibleOffset,lastFocusState= nil,0,nil
 local lastViewportW,lastViewportH
 local initialized=false
@@ -807,6 +808,20 @@ local function parseSlash(_,args)
             local ok,err=resizeTo(tonumber(requestedW),tonumber(requestedH),true)
             notice(ok and ("Window size "..W.."x"..H) or ("Size failed: "..tostring(err)))
         end
+    elseif verb=="import" then
+        -- Manual slash import is a bounded host-to-addon bridge, not a
+        -- claim that native RIFT chat was intercepted automatically.
+        if not hostIngress then notice("Host import unavailable.")
+        else
+            local ok,result=hostIngress:receiveLine(rest,clock())
+            if not ok then
+                notice("Host import rejected: "..tostring(result))
+            elseif result=="imported_unverified" then
+                notice("Host candidate imported into RCM (NOT verified native chat).")
+            else
+                notifyUi("Host import: "..tostring(result))
+            end
+        end
     elseif verb=="clear" then if model then model:clear() end
     elseif verb=="status" then
         if model then
@@ -822,7 +837,7 @@ local function parseSlash(_,args)
         if not ok then notice("Search rejected: "..tostring(err))
         else visibleOffset=0;render() end
     elseif verb=="help" then
-        notice("/rcm [show|hide|focus|status|copy|clear|size W H|size reset|tab KIND|find TEXT]")
+        notice("/rcm [show|hide|focus|status|copy|clear|import TOKEN PART/TOTAL B64|size W H|size reset|tab KIND|find TEXT]")
         notice("Input: :help :status :mirror on/off :native :logprobe TOKEN :rpt ... :addon CHARACTER MESSAGE.")
     else notice("Unknown command. Use /rcm help") end
 end
@@ -973,6 +988,11 @@ local function onSaveLoad(_,name)
     local m,err=Core.new(RiftChatModernSaved)
     if not m then notice("Saved data rejected: "..tostring(err));return end
     model=m
+    if HostIngress and type(HostIngress.new)=="function" then
+        hostIngress=HostIngress.new(function(kind,source,message,at)
+            return model:publish(kind,message,source,at)
+        end)
+    end
     -- Optional cross-repository adapter; no hard dependency or input injection.
     model:registerCommand("rpt",optionalRPT)
     model:registerCommand("addon",sendAddonCommand)
@@ -1107,6 +1127,9 @@ _G.RiftChatModernAPI={
         data.searchFocused=state=="search"
         data.addonTransportReady=transport~=nil and transport.ready or false
         data.consoleMirrorEnabled=mirrorStatus().enabled
+        data.hostManualImportReady=hostIngress~=nil
+        data.hostAutoImportAvailable=false
+        data.hostImportNativeChatVerified=false
         data.logProbeAvailable=Command and Command.Console
             and type(Command.Console.Display)=="function" or false
         data.logProbeTransportVerified=false -- needs independent Log.txt receipt
@@ -1156,6 +1179,11 @@ _G.RiftChatModernAPI={
         if not model then return nil,"not_ready" end
         makeUi()
         return resizeTo(width,height,true)
+    end,
+    GetHostIngressStatus=function()
+        return hostIngress and hostIngress:status()
+            or {ready=false,mode="unavailable",liveChatVerified=false,
+                autoInputAvailable=false}
     end,
     GetNativeConsoles=getNativeConsoles,
     GetConsoleMirrorStatus=mirrorStatus,

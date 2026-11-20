@@ -2,11 +2,11 @@
 
 **Standalone chat-style console and addon diagnostics hub for RIFT Live**
 
-![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Version](https://img.shields.io/badge/Version-0.2.8-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
+![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Version](https://img.shields.io/badge/Version-0.2.9-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
 
 A compact, dark-mode chat window that can receive addon diagnostics, record event history, filter/search, copy to clipboard, and expose a command API to **all our RIFT repositories**. LuaPadModern inspired the editor focus design; this is **original code** with no LuaPadModern dependency or source modifications.
 
-**Development record:** [concept through v0.2.2, including failures and live proof](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md), [v0.2.3 navigation](docs/V0_2_3_NAVIGATION_AND_RELEASE.md), [v0.2.4 resizing](docs/V0_2_4_RESIZE.md), [v0.2.5 codebase bug hunt](docs/V0_2_5_CODEBASE_BUGHUNT.md), [v0.2.6 editor improvements / deployment receipt](docs/V0_2_6_EDITOR_HISTORY_AND_SEARCH.md), [v0.2.7 console subscription discovery](docs/V0_2_7_NATIVE_CHANNEL_DISCOVERY.md), [v0.2.8 Log.txt probe pilot](docs/V0_2_8_LOG_PROBE_HANDOFF.md), and [host chat observer research / tests](docs/HOST_CHAT_OBSERVER_20261120.md).
+**Development record:** [concept through v0.2.2, including failures and live proof](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md), [v0.2.3 navigation](docs/V0_2_3_NAVIGATION_AND_RELEASE.md), [v0.2.4 resizing](docs/V0_2_4_RESIZE.md), [v0.2.5 codebase bug hunt](docs/V0_2_5_CODEBASE_BUGHUNT.md), [v0.2.6 editor improvements / deployment receipt](docs/V0_2_6_EDITOR_HISTORY_AND_SEARCH.md), [v0.2.7 console subscription discovery](docs/V0_2_7_NATIVE_CHANNEL_DISCOVERY.md), [v0.2.8 Log.txt probe pilot](docs/V0_2_8_LOG_PROBE_HANDOFF.md), [host chat observer research / tests](docs/HOST_CHAT_OBSERVER_20261120.md), and [v0.2.9 manual host ingress](docs/V0_2_9_MANUAL_HOST_INGRESS.md).
 
 ## Implemented
 
@@ -31,7 +31,8 @@ A compact, dark-mode chat window that can receive addon diagnostics, record even
 | Register local commands from sibling addons | ✅ |
 | Built-in optional RPT Lab status/arm/mark/stop/last | ✅ |
 | **Reliable RIFT addon-data messaging to another client** | ✅ Lua 5.1 API mock; physical acceptance pending |
-| Windows-side **candidate social-chat observer**, using existing LuaPadModern log decoder | ✅ 13/13 Node tests; historical format only, physical Log.txt receipt pending |
+| Windows-side **candidate social-chat observer**, using existing LuaPadModern log decoder | ✅ 14 Node observer tests; historical format only, physical Log.txt receipt pending |
+| **Manual host-to-RCM chat import**, UTF-8/base64url chunks and `HOST?` provenance | ✅ v0.2.9 mocked slash-to-history integration; physical game acceptance pending |
 | **Opt-in log feasibility probe** compatible with LuaPadModern `LogTailProbe` | ✅ v0.2.8 tests and cross-repo parser smoke; real RIFT disk transport unverified |
 | **Native console read-only capability probe** | ✅ Lua 5.1 getter/mock tests |
 | Saves up to 240 messages, character scoped | ✅ |
@@ -49,6 +50,7 @@ The source addon is **C:\work\RiftChatModern\addon\RiftChatModern**:
 - **AddonMessages.lua:** dedicated `RCMDevV1` addon-data channel, send/receive validation, queue acknowledgment and timeout handling.
 - **NativeChatProbe.lua:** read-only native-frame and actual console subscription inventory; does not modify consoles or read native player-chat text.
 - **ConsoleMirror.lua:** disabled-by-default pass-through of RIFT `Command.Console.Display` calls into searchable addon-output history. It restores the original function when safely possible and does not intercept player chat.
+- **HostIngress.lua:** validated, bounded, transient manual host-to-addon chat import; imported text is visibly tagged as unverified.
 - **Main.lua:** draggable dark frame, getter-backed focus indicator, editor, event adapters and RPT Lab integration.
 - **fonts/**: bundled Lato Regular/Bold and original SIL Open Font License. The app uses native font fallback if custom fonts aren't available.
 
@@ -74,6 +76,7 @@ After that, the new editor handles its **own local commands**.
 | /rcm clear | Clear saved local history |
 | /rcm size WIDTH HEIGHT | Resize the addon window within supported viewport limits |
 | /rcm size reset | Restore the default 760 × 618 size |
+| /rcm import ID INDEX/TOTAL BASE64URL | Manually import a host candidate record from Windows; **requires operator entry, not automatic chat capture** |
 | /rcm status / help | Diagnostics |
 
 ## Local editor commands
@@ -128,7 +131,7 @@ end
 | GetHistory(kind, search, limit, offset) | Return copies, never mutable history references |
 | GetMessage(id) / OpenMessage(id) | Look up a retained message by stable ID and open its full-text reader |
 | GetSelectedMessage() / CopySelectedMessage() / CloseMessage() | Inspect/copy the full selected message without losing history context |
-| GetStatus() | Version, ready/visible state, **editorFocusState** (`focused`, `search`, `unfocused`, `hidden`, `unavailable`), focus flags, filter, count, **commandHistoryCount**, **commandHistoryPersisted=false**, **logProbeAvailable**, **logProbeTransportVerified=false**, and capabilities |
+| GetStatus() | Version, UI/focus, search, counts, transport flags, **hostManualImportReady**, **hostAutoImportAvailable=false**, **hostImportNativeChatVerified=false**, and capabilities |
 | RegisterCommand(name, callback) | Register local colon-command |
 | Subscribe(name, callback) / Unsubscribe(name) | Receive copied event data |
 | Submit(":command args") | Execute a local command |
@@ -136,6 +139,7 @@ end
 | Show() / Hide() / FocusEditor() / FocusSearch() | Explicit own-window GUI focus operations |
 | SendAddon(target, message) | Request reliable addon-data send with server queue acknowledgment (not peer delivery) |
 | GetAddonTransportStatus() | Read queue-ready, pending, accepted/rejected/unknown, received and invalid counters |
+| GetHostIngressStatus() | Manual import mode, accepted chunks, pending fragment counts, completed imports, duplicates, errors, expiry; **not native-chat delivery proof** |
 | GetNativeConsoles() | Read-only native-frame and console-channel metadata, including `publicChannels`, `publicChannelCount`, `publicChannelsTruncated` per console; **never** claims ordinary chat-message access |
 | SetConsoleMirror(boolean) / GetConsoleMirrorStatus() | Explicit optional pass-through interception of addon console output, preserving native behavior |
 | GetFocusState() | Read the addon-owned input/search focus state; does not infer native RIFT chat focus |
@@ -239,6 +243,22 @@ node .\tools\rcm-chat-observer.cjs --nonce RCM_CHAT_20261120 --timeout-ms 120000
 node --test .\tests\test_chat_observer.cjs .\tests\test_chat_observer_cli.cjs
 ```
 
-**Verification:** 13/13 separate Node tests using synthetic files and child processes; original 87/87 Lua addon tests unchanged. RIFT's current `Log.txt` is not yet verified, so the parser's records explicitly mark `verifiedLiveFormat=false`. The observer does not ingest messages back into the in-game addon and does not send native social chat. **No new .toc version or addon deployment was required.**
+**Verification:** 13/13 separate Node tests using synthetic files and child processes; original 87/87 Lua addon tests unchanged. RIFT's current `Log.txt` is not yet verified, so the parser's records explicitly mark `verifiedLiveFormat=false`. The observer does not ingest messages back into the in-game addon and does not send native social chat. **No new .toc version or addon deployment was required at the host-observer checkpoint.**
 
 See [host observer implementation, historical sources, known failures and live protocol checklist](docs/HOST_CHAT_OBSERVER_20261120.md).
+
+## v0.2.9 — Bounded manual host-to-addon import
+
+This release introduces the missing inbound half of the Windows-host research path. The Node helper `tools/rcm-chat-import.cjs` converts a candidate-chat JSON record into one or more compact `/rcm import ...` native slash commands. A new Lua 5.1 `HostIngress.lua` module (registered **before Main.lua in the six-file manifest**) validates and reassembles the chunks, then publishes a clearly marked `[HOST? Channel]` message into RCM history.
+
+**Synthetic demonstration** (Windows PowerShell in `C:\work\RiftChatModern`):
+
+```powershell
+node .\tools\rcm-chat-import.cjs --kind guild --sender Atank --channel Guild --text "Hello from host"
+```
+
+Copy the `commands` field's complete `/rcm import ...` line and paste it into **RIFT's original native chat input** after v0.2.9 is loaded. RCM's **CHAT** or **ALL** tab will contain the imported candidate, visibly labeled as external. Long messages yield several commands; copy every part. No command is sent automatically.
+
+For the existing Windows log observer, `--prepare-import` explicitly enables body-text output and prints these manual commands alongside each candidate record. Without a verified RIFT `Log.txt`, that observer still cannot acquire actual player messages.
+
+**Validation:** 95/95 Lua 5.1 tests and 22/22 Node.js tests (117 total). Includes cross-language round trips, duplicate suppression, out-of-order chunks, malformed UTF-8, bounded payloads, missing callbacks and native slash dispatch under mocked RIFT APIs. **Physical import acceptance, real Log.txt reception, and automatic host input remain pending.** See [v0.2.9 engineering and live acceptance checklist](docs/V0_2_9_MANUAL_HOST_INGRESS.md).

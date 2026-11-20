@@ -8,7 +8,7 @@ const {spawn}=require("node:child_process");
 
 const observer=path.resolve(__dirname,"..","tools","rcm-chat-observer.cjs");
 
-function launchFixture(lines,includeText){
+function launchFixture(lines,includeText,prepareImport=false){
   return new Promise((resolve,reject)=>{
     const dir=fs.mkdtempSync(path.join(os.tmpdir(),"rcm-observer-cli-"));
     const file=path.join(dir,"Log.txt");
@@ -17,6 +17,7 @@ function launchFixture(lines,includeText){
     const args=[observer,"--path",file,"--nonce","RCM_CLI_20261120",
       "--timeout-ms","2500","--poll-ms","25","--max-candidates","10"];
     if(includeText)args.push("--include-text");
+    if(prepareImport)args.push("--prepare-import");
     const proc=spawn(process.execPath,args,{windowsHide:true,stdio:["ignore","pipe","pipe"]});
     let stdout="",stderr="",records=[],started=false,closed=false;
     const cleanup=()=>fs.rmSync(dir,{recursive:true,force:true});
@@ -66,6 +67,23 @@ test("CLI tails only new candidate chat and returns a marker receipt",async()=>{
   assert.ok(r.records.every(x=>x.transportVerified===undefined||x.transportVerified===false));
 });
 
+test("CLI emits human-pasteable /rcm import commands only when explicitly enabled",async()=>{
+  const r=await launchFixture(
+    "[Guild][Atank]: Hello from fixture\n"+
+    "LPB_PROBE|RCM_CLI_20261120|unknown\n",false,true);
+  assert.equal(r.code,0);
+  const ingestions=r.records.filter(x=>x.event==="rcm_manual_import");
+  assert.equal(ingestions.length,1);
+  assert.equal(ingestions[0].parts,1);
+  assert.equal(ingestions[0].automaticGameInput,false);
+  assert.equal(ingestions[0].liveGameDeliveryVerified,false);
+  assert.match(ingestions[0].commands[0],/^\/rcm import [A-F0-9]{12} 1\/1 /);
+  const payload=Buffer.from(ingestions[0].commands[0].split(" ").at(-1),"base64url")
+    .toString("utf8");
+  assert.equal(payload,"G\0Atank\0Guild\0Hello from fixture");
+  assert.equal(r.records[0].prepareImport,true);
+  assert.ok(r.records.some(x=>x.event==="matched"));
+});
 test("CLI includes bounded message body only after explicit --include-text",async()=>{
   const r=await launchFixture(
     "[Tell][NewPlayer]: こんにちは from chat\n"+

@@ -14,7 +14,7 @@ except ImportError:
     LuaRuntime = None
 
 HERE = Path(__file__).resolve().parents[1] / "addon" / "RiftChatModern"
-NAMES = ("Core.lua", "AddonMessages.lua", "NativeChatProbe.lua", "ConsoleMirror.lua", "Main.lua")
+NAMES = ("Core.lua", "AddonMessages.lua", "NativeChatProbe.lua", "ConsoleMirror.lua", "HostIngress.lua", "Main.lua")
 
 
 @unittest.skipUnless(LuaRuntime is not None, "Lua 5.1 unavailable")
@@ -35,17 +35,19 @@ class RiftStartupContractTests(unittest.TestCase):
                 value = lua.execute(
                     "local chunk=assert(loadstring(" + _lua_quote(source)
                     + "));return chunk({identifier='RiftChatModern',"
-                      "version='0.2.8'}, {})")
+                      "version='0.2.9'}, {})")
                 self.assertIsNone(value, f"{name} must not return from RIFT RunOnStartup")
         lua.execute('''
 assert(type(RiftChatModernCore)=="table")
 assert(type(RiftChatModernAddonMessages)=="table")
 assert(type(RiftChatModernNativeProbe)=="table")
 assert(type(RiftChatModernConsoleMirror)=="table")
+assert(type(RiftChatModernHostIngress)=="table")
 assert(type(RiftChatModernAPI)=="table")
+assert(RiftChatModernAPI.GetHostIngressStatus().ready==false)
 fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")
 fire(Event.Addon.Load.End,"RiftChatModern")
-assert(RiftChatModernAPI.GetStatus().version=="0.2.8")
+assert(RiftChatModernAPI.GetStatus().version=="0.2.9")
 assert(RiftChatModernAPI.GetStatus().ready)
 ''')
 

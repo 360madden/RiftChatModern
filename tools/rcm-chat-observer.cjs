@@ -6,6 +6,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const {encodeRecord}=require("./rcm-chat-import.cjs");
 const {
   LogTailProbe, defaultLogPaths, validateNonce
 } = require(path.resolve(__dirname, "..", "..", "LuaPadModern", "tools", "rift-log-probe.cjs"));
@@ -114,10 +115,12 @@ function validLogPath(value) {
 }
 function options(argv) {
   const out={timeoutMs:120000,pollMs:100,maxCandidates:200,includeText:false,
+    prepareImport:false,
     nonce:"RCM_CHAT_"+crypto.randomBytes(8).toString("hex")};
   for(let i=0;i<argv.length;i++) {
     const flag=argv[i];
     if(flag==="--include-text"){out.includeText=true;continue}
+    if(flag==="--prepare-import"){out.prepareImport=true;out.includeText=true;continue}
     if(flag==="--help"){out.help=true;continue}
     if(!["--path","--nonce","--timeout-ms","--poll-ms","--max-candidates"].includes(flag) ||
       !argv[i+1])throw Error("Unsupported or incomplete option: "+flag);
@@ -145,9 +148,9 @@ function start(argv=process.argv.slice(2)) {
   if(cfg.help){
     process.stdout.write("node tools/rcm-chat-observer.cjs [--path ABSOLUTE_Log.txt] "+
       "[--timeout-ms 120000] [--poll-ms 100] [--max-candidates 200] "+
-      "[--nonce TOKEN] [--include-text]\n"+
+      "[--nonce TOKEN] [--include-text] [--prepare-import]\n"+
       "Read-only candidate RIFT chat observer. Defaults to metadata-only. "+
-      "Output format is historical/unverified, not an in-game chat bridge.\n");
+      "Output format is historical/unverified. --prepare-import prints manual /rcm commands, never sends game input.\n");
     return;
   }
   const emit=(item)=>process.stdout.write(JSON.stringify(item)+"\n");
@@ -164,6 +167,12 @@ function start(argv=process.argv.slice(2)) {
       if(count>=cfg.maxCandidates){ignoredCount++;return}
       count++;
       emit(event);
+      if(cfg.prepareImport) {
+        // Opt-in manual preview, NOT automatic injection into RIFT.
+        // Note: emitted text and slash commands contain the message body.
+        try{emit(encodeRecord(event))}
+        catch(e){emit({event:"import_skipped",reason:"unencodable_candidate"})}
+      }
     },cfg.includeText);
     return {t,s};
   }
@@ -175,6 +184,7 @@ function start(argv=process.argv.slice(2)) {
   emit({event:"started",source:"RIFT_Log.txt",path:filePath,nonce:cfg.nonce,
     gameInputSent:false,gameLoggingChanged:false,transportVerified:false,
     candidateFormatVerified:false,includeText:cfg.includeText,
+    prepareImport:cfg.prepareImport,automaticGameInput:false,
     mode:"historical-bracket-candidate",timeoutMs:cfg.timeoutMs});
   function finish(reason,code=0){
     if(completed)return;

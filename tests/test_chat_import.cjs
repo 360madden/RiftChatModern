@@ -1,0 +1,106 @@
+"use strict";
+const test=require("node:test");
+const assert=require("node:assert/strict");
+const cp=require("node:child_process");
+const path=require("node:path");
+const {
+  encodeRecord,parseOptions
+}=require("../tools/rcm-chat-import.cjs");
+
+const cli=path.resolve(__dirname,"..","tools","rcm-chat-import.cjs");
+function call(args,input) {
+  return cp.spawnSync(process.execPath,[cli,...args],{
+    input,encoding:"utf8",timeout:8000,windowsHide:true
+  });
+}
+function decoded(commands) {
+  return Buffer.from(commands.map(x=>x.split(" ").at(-1)).join(""),"base64url")
+    .toString("utf8");
+}
+test("short manual import has bounded slash command and strict metadata",()=>{
+  const out=encodeRecord({kind:"guild",sender:"Atank",
+    channel:"Guild",text:"Hi from host"},"ABCDEF123456");
+  assert.equal(out.parts,1);
+  assert.equal(out.protocol,"RCM1-B64URL");
+  assert.equal(out.automaticGameInput,false);
+  assert.equal(out.liveGameDeliveryVerified,false);
+  assert.equal(out.requiresManualEntry,true);
+  assert.match(out.commands[0],/^\/rcm import ABCDEF123456 1\/1 [A-Za-z0-9_-]+$/);
+  assert.equal(decoded(out.commands),"G\0Atank\0Guild\0Hi from host");
+});
+test("full UTF-8 size generates 12 or fewer short slash chunks",()=>{
+  const text="🌋".repeat(128);
+  const out=encodeRecord({kind:"public",sender:"Iño",
+    channel:"World@Deepwood",text},"ABCDEF123456");
+  assert.ok(out.parts>1);
+  assert.ok(out.parts<=12);
+  assert.ok(out.commands.every(x=>x.length<=160));
+  assert.equal(decoded(out.commands),"C\0Iño\0World@Deepwood\0"+text);
+});
+test("valid kind codes remain stable for all supported chat categories",()=>{
+  for(const [kind,code] of Object.entries({
+    general:"S",party:"P",guild:"G",tell:"T",public:"C"
+  })){
+    const p=encodeRecord({kind,sender:"Player",channel:kind,text:"text"},"ABCDEF123456");
+    assert.ok(decoded(p.commands).startsWith(code+"\0"));
+  }
+});
+test("oversize, control chars, invalid tokens and unknown category rejected",()=>{
+  const base={kind:"guild",sender:"Player",channel:"Guild",text:"ok"};
+  for(const bad of [
+    {...base,text:"x".repeat(513)},{...base,sender:"X\nY"},
+    {...base,channel:"Guild\r"},{...base,kind:"admin"},
+    {...base,text:""},{...base,sender:"Bad\uD800Name"}
+  ]) assert.throws(()=>encodeRecord(bad,"ABCDEF123456"));
+  assert.throws(()=>encodeRecord(base,"abc"));
+  assert.throws(()=>encodeRecord(base,"XYZXYZXYZXYZ"));
+  assert.throws(()=>parseOptions(["--stdin-json","--kind","guild"]));
+  assert.throws(()=>parseOptions(["--max-records","0"]));
+  assert.throws(()=>parseOptions(["--unknown"]));
+});
+test("manual CLI prints exactly one user-pasteable command, not game input",()=>{
+  const r=call(["--kind","tell","--sender","Sam","--channel",
+    "Tell","--text","Hello","--id","ABCDEF123456"]);
+  assert.equal(r.status,0,r.stderr);
+  const row=JSON.parse(r.stdout.trim());
+  assert.equal(row.commands.length,1);
+  assert.equal(row.liveGameDeliveryVerified,false);
+  assert.equal(row.automaticGameInput,false);
+  assert.equal(decoded(row.commands),"T\0Sam\0Tell\0Hello");
+});
+test("stdin-json accepts candidate_chat lines with explicit text",()=>{
+  const lines=[
+    {event:"started",source:"RIFT_Log.txt",transportVerified:false},
+    {event:"candidate_chat",source:"RIFT_Log.txt",kind:"party",
+      sender:"Sam",channel:"Party",text:"Hello from real text fixture",
+      verifiedLiveFormat:false},
+    {event:"candidate_chat",source:"RIFT_Log.txt",kind:"guild",
+      sender:"Mia",channel:"Guild",text:"Second line",verifiedLiveFormat:false}
+  ];
+  const r=call(["--stdin-json","--max-records","2"],
+    lines.map(x=>JSON.stringify(x)).join("\n")+"\n");
+  assert.equal(r.status,0,r.stderr);
+  const parsed=r.stdout.trim().split("\n").map(x=>JSON.parse(x));
+  assert.equal(parsed.length,3);
+  assert.equal(parsed[0].kind,"party");
+  assert.equal(parsed[1].kind,"guild");
+  assert.equal(parsed[2].generated,2);
+  assert.equal(parsed[2].skipped,0);
+  assert.equal(parsed[2].automaticGameInput,false);
+});
+test("stdin-json does not invent absent chat bodies",()=>{
+  const row={event:"candidate_chat",kind:"guild",sender:"Sam",
+    channel:"Guild",verifiedLiveFormat:false};
+  const r=call(["--stdin-json"],JSON.stringify(row)+"\n");
+  assert.equal(r.status,2);
+  const parsed=r.stdout.trim().split("\n").map(x=>JSON.parse(x));
+  assert.equal(parsed[0].event,"import_skipped");
+  assert.equal(parsed[0].reason,"message_text_not_requested");
+  assert.equal(parsed[1].generated,0);
+});
+test("CLI help is bounded and does not start a game interaction",()=>{
+  const r=call(["--help"]);
+  assert.equal(r.status,0);
+  assert.match(r.stdout,/Never sends input to RIFT/);
+  assert.equal(r.stderr,"");
+});

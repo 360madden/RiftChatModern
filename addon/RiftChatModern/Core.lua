@@ -252,7 +252,7 @@ function Model:commandCount()
     return count
 end
 function Model:status()
-    return {version="0.2.8",historyCount=#self.saved.history,
+    return {version="0.2.9",historyCount=#self.saved.history,
         filter=self.filter,search=self.search,revision=self.revision,
         commandCount=self:commandCount(),nativeSocialSendAvailable=false,
         nativePlayerChatCaptureAvailable=false}
