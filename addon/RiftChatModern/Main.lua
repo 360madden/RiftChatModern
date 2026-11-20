@@ -2,7 +2,7 @@
 -- Native player say/tell/guild transmit and full native chat interception are NOT
 -- exposed by the verified addon APIs. This UI never pretends to send those.
 local info = ...
-local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.7"
+local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.8"
 local Core = _G.RiftChatModernCore
 local MessageBridge = _G.RiftChatModernAddonMessages
 local NativeProbe = _G.RiftChatModernNativeProbe
@@ -823,7 +823,7 @@ local function parseSlash(_,args)
         else visibleOffset=0;render() end
     elseif verb=="help" then
         notice("/rcm [show|hide|focus|status|copy|clear|size W H|size reset|tab KIND|find TEXT]")
-        notice("Input: :help :status :mirror on/off :native :rpt ... :addon CHARACTER MESSAGE.")
+        notice("Input: :help :status :mirror on/off :native :logprobe TOKEN :rpt ... :addon CHARACTER MESSAGE.")
     else notice("Unknown command. Use /rcm help") end
 end
 
@@ -915,6 +915,33 @@ local function nativeProbeCommand(args)
         data.consoleListReady and "" or " (list unavailable)")
 end
 
+-- Opt-in RIFT-to-host log feasibility marker. Compatible with the existing
+-- LuaPadModern read-only LogTailProbe. Emission is NOT proof of disk delivery.
+local function logProbeCommand(args)
+    if type(args)~="string" or #args<8 or #args>80
+        or not args:match("^[A-Za-z0-9_-]+$") then
+        return "Usage: :logprobe TOKEN (8-80 ASCII letters, numbers, _ or -)."
+    end
+    if not Command or not Command.Console
+        or type(Command.Console.Display)~="function" then
+        return "Log probe unavailable: native console API missing."
+    end
+    local epoch="unknown"
+    if Inspect and Inspect.Time and type(Inspect.Time.Server)=="function" then
+        local ok,seconds=pcall(Inspect.Time.Server)
+        if ok and finite(seconds) and seconds>=1500000000
+            and seconds<4200000000 then
+            epoch=string.format("%.3f",seconds)
+        end
+    end
+    local marker="LPB_PROBE|"..args.."|"..epoch
+    local ok,result=pcall(Command.Console.Display,"general",false,marker,false)
+    if not ok or result==false then
+        return "Log probe emission failed; no RIFT-to-host transport evidence."
+    end
+    return "Probe "..args.." submitted to native console; Log.txt receipt unverified."
+end
+
 local function sendAddonCommand(args)
     if not transport or not transport.ready then
         return "Addon-data transport unavailable (normal chat unchanged)."
@@ -950,6 +977,7 @@ local function onSaveLoad(_,name)
     model:registerCommand("rpt",optionalRPT)
     model:registerCommand("addon",sendAddonCommand)
     model:registerCommand("native",nativeProbeCommand)
+    model:registerCommand("logprobe",logProbeCommand)
     model:registerCommand("mirror",mirrorCommand)
     if ConsoleMirror and type(ConsoleMirror.new)=="function"
         and Command and Command.Console
@@ -1079,6 +1107,9 @@ _G.RiftChatModernAPI={
         data.searchFocused=state=="search"
         data.addonTransportReady=transport~=nil and transport.ready or false
         data.consoleMirrorEnabled=mirrorStatus().enabled
+        data.logProbeAvailable=Command and Command.Console
+            and type(Command.Console.Display)=="function" or false
+        data.logProbeTransportVerified=false -- needs independent Log.txt receipt
         data.windowWidth=W;data.windowHeight=H
         data.minimumWindowWidth=MIN_W;data.minimumWindowHeight=MIN_H
         data.visibleRows=LINES

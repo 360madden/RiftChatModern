@@ -2,11 +2,11 @@
 
 **Standalone chat-style console and addon diagnostics hub for RIFT Live**
 
-![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Version](https://img.shields.io/badge/Version-0.2.7-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
+![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Version](https://img.shields.io/badge/Version-0.2.8-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
 
 A compact, dark-mode chat window that can receive addon diagnostics, record event history, filter/search, copy to clipboard, and expose a command API to **all our RIFT repositories**. LuaPadModern inspired the editor focus design; this is **original code** with no LuaPadModern dependency or source modifications.
 
-**Development record:** [concept through v0.2.2, including failures and live proof](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md), [v0.2.3 navigation](docs/V0_2_3_NAVIGATION_AND_RELEASE.md), [v0.2.4 resizing](docs/V0_2_4_RESIZE.md), [v0.2.5 codebase bug hunt](docs/V0_2_5_CODEBASE_BUGHUNT.md), and [v0.2.6 editor improvements / deployment receipt](docs/V0_2_6_EDITOR_HISTORY_AND_SEARCH.md), and [v0.2.7 console subscription discovery](docs/V0_2_7_NATIVE_CHANNEL_DISCOVERY.md).
+**Development record:** [concept through v0.2.2, including failures and live proof](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md), [v0.2.3 navigation](docs/V0_2_3_NAVIGATION_AND_RELEASE.md), [v0.2.4 resizing](docs/V0_2_4_RESIZE.md), [v0.2.5 codebase bug hunt](docs/V0_2_5_CODEBASE_BUGHUNT.md), [v0.2.6 editor improvements / deployment receipt](docs/V0_2_6_EDITOR_HISTORY_AND_SEARCH.md), [v0.2.7 console subscription discovery](docs/V0_2_7_NATIVE_CHANNEL_DISCOVERY.md), and [v0.2.8 Log.txt probe pilot](docs/V0_2_8_LOG_PROBE_HANDOFF.md).
 
 ## Implemented
 
@@ -31,6 +31,7 @@ A compact, dark-mode chat window that can receive addon diagnostics, record even
 | Register local commands from sibling addons | ✅ |
 | Built-in optional RPT Lab status/arm/mark/stop/last | ✅ |
 | **Reliable RIFT addon-data messaging to another client** | ✅ Lua 5.1 API mock; physical acceptance pending |
+| **Opt-in log feasibility probe** compatible with LuaPadModern `LogTailProbe` | ✅ v0.2.8 tests and cross-repo parser smoke; real RIFT disk transport unverified |
 | **Native console read-only capability probe** | ✅ Lua 5.1 getter/mock tests |
 | Saves up to 240 messages, character scoped | ✅ |
 | Capture ordinary native player chat (say/party/guild/tell) | ⏳ Not verified |
@@ -92,6 +93,7 @@ After that, the new editor handles its **own local commands**.
 | :native | Summarize native console handles and subscription availability |
 | :native channels | Show per-console subscriptions and named public channels (configuration metadata, **not** chat transcript) |
 | :native copy | Copy named console/public-channel configuration report to clipboard (replaces existing clipboard) |
+| :logprobe TOKEN | Emit an explicitly requested `LPB_PROBE\|TOKEN\|epoch` marker to native RIFT console for a matching read-only Windows log watcher; not proof of disk delivery |
 | :mirror on / off / status | Opt-in mirroring of other addons' console output; never player chat |
 | :copy | Copy all currently filtered history via the game clipboard API |
 | Up / Down (editor focused) | Browse up to 32 previously successful local editor commands; Down past newest restores unsent draft (live acceptance pending) |
@@ -125,7 +127,7 @@ end
 | GetHistory(kind, search, limit, offset) | Return copies, never mutable history references |
 | GetMessage(id) / OpenMessage(id) | Look up a retained message by stable ID and open its full-text reader |
 | GetSelectedMessage() / CopySelectedMessage() / CloseMessage() | Inspect/copy the full selected message without losing history context |
-| GetStatus() | Version, ready/visible state, **editorFocusState** (`focused`, `search`, `unfocused`, `hidden`, `unavailable`), focus flags, filter, count, **commandHistoryCount**, **commandHistoryPersisted=false**, and capabilities |
+| GetStatus() | Version, ready/visible state, **editorFocusState** (`focused`, `search`, `unfocused`, `hidden`, `unavailable`), focus flags, filter, count, **commandHistoryCount**, **commandHistoryPersisted=false**, **logProbeAvailable**, **logProbeTransportVerified=false**, and capabilities |
 | RegisterCommand(name, callback) | Register local colon-command |
 | Subscribe(name, callback) / Unsubscribe(name) | Receive copied event data |
 | Submit(":command args") | Execute a local command |
@@ -209,3 +211,17 @@ The read-only native inspector now recognizes **all 27 documented boolean subscr
 The API handles console ID maps returned by `Inspect.Console.List()`, preserves the public `interfaceVersion=1`, and continues to mark native transcript capture/social chat send as unverified. Mocked Lua 5.1 test coverage grew from 81 to **83**. The revised code was validated against the shipped Gadgets addon examples and historical RIFT API documentation, not yet independently accepted in the physical client.
 
 See [v0.2.7 implementation, source findings, risks and live checklist](docs/V0_2_7_NATIVE_CHANNEL_DISCOVERY.md).
+
+## v0.2.8 — RIFT-to-host Log.txt feasibility probe
+
+From RCM's focused editor, type `:logprobe RCM_TEST_20261120` to print a bounded nonce marker to the game's **native console**. This is a manually initiated diagnostics action; it does not toggle RIFT logging and cannot claim that a line reached disk. The matching Windows-side launcher at `tools/rcm-log-probe.ps1` reuses **LuaPadModern's existing read-only Node log watcher** instead of implementing a second tailer.
+
+**Preparation preview in Windows PowerShell 5.1 or 7 (run from the RCM repo):**
+
+```powershell
+.\tools\rcm-log-probe.ps1 -Preview -Nonce RCM_TEST_20261120
+```
+
+When RIFT is intentionally configured to write a verified `Log.txt`, remove `-Preview` to start one bounded watcher; then enter the matching `:logprobe` command in the already-loaded RCM editor. The watcher reports receipts but never sends game input. **Do not blindly type `/log`**: it toggles logging state.
+
+**Tests:** 87/87 Lua 5.1 cases; 4 new cases test valid/invalid marker emission, unavailable APIs and missing server clock. The Windows PowerShell 5.1 preview and rejection paths were tested, and the exact marker was recognized by LuaPadModern's `LogTailProbe.readLine` against a synthetic string. No RIFT Live `Log.txt` receipt or player-chat ingestion has been demonstrated. See [v0.2.8 notes](docs/V0_2_8_LOG_PROBE_HANDOFF.md).
