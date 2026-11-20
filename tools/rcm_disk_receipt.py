@@ -34,10 +34,33 @@ def mask_strings_comments(source: str) -> str:
     while index < size:
         c = source[index]
         if c == "-" and index + 1 < size and source[index + 1] == "-":
+            # RIFT serializer normally emits no long Lua comments, but a
+            # deliberately edited file must not forge receipt fields inside one.
+            opener = re.compile(r"\[(=*)\[").match(source, index + 2)
+            if opener:
+                close_token = "]" + opener.group(1) + "]"
+                end = source.find(close_token, opener.end())
+                if end < 0:
+                    raise DiskAuditError("unterminated_lua_long_comment")
+                for j in range(index, end + len(close_token)):
+                    result[j] = " " if source[j] not in "\r\n" else source[j]
+                index = end + len(close_token)
+                continue
             while index < size and source[index] not in "\r\n":
                 result[index] = " "
                 index += 1
             continue
+        if c == "[":
+            opener = re.compile(r"\[(=*)\[").match(source, index)
+            if opener:
+                close_token = "]" + opener.group(1) + "]"
+                end = source.find(close_token, opener.end())
+                if end < 0:
+                    raise DiskAuditError("unterminated_lua_long_string")
+                for j in range(index, end + len(close_token)):
+                    result[j] = "~" if source[j] not in "\r\n" else source[j]
+                index = end + len(close_token)
+                continue
         if c in ('"', "'"):
             quote = c
             result[index] = "~"

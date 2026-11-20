@@ -67,8 +67,8 @@ This is a **negative persistence result** for the previous live import and migra
 
 ## Regression and dependencies
 
-- **155/155 Lua/Python tests passed**, including seven save-lifecycle tests for Save.Begin, Save.End, wrong-addon filtering, no-save exit simulation, receipt generation and rollover, reloading a staged receipt, invalid metadata, native slash/editor status, and **geometry changes updating the pending-state indicator**.
-- **10/10 Windows disk-audit fixture tests passed**, covering structural parsing of real-style and forged Lua table contents, strict UTF-8, duplicate fields, inconsistent receipt counts, wrong machine, exact filename, and peer-file write timestamps. **27/27 Node.js observer/import tests** also passed, for **182 automated tests total**.
+- **159/159 Lua/Python tests passed after the separate disk-auditor hardening**, including seven save-lifecycle tests for Save.Begin, Save.End, wrong-addon filtering, no-save exit simulation, receipt generation and rollover, reloading a staged receipt, invalid metadata, native slash/editor status, and **geometry changes updating the pending-state indicator**.
+- **14/14 Windows disk-audit fixture tests passed after hardening**, covering structural parsing of real-style and forged Lua table contents, strict UTF-8, duplicate fields, inconsistent receipt counts, wrong machine, exact filename, and peer-file write timestamps. **27/27 Node.js observer/import tests** also passed, for **186 automated tests total**.
 - Existing model, schema-v1 migration, host import, API, chat UI and native message tests remain in the complete suite.
 - The existing `RiftAddon.toc` module order, six RunOnStartup modules, character SavedVariables declaration, and required Email metadata are preserved.
 - `interfaceVersion=2` and `schemaVersion=2` remain compatible with v0.2.11. Only `saveCheckpoint` is an additive, bounded persisted subtable.
@@ -89,6 +89,6 @@ The installer validated the addon identifier, v0.2.12 manifest, Email field, Env
 
 ## Record of failures and corrections
 
-The first Windows disk-audit run had **six errors among nine tests** because `re.finditer` was invoked with unsupported start/end positional arguments; after that repair, masked quoted values allowed a regex to consume too much whitespace. Both problems were fixed by using a compiled regex's bounded `finditer` and replacing quoted contents with a non-whitespace masking sentinel. Strict UTF-8 rejection was added afterward. These failures are retained in the engineering record, not hidden.
+The first Windows disk-audit run had **six errors among nine tests** because `re.finditer` was invoked with unsupported start/end positional arguments; after that repair, masked quoted values allowed a regex to consume too much whitespace. Both problems were fixed by using a compiled regex's bounded `finditer` and replacing quoted contents with a non-whitespace masking sentinel. Strict UTF-8 rejection was added afterward. In a separate post-release audit, Lua's **multiline bracketed strings and comments** were found to be another potential false-positive path: arbitrary `saveCheckpoint` text in `[[...]]` or `--[=[...]=]` could otherwise be parsed as real metadata. The disk checker now masks these constructs, rejects unterminated long literals, and includes four dedicated tests. These failures and corrections are retained in the engineering record, not hidden.
 
-**Never equate a simulated save receipt, successful input submission, or on-screen RCM message with proven disk persistence.**
+**Follow-up classification:** The multiline-literal protection changes only `tools/rcm_disk_receipt.py` and its tests; the physically installed v0.2.12 addon is unchanged. The repeat real-file audit again reported schema v1, 33 stored rows, no import rows, and no disk checkpoint. **Never equate a simulated save receipt, successful input submission, or on-screen RCM message with proven disk persistence.**

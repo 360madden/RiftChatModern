@@ -167,5 +167,59 @@ class DiskCheckpointTests(unittest.TestCase):
         self.assertFalse(details["savedVariablesModified"])
         self.assertNotIn("text=",json.dumps(details))
 
+    def test_lua_long_comment_cannot_forge_checkpoint(self):
+        forged='''RiftChatModernSaved = {
+          history = {{ id=1,kind="system",text="ordinary" }},
+          --[=[
+          saveCheckpoint = {
+            formatVersion=1,schemaVersion=2,sequence=900,
+            historyCount=1,lastHistoryId=1,lastImportId=0,nextId=2,at=1700
+          }
+          ]=]
+          nextId=2, schemaVersion=2
+        }'''
+        result=inspect_saved_data(forged)
+        self.assertEqual(result["historyRowsOnDisk"],1)
+        self.assertFalse(result["checkpointOnDisk"])
+        self.assertFalse(result["checkpointMetadataConsistent"])
+
+    def test_lua_long_string_cannot_forge_checkpoint_or_history_rows(self):
+        forged='''RiftChatModernSaved = {
+          history = {{ id=1,kind="system",text=[==[
+              } saveCheckpoint = {sequence=999,formatVersion=1}
+              { id=99,kind="import" }
+              -- pretend comment
+          ]==] }},
+          nextId=2, schemaVersion=2
+        }'''
+        result=inspect_saved_data(forged)
+        self.assertEqual(result["historyRowsOnDisk"],1)
+        self.assertEqual(result["importRowsOnDisk"],0)
+        self.assertFalse(result["checkpointOnDisk"])
+
+    def test_long_bracket_false_positive_before_genuine_checkpoint(self):
+        # A forged receipt in a Lua multiline comment must not hide a real one.
+        injected=SAVED.replace(
+            "  saveCheckpoint = {",
+            '''  --[==[
+          saveCheckpoint={sequence=777,historyCount=999}
+          ]==]
+          saveCheckpoint = {''',
+            1)
+        result=inspect_saved_data(injected)
+        self.assertTrue(result["checkpointOnDisk"])
+        self.assertTrue(result["checkpointMetadataConsistent"])
+        self.assertEqual(result["checkpoint"]["sequence"],1)
+
+    def test_unterminated_multiline_lua_literals_rejected(self):
+        broken_comment='''RiftChatModernSaved={
+          history={}, --[=[ forged checkpoint = { '''
+        with self.assertRaisesRegex(DiskAuditError,"unterminated_lua_long_comment"):
+            inspect_saved_data(broken_comment)
+        broken_string='''RiftChatModernSaved={
+          history={{id=1,kind="system",text=[==[ forgot closing '''
+        with self.assertRaisesRegex(DiskAuditError,"unterminated_lua_long_string"):
+            inspect_saved_data(broken_string)
+
 if __name__=="__main__":
     unittest.main()
