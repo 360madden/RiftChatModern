@@ -2,19 +2,20 @@
 -- Native player say/tell/guild transmit and full native chat interception are NOT
 -- exposed by the verified addon APIs. This UI never pretends to send those.
 local info = ...
-local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.1.0"
+local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.1.1"
 local Core = _G.RiftChatModernCore
-local W,H,LINES=750,558,13
+local W,H,LINES=760,618,13
 local C = {
     bg={0.065,0.080,0.11,0.98}, header={0.090,0.111,0.15,1},
     card={0.092,0.117,0.15,1}, alt={0.081,0.102,0.13,1},
     border={0.16,0.21,0.27,1}, control={0.14,0.19,0.25,1},
     hover={0.19,0.27,0.34,1}, accent={0.12,0.67,0.75,1},
     text={0.90,0.94,0.97,1}, muted={0.61,0.72,0.79,1},
-    warning={1.0,0.73,0.43,1}
+    warning={1.0,0.73,0.43,1}, good={0.40,0.91,0.70,1}
 }
-local model,panel,editor,searchField,statusField,rows,tabLabels,drag
-local context,searchHint,visibleOffset= nil,nil,0
+local model,panel,editor,searchField,statusField,focusIndicator,rows,tabLabels,drag
+local context,visibleOffset,lastFocusState= nil,0,nil
+local lastViewportW,lastViewportH
 local initialized=false
 local function finite(v)
     return type(v)=="number" and v==v and v>-math.huge and v<math.huge
@@ -70,7 +71,10 @@ local function dragMove(save)
     if m then shift(m.x-drag.dx,m.y-drag.dy,save) end
 end
 local function stopDrag()
-    if drag then dragMove(true);drag=nil end
+    if not drag then return end
+    if mouse() then dragMove(true)
+    elseif panel then shift(panel:GetLeft(),panel:GetTop(),true) end
+    drag=nil
 end
 local function frame(name,parent,x,y,w,h,color)
     local f=UI.CreateFrame("Frame","RCM"..name,parent)
@@ -83,8 +87,12 @@ local function text(name,parent,value,x,y,w,h,size,color,bold)
     local f=UI.CreateFrame("Text","RCM"..name,parent)
     f:SetPoint("TOPLEFT",parent,"TOPLEFT",x,y)
     f:SetWidth(w);f:SetHeight(h)
-    f:SetFontSize(size or 14)
+    f:SetFontSize(size or 16)
+    -- Bundled Lato follows the RPT Lab typography, with native-font fallback.
+    pcall(function() f:SetFont(ADDON,bold and "fonts/Lato-Bold.ttf"
+        or "fonts/Lato-Regular.ttf") end)
     f:SetWordwrap(false)
+    f:SetMouseMasking("limited") -- text labels cannot block parent buttons/drag handles
     f:SetText(value or "")
     ink(f,color or C.text)
     return f
@@ -92,8 +100,8 @@ end
 local function button(name,value,parent,x,y,w,h,fn,strong)
     local control=frame(name,parent,x,y,w,h,strong and C.accent or C.control)
     control:SetMouseMasking("full")
-    local caption=text(name.."Label",control,value,8,math.max(1,(h-19)/2),w-16,20,14,
-        strong and C.bg or C.text)
+    local caption=text(name.."Label",control,value,8,math.max(1,(h-21)/2),w-16,22,15,
+        strong and C.bg or C.text,true)
     control:EventAttach(Event.UI.Input.Mouse.Left.Click,function()
         if type(fn)=="function" then fn() end
     end,ADDON.." "..name.." clicked")
@@ -109,6 +117,34 @@ local function button(name,value,parent,x,y,w,h,fn,strong)
     end
     return control,caption
 end
+local function focusState()
+    if not panel or not panel:GetVisible() then return "hidden" end
+    if not editor or type(editor.GetKeyFocus)~="function" then return "unavailable" end
+    local ok,focused=pcall(editor.GetKeyFocus,editor)
+    if not ok or type(focused)~="boolean" then return "unavailable" end
+    if focused then return "focused" end
+    if searchField and type(searchField.GetKeyFocus)=="function" then
+        local found,value=pcall(searchField.GetKeyFocus,searchField)
+        if found and value==true then return "search" end
+    end
+    return "unfocused"
+end
+local function updateFocusIndicator(force)
+    local state=focusState()
+    if focusIndicator and (force or lastFocusState~=state) then
+        local label=state=="focused" and "INPUT  ●  FOCUSED"
+            or state=="search" and "SEARCH  ●  FOCUSED"
+            or state=="hidden" and "INPUT  •  HIDDEN"
+            or state=="unfocused" and "INPUT  •  NOT FOCUSED"
+            or "INPUT  ?  UNAVAILABLE"
+        focusIndicator:SetText(label)
+        ink(focusIndicator,state=="focused" and C.good
+            or state=="search" and C.accent
+            or state=="unavailable" and C.warning or C.muted)
+    end
+    lastFocusState=state
+    return state
+end
 local function focusEditor()
     if not editor or not panel or not panel:GetVisible() then
         return nil,"editor_hidden"
@@ -119,11 +155,20 @@ local function focusEditor()
     local ok=pcall(editor.SetKeyFocus,editor,true)
     if not ok then return nil,"focus_request_failed" end
     local good,value=pcall(editor.GetKeyFocus,editor)
+    updateFocusIndicator(true)
     if good and value==true then
         notifyUi("Editor focused • local commands start with :")
         return true
     end
     return nil,"focus_not_acquired"
+end
+local function focusSearch()
+    if not searchField or not panel or not panel:GetVisible() then return nil,"search_hidden" end
+    if type(searchField.SetKeyFocus)~="function" then return nil,"focus_api_unavailable" end
+    local ok=pcall(searchField.SetKeyFocus,searchField,true)
+    if not ok then return nil,"focus_request_failed" end
+    local state=updateFocusIndicator(true)
+    return state=="search" and true or nil,state~="search" and "focus_not_acquired" or nil
 end
 local function cutUtf8(str,maximum)
     if #str<=maximum then return str end
@@ -148,14 +193,14 @@ local function render()
             end
             local msg=string.format("%s  %-7s  %-14s %s",ts,r.kind:upper(),
                 cutUtf8(r.source,14),r.text)
-            rows[i].entry:SetText(cutUtf8(msg,118))
+            rows[i].entry:SetText(cutUtf8(msg,79))
             ink(rows[i].entry,r.kind=="dev" and C.accent or
                 r.kind=="system" and C.warning or C.text)
         else rows[i].entry:SetText("") end
     end
     local count=math.min(total,visibleOffset+LINES)
     local first=math.max(0,count-math.min(LINES,total-visibleOffset)+1)
-    notifyUi(string.format("%d messages  •  showing %d–%d  •  %s  •  native social chat remains separate",
+    notifyUi(string.format("%d messages  •  showing %d–%d  •  %s  •  native chat separate",
         total,first,count,model.filter))
     for key,label in pairs(tabLabels or {}) do
         ink(label,key==model.filter and C.accent or C.muted)
@@ -201,34 +246,43 @@ local function makeUi()
     local vw,vh=UIParent:GetWidth(),UIParent:GetHeight()
     shift(ui and ui.x or math.max(0,math.floor((vw-W)/2)),
         ui and ui.y or math.max(0,math.floor((vh-H)/3)),false)
-    local header=frame("Header",panel,0,0,W,52,C.header)
-    text("Title",header,"RIFT CHAT  /  MODERN",18,13,440,25,19,C.text)
-    text("Version",header,"v"..VERSION,560,14,90,20,14,C.accent)
-    button("Close","×",header,708,9,32,32,function()
-        if editor and type(editor.SetKeyFocus)=="function" then
-            pcall(editor.SetKeyFocus,editor,false)
-        end
-        panel:SetVisible(false)
-    end)
-    local handle=frame("DragHandle",header,0,0,548,52)
+    local header=frame("Header",panel,0,0,W,58,C.header)
+    -- The drag surface is only over the title. The close button remains clickable.
+    local handle=frame("DragHandle",header,0,0,370,58)
     handle:SetMouseMasking("full")
     handle:EventAttach(Event.UI.Input.Mouse.Left.Down,startDrag,ADDON.." drag start")
     handle:EventAttach(Event.UI.Input.Mouse.Left.Up,stopDrag,ADDON.." drag stop")
     handle:EventAttach(Event.UI.Input.Mouse.Left.Upoutside,stopDrag,ADDON.." drag outside")
-    frame("Divider",panel,0,52,W,1,C.border)
+    text("Title",handle,"RIFT CHAT  /  MODERN",18,15,320,28,21,C.text,true)
+    focusIndicator=text("FocusIndicator",header,"INPUT  •  HIDDEN",
+        383,20,188,24,14,C.muted,true)
+    text("Version",header,"v"..VERSION,579,19,118,22,16,C.accent,true)
+    button("Close","×",header,715,11,34,34,function()
+        drag=nil
+        if editor and type(editor.SetKeyFocus)=="function" then
+            pcall(editor.SetKeyFocus,editor,false)
+        end
+        if searchField and type(searchField.SetKeyFocus)=="function" then
+            pcall(searchField.SetKeyFocus,searchField,false)
+        end
+        panel:SetVisible(false)
+        updateFocusIndicator(true)
+    end)
+    frame("Divider",panel,0,58,W,1,C.border)
     tabLabels={}
     local tabs={{"all","ALL"},{"chat","CHAT"},{"system","SYSTEM"},{"npc","NPC"},
         {"addons","ADDONS"},{"dev","DEV"}}
     for i,tab in ipairs(tabs) do
         local name,display=tab[1],tab[2]
-        local b,label=button("Tab"..name,display,panel,14+(i-1)*119,61,109,29,
+        local b,label=button("Tab"..name,display,panel,16+(i-1)*122,69,110,34,
             function() model:setFilter(name);visibleOffset=0;render() end)
         tabLabels[name]=label
     end
-    text("FindLabel",panel,"FIND",17,104,54,24,14,C.muted)
+    text("FindLabel",panel,"SEARCH",17,118,60,25,15,C.muted,true)
     searchField=UI.CreateFrame("RiftTextfield","RCMSearchField",panel)
-    searchField:SetPoint("TOPLEFT",panel,"TOPLEFT",68,99)
-    searchField:SetWidth(521);searchField:SetHeight(29)
+    searchField:SetPoint("TOPLEFT",panel,"TOPLEFT",84,111)
+    searchField:SetWidth(506);searchField:SetHeight(33)
+    pcall(function() searchField:SetFontSize(16) end)
     rgba(searchField,C.control)
     searchField:SetText(model.search)
     if Event.UI.Textfield and Event.UI.Textfield.Change then
@@ -237,31 +291,32 @@ local function makeUi()
             if #val<=60 then model:setSearch(val);visibleOffset=0;render() end
         end,ADDON.." search updated")
     end
-    button("FindReset","RESET",panel,602,99,73,29,function()
+    button("FindReset","RESET",panel,605,111,75,33,function()
         searchField:SetText(""); model:setSearch("");visibleOffset=0;render()
     end)
-    button("PageUp","▲",panel,685,143,50,32,function()
+    button("PageUp","▲",panel,694,160,50,34,function()
         visibleOffset=math.min(240,visibleOffset+LINES);render()
     end)
-    button("PageDown","▼",panel,685,185,50,32,function()
+    button("PageDown","▼",panel,694,205,50,34,function()
         visibleOffset=math.max(0,visibleOffset-LINES);render()
     end)
     rows={}
-    local list=frame("MessageCard",panel,14,138,658,300,C.card)
+    local list=frame("MessageCard",panel,14,154,666,326,C.card)
     for i=1,LINES do
-        local row=frame("Line"..i,list,5,5+(i-1)*22,648,22,
+        local row=frame("Line"..i,list,5,6+(i-1)*24,656,24,
             i%2==0 and C.card or C.alt)
-        rows[i]={entry=text("LineText"..i,row,"",9,1,630,20,14,C.text)}
+        rows[i]={entry=text("LineText"..i,row,"",9,2,634,22,16,C.text)}
     end
-    button("Copy","COPY HISTORY",panel,14,449,155,30,copyHistory,true)
-    button("Clear","CLEAR",panel,178,449,104,30,function()
+    button("Copy","COPY HISTORY",panel,14,490,170,35,copyHistory,true)
+    button("Clear","CLEAR",panel,195,490,98,35,function()
         model:clear();visibleOffset=0;render()
     end)
-    button("Focus","FOCUS INPUT",panel,292,449,139,30,focusEditor)
-    text("Meta",panel,"Addon diagnostics + NPC + alerts • :help",448,456,285,20,13,C.muted)
+    button("Focus","FOCUS INPUT",panel,304,490,145,35,focusEditor)
+    text("Meta",panel,"Addon diagnostics  •  :help",466,499,275,23,14,C.muted)
     editor=UI.CreateFrame("RiftTextfield","RCMInput",panel)
-    editor:SetPoint("TOPLEFT",panel,"TOPLEFT",14,491)
-    editor:SetWidth(622);editor:SetHeight(35)
+    editor:SetPoint("TOPLEFT",panel,"TOPLEFT",14,535)
+    editor:SetWidth(632);editor:SetHeight(40)
+    pcall(function() editor:SetFontSize(18) end)
     editor:SetText("")
     rgba(editor,C.control)
     if editor.Event then
@@ -277,19 +332,50 @@ local function makeUi()
             focusEditor()
         end,ADDON.." editor click focus")
     end
-    button("Send","RUN",panel,643,491,92,35,submit,true)
-    statusField=text("Status",panel,"",16,530,700,20,12,C.muted)
-    -- Keep the status text inside the window; no automatic native chat interception.
-    statusField:SetPoint("TOPLEFT",panel,"TOPLEFT",16,529)
+    button("Send","RUN",panel,655,535,90,40,submit,true)
+    statusField=text("Status",panel,"",16,587,726,24,14,C.muted)
+    -- All controls remain inside the 760×618 panel, even at reduced UI scale.
+    -- Explicit input focus indication; opening the window never steals focus.
+    if Event.UI.Input.Mouse.Left.Click then
+        searchField:EventAttach(Event.UI.Input.Mouse.Left.Click,function()
+            focusSearch()
+        end,ADDON.." search click focus")
+    end
+    local focusEvents=Event.UI.Input.Key and Event.UI.Input.Key.Focus
+    if focusEvents then
+        for _,field in ipairs({editor,searchField}) do
+            if focusEvents.Gain then
+                pcall(field.EventAttach,field,focusEvents.Gain,
+                    function() updateFocusIndicator(true) end,ADDON.." focus gain")
+            end
+            if focusEvents.Loss then
+                pcall(field.EventAttach,field,focusEvents.Loss,
+                    function() updateFocusIndicator(true) end,ADDON.." focus loss")
+            end
+        end
+    end
     model.onChange=render
     panel:SetVisible(false)
+    updateFocusIndicator(true)
     render()
 end
 local function show(yes)
     if not model then return nil,"not_ready" end
     makeUi()
-    if not yes and drag then stopDrag() end
+    if not yes then
+        if drag then
+            shift(panel:GetLeft(),panel:GetTop(),true)
+            drag=nil
+        end
+        if editor and type(editor.SetKeyFocus)=="function" then
+            pcall(editor.SetKeyFocus,editor,false)
+        end
+        if searchField and type(searchField.SetKeyFocus)=="function" then
+            pcall(searchField.SetKeyFocus,searchField,false)
+        end
+    end
     panel:SetVisible(yes)
+    updateFocusIndicator(true)
     if yes then render() end
     return true
 end
@@ -397,6 +483,15 @@ local function dragTick()
         if not m or m.Left==false then stopDrag()
         else dragMove(false) end
     end
+    if panel and panel:GetVisible() then
+        local w,h=UIParent:GetWidth(),UIParent:GetHeight()
+        if finite(w) and finite(h)
+            and (lastViewportW~=w or lastViewportH~=h) then
+            lastViewportW,lastViewportH=w,h
+            if not drag then shift(panel:GetLeft(),panel:GetTop(),true) end
+        end
+        updateFocusIndicator(false)
+    end
 end
 _G.RiftChatModernAPI={
     interfaceVersion=1,version=VERSION,
@@ -408,12 +503,10 @@ _G.RiftChatModernAPI={
         local data=model and model:status() or {version=VERSION,ready=false}
         data.ready=model~=nil
         data.windowVisible=panel and panel:GetVisible() or false
-        data.editorFocused=(editor and panel and panel:GetVisible()
-            and type(editor.GetKeyFocus)=="function"
-            and (function()
-                local ok,focused=pcall(editor.GetKeyFocus,editor)
-                return ok and focused==true
-            end)()) or false
+        local state=focusState()
+        data.editorFocusState=state
+        data.editorFocused=state=="focused"
+        data.searchFocused=state=="search"
         return data
     end,
     GetHistory=function(kind,search,limit,offset)
@@ -443,6 +536,8 @@ _G.RiftChatModernAPI={
     Show=function() return show(true) end,
     Hide=function() return show(false) end,
     FocusEditor=focusEditor,
+    FocusSearch=focusSearch,
+    GetFocusState=focusState,
 }
 Command.Event.Attach(Event.Addon.SavedVariables.Load.End,onSaveLoad,"RCM history load")
 Command.Event.Attach(Event.Addon.Load.End,onLoaded,"RCM initialized")

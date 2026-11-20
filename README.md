@@ -2,7 +2,7 @@
 
 **Standalone chat-style console and addon diagnostics hub for RIFT Live**
 
-![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Version](https://img.shields.io/badge/Version-0.1.0-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
+![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Version](https://img.shields.io/badge/Version-0.1.1-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
 
 A compact, dark-mode chat window that can receive addon diagnostics, record event history, filter/search, copy to clipboard, and expose a command API to **all our RIFT repositories**. LuaPadModern inspired the editor focus design; this is **original code** with no LuaPadModern dependency or source modifications.
 
@@ -10,8 +10,10 @@ A compact, dark-mode chat window that can receive addon diagnostics, record even
 
 | Feature | Current state |
 | --- | --- |
-| Modern, legible dark UI and draggable header | ✅ Lua 5.1 mocked runtime |
-| Dedicated editor with explicit focus and Enter dispatch | ✅ Mocked runtime |
+| Modern dark UI, 760×618, **21pt title / 16pt message font** | ✅ Lua 5.1 geometry tests |
+| Dedicated **18pt editor**, getter-verified input/search focus badge, Enter dispatch | ✅ Lua 5.1 mock; physical acceptance pending |
+| Drag release outside, viewport clamping and saved placement | ✅ Tests |
+| Bundled Lato Regular/Bold fonts and original OFL license | ✅ SHA-256 verified |
 | All / Chat / System / NPC / Addons / Dev tabs | ✅ |
 | Timestamped history, paging, search | ✅ |
 | Copy all filtered chat history to clipboard | ✅ Via Command.CopyToClipboard |
@@ -31,7 +33,8 @@ The source addon is **C:\work\RiftChatModern\addon\RiftChatModern**:
 
 - **RiftAddon.toc:** identity, version, placeholder contact, startup and SavedVariables.
 - **Core.lua:** bounded model, search, filters, history, subscriptions and local commands.
-- **Main.lua:** in-game frame, editor, chat event adapters and RPT Lab integration.
+- **Main.lua:** draggable dark frame, getter-backed focus indicator, editor, event adapters and RPT Lab integration.
+- **fonts/**: bundled Lato Regular/Bold and original SIL Open Font License. The app uses native font fallback if custom fonts aren't available.
 
 Copy the whole folder to the physical RIFT Interface\AddOns folder. Restart RIFT if it has not discovered the new addon, or enable it in the AddOns manager.
 
@@ -97,12 +100,13 @@ end
 | --- | --- |
 | Publish(kind, message, source) | Add a timestamped message and notify subscribers |
 | GetHistory(kind, search, limit, offset) | Return copies, never mutable history references |
-| GetStatus() | Version, ready state, editor focus, filter, count and capabilities |
+| GetStatus() | Version, ready/visible state, **editorFocusState** (`focused`, `search`, `unfocused`, `hidden`, `unavailable`), focus flags, filter, count and capabilities |
 | RegisterCommand(name, callback) | Register local colon-command |
 | Subscribe(name, callback) / Unsubscribe(name) | Receive copied event data |
 | Submit(":command args") | Execute a local command |
 | Copy() | Copy filtered history to Windows clipboard |
-| Show() / Hide() / FocusEditor() | Own-window UI functions |
+| Show() / Hide() / FocusEditor() / FocusSearch() | Explicit own-window GUI focus operations |
+| GetFocusState() | Read the addon-owned input/search focus state; does not infer native RIFT chat focus |
 
 Channel labels include **general, party, guild, tell, system, npc, combat, addons, dev**. They are *categories* for records, not assertions that the game server transmitted them.
 
@@ -116,7 +120,7 @@ Run in **PowerShell 7** in this repository:
 & "C:\work\riftreader2\.venv\Scripts\python.exe" -B -m unittest discover -s tests -v
 ~~~
 
-The tests exercise real Lua 5.1, fake RIFT UI events, focus requests, dragging, Enter input, history, search, copy, NPC/alerts, extension calls, and RPT integration. They do **not** substitute for actual physical RIFT UI acceptance.
+The tests exercise Lua 5.1 with game UI mocks, **control bounds, 21/18/16pt font sizes, actual input/search getter states, drag outside release and viewport clamping**, Enter input, history, 1,200-message model stress, clipboard, NPC/alerts, addon commands and RPT integration. They do **not** substitute for actual physical RIFT UI acceptance.
 
 ## RIFT API findings
 
