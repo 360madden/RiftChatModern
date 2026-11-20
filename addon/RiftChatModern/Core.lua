@@ -342,11 +342,77 @@ function Model:commandCount()
     return count
 end
 function Model:status()
-    return {version="0.2.11",schemaVersion=2,
+    return {version="0.2.12",schemaVersion=2,
         provenanceRequired=true,historyCount=#self.saved.history,
         filter=self.filter,search=self.search,revision=self.revision,
         commandCount=self:commandCount(),nativeSocialSendAvailable=false,
         nativePlayerChatCaptureAvailable=false}
+end
+-- UI geometry is persisted outside the usual history/filter callbacks.
+-- Mark it dirty without forcing a render during drag or resize.
+function Model:markSavedStateChanged()
+    self.revision=self.revision+1
+    return true
+end
+-- RIFT controls when character SavedVariables are serialized. This tiny
+-- checkpoint receipt is written only during SavedVariables.Save.Begin.
+-- It never claims that bytes reached disk; host inspection must verify that.
+local function safeCheckpoint(record)
+    if type(record)~="table" or record.formatVersion~=1
+        or record.schemaVersion~=2 then return nil end
+    local function integer(value,min,max)
+        return type(value)=="number" and value==value
+            and value%1==0 and value>=min and value<=max
+    end
+    if not integer(record.sequence,1,1000000000)
+        or not integer(record.historyCount,0,MAX_HISTORY)
+        or not integer(record.nextId,1,1000000000000)
+        or not integer(record.lastHistoryId,0,1000000000000)
+        or not integer(record.lastImportId,0,1000000000000)
+        or record.lastHistoryId>=record.nextId
+        or record.lastImportId>record.lastHistoryId
+        or type(record.at)~="number" or record.at~=record.at
+        or record.at<0 or record.at==math.huge then return nil end
+    return record
+end
+function Model:recordSaveBegin(at)
+    if type(at)~="number" or at~=at or at<0 or at==math.huge then
+        return nil,"invalid_time"
+    end
+    local previous=safeCheckpoint(self.saved.saveCheckpoint)
+    local sequence=previous and previous.sequence or 0
+    if sequence>=1000000000 then sequence=0 end
+    local history=self.saved.history
+    local count=#history
+    local last=count>0 and history[count].id or 0
+    local lastImport=0
+    for i=count,1,-1 do
+        if history[i].kind=="import" then
+            lastImport=history[i].id
+            break
+        end
+    end
+    local record={formatVersion=1,schemaVersion=2,sequence=sequence+1,
+        at=at,historyCount=count,nextId=self.saved.nextId,
+        lastHistoryId=last,lastImportId=lastImport}
+    -- Save.Begin is the last addon-controlled opportunity to stage metadata.
+    self.saved.saveCheckpoint=record
+    self._lastCheckpointRevision=self.revision
+    return self:checkpointStatus()
+end
+function Model:checkpointStatus()
+    local checkpoint=safeCheckpoint(self.saved.saveCheckpoint)
+    local dirty=self.revision>(self._lastCheckpointRevision or 0)
+    return {saveEventReceiptAvailable=checkpoint~=nil,
+        eventSequence=checkpoint and checkpoint.sequence or 0,
+        eventAt=checkpoint and checkpoint.at or nil,
+        historyCountAtEvent=checkpoint and checkpoint.historyCount or nil,
+        nextIdAtEvent=checkpoint and checkpoint.nextId or nil,
+        lastHistoryIdAtEvent=checkpoint and checkpoint.lastHistoryId or nil,
+        lastImportIdAtEvent=checkpoint and checkpoint.lastImportId or nil,
+        pendingSessionChanges=dirty,
+        onDiskVerified=false,requiredDiskVerification=true,
+        nativeSaveEventsAreNotDiskProof=true}
 end
 Core.filters=filters
 Core.rowLabel=rowLabel

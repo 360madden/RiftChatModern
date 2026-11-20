@@ -2,7 +2,7 @@
 -- Native player say/tell/guild transmit and full native chat interception are NOT
 -- exposed by the verified addon APIs. This UI never pretends to send those.
 local info = ...
-local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.11"
+local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.12"
 local Core = _G.RiftChatModernCore
 local MessageBridge = _G.RiftChatModernAddonMessages
 local NativeProbe = _G.RiftChatModernNativeProbe
@@ -32,6 +32,20 @@ local transport,hostIngress
 local context,visibleOffset,lastFocusState= nil,0,nil
 local lastViewportW,lastViewportH
 local initialized=false
+-- These event counts are in-memory diagnostics only. A RIFT Save.End event
+-- is NOT independent proof that any new SavedVariables bytes reached disk.
+local saveBeginEvents,saveEndEvents=0,0
+local function saveStatus()
+    local result=model and model:checkpointStatus() or
+        {saveEventReceiptAvailable=false,eventSequence=0,
+         pendingSessionChanges=false,onDiskVerified=false,
+         requiredDiskVerification=true,nativeSaveEventsAreNotDiskProof=true}
+    result.saveBeginEventsThisSession=saveBeginEvents
+    result.saveEndEventsThisSession=saveEndEvents
+    result.saveEndObservedThisSession=saveEndEvents>0
+    result.diskPersistedVerified=false
+    return result
+end
 -- Editor commands are recalled in memory only; never written to SavedVariables.
 local HISTORY_CAP=32
 local commandHistory,recallIndex,recallDraft,recallWritten={},nil,nil,nil
@@ -122,9 +136,12 @@ end
 local function saveGeometry()
     if not model or not panel then return end
     local ui=type(model.saved.ui)=="table" and model.saved.ui or {}
-    ui.x=panel:GetLeft();ui.y=panel:GetTop()
+    local left,top=panel:GetLeft(),panel:GetTop()
+    local changed=ui.x~=left or ui.y~=top or ui.w~=W or ui.h~=H
+    ui.x=left;ui.y=top
     ui.w=W;ui.h=H
     model.saved.ui=ui -- preserve other SavedVariables fields and history
+    if changed then model:markSavedStateChanged() end
 end
 local function shift(x,y,save)
     if not panel or not finite(x) or not finite(y) then return end
@@ -811,6 +828,16 @@ local function hostCommand(args)
     end
     return "Usage: :host status | cancel (manual import only)"
 end
+local function checkpointSummary()
+    local state=saveStatus()
+    local phase=state.saveEventReceiptAvailable
+        and ("RIFT Save.Begin receipt #"..state.eventSequence
+             .." (history "..state.historyCountAtEvent..")")
+        or "No RIFT Save.Begin receipt stored"
+    return phase.." | session changes: "..
+        (state.pendingSessionChanges and "yes" or "no")
+        .." | on-disk save NOT independently verified."
+end
 local function parseSlash(_,args)
     args=type(args)=="string" and args or ""
     if #args>160 then notice("Command too long");return end
@@ -831,6 +858,7 @@ local function parseSlash(_,args)
             local ok,err=resizeTo(tonumber(requestedW),tonumber(requestedH),true)
             notice(ok and ("Window size "..W.."x"..H) or ("Size failed: "..tostring(err)))
         end
+    elseif verb=="checkpoint" then notice(checkpointSummary())
     elseif verb=="import" then
         -- Every intermediate receipt must be visible in native chat even if
         -- the RCM addon window is hidden during the manual transfer.
@@ -1033,6 +1061,7 @@ local function onSaveLoad(_,name)
     model:registerCommand("native",nativeProbeCommand)
     model:registerCommand("logprobe",logProbeCommand)
     model:registerCommand("host",hostCommand)
+    model:registerCommand("checkpoint",checkpointSummary)
     model:registerCommand("mirror",mirrorCommand)
     if ConsoleMirror and type(ConsoleMirror.new)=="function"
         and Command and Command.Console
@@ -1072,6 +1101,22 @@ local function onSaveLoad(_,name)
             if ok then transport=bridge end
         end
     end
+end
+-- RIFT's own save lifecycle is the only supported Lua SavedVariables flush
+-- path; never pretend that an addon command can force a disk commit.
+local function onSaveBegin(_,name)
+    if name~=ADDON or not model then return end
+    local state,why=model:recordSaveBegin(clock())
+    if not state then
+        notice("Save.Begin receipt unavailable: "..tostring(why))
+        return
+    end
+    saveBeginEvents=saveBeginEvents+1
+end
+local function onSaveEnd(_,name)
+    if name~=ADDON or not model then return end
+    saveEndEvents=saveEndEvents+1
+    -- Do NOT mutate SavedVariables here: serialization may have completed.
 end
 local function onLoaded(_,name)
     if name~=ADDON or initialized then return end
@@ -1173,6 +1218,7 @@ _G.RiftChatModernAPI={
         data.visibleRows=LINES
         data.commandHistoryCount=#commandHistory
         data.commandHistoryPersisted=false
+        data.saveCheckpoint=saveStatus()
         data.resizable=panel~=nil
         return data
     end,
@@ -1215,6 +1261,7 @@ _G.RiftChatModernAPI={
         makeUi()
         return resizeTo(width,height,true)
     end,
+    GetSaveCheckpointStatus=saveStatus,
     GetHostIngressStatus=function()
         return hostIngress and hostIngress:status(clock())
             or {ready=false,mode="unavailable",liveChatVerified=false,
@@ -1234,6 +1281,16 @@ _G.RiftChatModernAPI={
 }
 Command.Event.Attach(Event.Addon.SavedVariables.Load.End,onSaveLoad,"RCM history load")
 Command.Event.Attach(Event.Addon.Load.End,onLoaded,"RCM initialized")
+if Event.Addon.SavedVariables.Save then
+    if Event.Addon.SavedVariables.Save.Begin then
+        Command.Event.Attach(Event.Addon.SavedVariables.Save.Begin,
+            onSaveBegin,"RCM Save.Begin receipt")
+    end
+    if Event.Addon.SavedVariables.Save.End then
+        Command.Event.Attach(Event.Addon.SavedVariables.Save.End,
+            onSaveEnd,"RCM Save.End observation")
+    end
+end
 if Event.Chat and Event.Chat.Npc then
     Command.Event.Attach(Event.Chat.Npc,nativeNpc,"RCM NPC messages")
 end

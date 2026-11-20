@@ -2,11 +2,11 @@
 
 **Standalone chat-style console and addon diagnostics hub for RIFT Live**
 
-![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Version](https://img.shields.io/badge/Version-0.2.11-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
+![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Version](https://img.shields.io/badge/Version-0.2.12-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
 
 A compact, dark-mode chat window that can receive addon diagnostics, record event history, filter/search, copy to clipboard, and expose a command API to **all our RIFT repositories**. LuaPadModern inspired the editor focus design; this is **original code** with no LuaPadModern dependency or source modifications.
 
-**Development record:** [concept through v0.2.2, including failures and live proof](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md), [v0.2.3 navigation](docs/V0_2_3_NAVIGATION_AND_RELEASE.md), [v0.2.4 resizing](docs/V0_2_4_RESIZE.md), [v0.2.5 codebase bug hunt](docs/V0_2_5_CODEBASE_BUGHUNT.md), [v0.2.6 editor improvements / deployment receipt](docs/V0_2_6_EDITOR_HISTORY_AND_SEARCH.md), [v0.2.7 console subscription discovery](docs/V0_2_7_NATIVE_CHANNEL_DISCOVERY.md), [v0.2.8 Log.txt probe pilot](docs/V0_2_8_LOG_PROBE_HANDOFF.md), [host chat observer research / tests](docs/HOST_CHAT_OBSERVER_20261120.md), [v0.2.9 manual host ingress](docs/V0_2_9_MANUAL_HOST_INGRESS.md), [v0.2.10 transfer recovery / guarded deployment](docs/V0_2_10_IMPORT_RECOVERY_AND_DEPLOYMENT.md), [player-chat transport alternatives (historical REST, logging, native API)](docs/CHAT_TRANSPORT_ALTERNATIVES_20261120.md), [legacy addon audit / raw log-format discovery](docs/CHAT_REFERENCE_AUDIT_AND_LOG_DISCOVERY_20261120.md), [v0.2.11 structured provenance and schema migration](docs/V0_2_11_STRUCTURED_PROVENANCE.md), and [v0.2.11 physical RIFT acceptance](docs/V0_2_11_PHYSICAL_ACCEPTANCE_20261120.md).
+**Development record:** [concept through v0.2.2, including failures and live proof](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md), [v0.2.3 navigation](docs/V0_2_3_NAVIGATION_AND_RELEASE.md), [v0.2.4 resizing](docs/V0_2_4_RESIZE.md), [v0.2.5 codebase bug hunt](docs/V0_2_5_CODEBASE_BUGHUNT.md), [v0.2.6 editor improvements / deployment receipt](docs/V0_2_6_EDITOR_HISTORY_AND_SEARCH.md), [v0.2.7 console subscription discovery](docs/V0_2_7_NATIVE_CHANNEL_DISCOVERY.md), [v0.2.8 Log.txt probe pilot](docs/V0_2_8_LOG_PROBE_HANDOFF.md), [host chat observer research / tests](docs/HOST_CHAT_OBSERVER_20261120.md), [v0.2.9 manual host ingress](docs/V0_2_9_MANUAL_HOST_INGRESS.md), [v0.2.10 transfer recovery / guarded deployment](docs/V0_2_10_IMPORT_RECOVERY_AND_DEPLOYMENT.md), [player-chat transport alternatives (historical REST, logging, native API)](docs/CHAT_TRANSPORT_ALTERNATIVES_20261120.md), [legacy addon audit / raw log-format discovery](docs/CHAT_REFERENCE_AUDIT_AND_LOG_DISCOVERY_20261120.md), [v0.2.11 structured provenance and schema migration](docs/V0_2_11_STRUCTURED_PROVENANCE.md), [v0.2.11 physical RIFT acceptance](docs/V0_2_11_PHYSICAL_ACCEPTANCE_20261120.md), and [v0.2.12 save-lifecycle receipts and independent disk audit](docs/V0_2_12_SAVE_CHECKPOINT_AND_DISK_AUDIT.md).
 
 ## Implemented
 
@@ -38,6 +38,7 @@ A compact, dark-mode chat window that can receive addon diagnostics, record even
 | **Opt-in log feasibility probe** compatible with LuaPadModern `LogTailProbe` | ✅ v0.2.8 tests and cross-repo parser smoke; real RIFT disk transport unverified |
 | **Native console read-only capability probe** | ✅ Lua 5.1 getter/mock tests |
 | Saves up to 240 messages, character scoped; validated **schema v1 → v2 migration** | ✅ Six dedicated provenance/migration tests |
+| **RIFT save-lifecycle checkpoints and independent disk verification** | ✅ v0.2.12 Lua/mock and Windows audit tests; physical save acceptance pending |
 | Capture ordinary native player chat (say/party/guild/tell) | ⏳ Not verified |
 | Transmit ordinary native player chat / arbitrary native slash | ⏳ Not available through the verified addon APIs |
 
@@ -82,6 +83,7 @@ After that, the new editor handles its **own local commands**.
 | /rcm import status | Display pending transfer ID, received chunk count, rejection and expiry counters in original native chat |
 | /rcm import cancel | Cancel only the incomplete in-memory import, without clearing saved chat history |
 | /rcm import help | Show import command syntax |
+| /rcm checkpoint | Report the last RIFT Save.Begin receipt and tracked unsaved changes; never claims disk save proof |
 | /rcm status / help | Diagnostics |
 
 ## Local editor commands
@@ -103,6 +105,7 @@ After that, the new editor handles its **own local commands**.
 | :native channels | Show per-console subscriptions and named public channels (configuration metadata, **not** chat transcript) |
 | :native copy | Copy named console/public-channel configuration report to clipboard (replaces existing clipboard) |
 | :host status / :host cancel | View or cancel the manual host-import transfer from RCM's own editor |
+| :checkpoint status | Read RIFT save-lifecycle event status; disk save still requires independent verification |
 | :logprobe TOKEN | Emit an explicitly requested `LPB_PROBE\|TOKEN\|epoch` marker to native RIFT console for a matching read-only Windows log watcher; not proof of disk delivery |
 | :mirror on / off / status | Opt-in mirroring of other addons' console output; never player chat |
 | :copy | Copy all currently filtered history via the game clipboard API |
@@ -145,6 +148,7 @@ end
 | Show() / Hide() / FocusEditor() / FocusSearch() | Explicit own-window GUI focus operations |
 | SendAddon(target, message) | Request reliable addon-data send with server queue acknowledgment (not peer delivery) |
 | GetAddonTransportStatus() | Read queue-ready, pending, accepted/rejected/unknown, received and invalid counters |
+| GetSaveCheckpointStatus() | Read-only RIFT save event receipt, event counters, last imported ID and tracked pending changes; disk persistence **unverified** until host inspection |
 | GetHostIngressStatus() | Manual import mode, accepted chunks, pending fragment counts, completed imports, duplicates, cancellations, errors and expiry; **not native-chat delivery proof** |
 | GetNativeConsoles() | Read-only native-frame and console-channel metadata, including `publicChannels`, `publicChannelCount`, `publicChannelsTruncated` per console; **never** claims ordinary chat-message access |
 | SetConsoleMirror(boolean) / GetConsoleMirrorStatus() | Explicit optional pass-through interception of addon console output, preserving native behavior |
@@ -319,7 +323,7 @@ On November 20, the preflight first found an **exited game with its Error Handle
 
 The host observer now selects `Log.txt` from **RIFT's own `%APPDATA%\RIFT\Rift.cfg` `[Client] DocumentsDirectory`** when available, instead of silently following an unrelated Documents fallback. Explicit `--path` and deliberate `LUAPAD_LOG_CANDIDATES` overrides take priority. The `started` JSON event reports `pathSelection` and the selected path.
 
-When the configured file does not exist yet, the observer waits for it to appear and reads newly created content without treating synthetic or stale data as live evidence. This behavior is backed by **27/27 Node.js tests**, including an actual child-process test; **129/129 Lua/Python tests** were green at that checkpoint. At that earlier Windows-only checkpoint the installed addon remained v0.2.10; the current deployed release is v0.2.11.
+When the configured file does not exist yet, the observer waits for it to appear and reads newly created content without treating synthetic or stale data as live evidence. This behavior is backed by **27/27 Node.js tests**, including an actual child-process test; **129/129 Lua/Python tests** were green at that checkpoint. At that earlier Windows-only checkpoint the installed addon remained v0.2.10; the later v0.2.11 release was physically accepted, and v0.2.12 adds separately tested save observability.
 
 See [host observer configured-path implementation, verification and supervised live-test procedure](docs/HOST_CHAT_LOG_PATH_SELECTION_20261120.md).
 
@@ -328,3 +332,13 @@ See [host observer configured-path implementation, verification and supervised l
 Following a user-initiated RIFT restart, the fresh AMD-DESKTOP game instance was identified independently (PID `31820`, HWND `3805750`). The **v0.2.11 UI**, full history, and **IMPORTS** tab were visually confirmed in the physical client. A new message was generated through `tools/rcm-chat-import.cjs`, entered and submitted in RIFT's **original native chat**, and appeared as **HOST/GUILD · RCMTest** with the body `v0.2.11 provenance classification check`. ALL history increased from 34 to 35 messages, and the IMPORTS tab showed exactly **one** record.
 
 This establishes end-to-end **manual host import and correct provenance display**. It does **not** establish normal server-delivered Guild chat reception, automatic chat mirroring, or yet prove schema-v2 bytes were persisted to the saved file after a clean game exit. The previous v0.2.10 test record was absent from the old on-disk v1 save and could not itself be physically migrated. Detailed evidence, local ignored screenshot hash, successful checks, and remaining limitations: [v0.2.11 physical acceptance report](docs/V0_2_11_PHYSICAL_ACCEPTANCE_20261120.md).
+
+## v0.2.12 — Engine save-lifecycle receipts and disk verification
+
+RIFT controls when addon SavedVariables reach disk: the documented lifecycle offers `Event.Addon.SavedVariables.Save.Begin/End`, and saved data normally flushes on a successful logout or `/reloadui`. **A live imported message is not evidence that the save file was updated.** After the previous RIFT session ended, RCM and eight other active addons still had their last saved writes at about 9:36 AM, consistent with a missed game-wide flush.
+
+RCM now records a **small structured save checkpoint** on the engine's Save.Begin event, retaining history count and latest imported-message ID without duplicating message bodies. `/rcm checkpoint`, `:checkpoint status`, `GetSaveCheckpointStatus()`, and `GetStatus().saveCheckpoint` expose the observed lifecycle and tracked unsaved changes. Save.End is counted in memory, but neither callback claims an actual disk write. Saved window geometry changes also update the pending-state indicator.
+
+The independent read-only `tools/rcm_disk_receipt.py` audits the **actual character-specific** `RiftChatModern.lua` file after an engine save. It reports file timestamp/hash, schema and imported-row counts, consistent checkpoint metadata, and peer-addon save timestamps without executing stored Lua or exposing chat bodies. Use `--file` for an exact path, `--expect-host` to verify the machine, and `--require-checkpoint` when a missing receipt should return a nonzero result.
+
+The v0.2.12 source retains **SavedVariables schemaVersion 2 and API interfaceVersion 2**. The new `saveCheckpoint` subtable is additive; ordinary native chat reception remains unverified. All validation is offline so far; the RIFT process was absent during this development cycle. Read the [full save-lifecycle investigation, independent audit, test evidence and acceptance checklist](docs/V0_2_12_SAVE_CHECKPOINT_AND_DISK_AUDIT.md).
