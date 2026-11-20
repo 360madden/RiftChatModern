@@ -2,11 +2,11 @@
 
 **Standalone chat-style console and addon diagnostics hub for RIFT Live**
 
-![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Version](https://img.shields.io/badge/Version-0.2.6-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
+![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Version](https://img.shields.io/badge/Version-0.2.7-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
 
 A compact, dark-mode chat window that can receive addon diagnostics, record event history, filter/search, copy to clipboard, and expose a command API to **all our RIFT repositories**. LuaPadModern inspired the editor focus design; this is **original code** with no LuaPadModern dependency or source modifications.
 
-**Development record:** [concept through v0.2.2, including failures and live proof](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md), [v0.2.3 navigation](docs/V0_2_3_NAVIGATION_AND_RELEASE.md), [v0.2.4 resizing](docs/V0_2_4_RESIZE.md), [v0.2.5 codebase bug hunt](docs/V0_2_5_CODEBASE_BUGHUNT.md), and [v0.2.6 editor improvements / deployment receipt](docs/V0_2_6_EDITOR_HISTORY_AND_SEARCH.md).
+**Development record:** [concept through v0.2.2, including failures and live proof](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md), [v0.2.3 navigation](docs/V0_2_3_NAVIGATION_AND_RELEASE.md), [v0.2.4 resizing](docs/V0_2_4_RESIZE.md), [v0.2.5 codebase bug hunt](docs/V0_2_5_CODEBASE_BUGHUNT.md), and [v0.2.6 editor improvements / deployment receipt](docs/V0_2_6_EDITOR_HISTORY_AND_SEARCH.md), and [v0.2.7 console subscription discovery](docs/V0_2_7_NATIVE_CHANNEL_DISCOVERY.md).
 
 ## Implemented
 
@@ -25,7 +25,7 @@ A compact, dark-mode chat window that can receive addon diagnostics, record even
 | Copy filtered chat history to clipboard, including `:copy` | ✅ Via Command.CopyToClipboard |
 | **Click-to-expand full messages** and copy one message | ✅ Lua 5.1 UI tests |
 | Opt-in capture of other addons' `Command.Console.Display` output | ✅ Mocked runtime; live acceptance pending |
-| Inspect real native console channel subscriptions | ✅ `Inspect.Console.List/Detail` read-only tests |
+| Inspect real native console channel subscriptions, **including named public channels** | ✅ v0.2.7 `Inspect.Console.List/Detail` Lua 5.1 read-only tests; live acceptance pending |
 | RIFT NPC lines and screen notifications | ✅ Via documented Event.Chat APIs |
 | Addon diagnostic publication and subscriptions | ✅ |
 | Register local commands from sibling addons | ✅ |
@@ -90,8 +90,8 @@ After that, the new editor handles its **own local commands**.
 | :rpt stop | Stop active RPT observation |
 | :addon Atank@Deepwood TEST MESSAGE | Request reliable addon-data send to that character; **not ordinary player chat** |
 | :native | Summarize native console handles and subscription availability |
-| :native channels | Show names and configured chat subscriptions (metadata, not transcript) |
-| :native copy | Copy the native console configuration report to clipboard |
+| :native channels | Show per-console subscriptions and named public channels (configuration metadata, **not** chat transcript) |
+| :native copy | Copy named console/public-channel configuration report to clipboard (replaces existing clipboard) |
 | :mirror on / off / status | Opt-in mirroring of other addons' console output; never player chat |
 | :copy | Copy all currently filtered history via the game clipboard API |
 | Up / Down (editor focused) | Browse up to 32 previously successful local editor commands; Down past newest restores unsent draft (live acceptance pending) |
@@ -133,7 +133,7 @@ end
 | Show() / Hide() / FocusEditor() / FocusSearch() | Explicit own-window GUI focus operations |
 | SendAddon(target, message) | Request reliable addon-data send with server queue acknowledgment (not peer delivery) |
 | GetAddonTransportStatus() | Read queue-ready, pending, accepted/rejected/unknown, received and invalid counters |
-| GetNativeConsoles() | Read-only native-frame and console-channel metadata; **never** claims ordinary chat-message access |
+| GetNativeConsoles() | Read-only native-frame and console-channel metadata, including `publicChannels`, `publicChannelCount`, `publicChannelsTruncated` per console; **never** claims ordinary chat-message access |
 | SetConsoleMirror(boolean) / GetConsoleMirrorStatus() | Explicit optional pass-through interception of addon console output, preserving native behavior |
 | GetFocusState() | Read the addon-owned input/search focus state; does not infer native RIFT chat focus |
 | SetWindowSize(width, height) | Resize and persist a window's dimensions; requires initialized addon |
@@ -201,3 +201,11 @@ This release audits all five Lua runtime modules, the RIFT manifest, local tests
 **Compatibility regression caught before deployment:** Adding keyboard handlers initially pushed the UI constructor beyond the Lua 5.1 **60-upvalue** compilation limit, failing many tests and preventing addon startup. Input callbacks were consolidated through the existing controls upvalue; the revised loader and runtime suites pass **81/81 tests**. These are offline tests, not physical keyboard acceptance.
 
 See [v0.2.6 engineering and acceptance notes](docs/V0_2_6_EDITOR_HISTORY_AND_SEARCH.md). Native social-chat send/receive remains unimplemented through the verified Lua addon API. No character SavedVariables migration or destructive install procedure is required.
+
+## v0.2.7 — Native console subscription discovery
+
+The read-only native inspector now recognizes **all 27 documented boolean subscription flags** from `Inspect.Console.Detail` (including raid warnings, loot and other combat/crafting categories). It also handles `Detail.channel` as a **public-channel name table**, displaying named channels such as `LookingForGroup` and `World@Deepwood` in `:native channels` and `:native copy`. The earlier inspector only checked 12 boolean fields and silently discarded public-channel names. Results are bounded, sorted, sanitized and reported separately from any actual chat text.
+
+The API handles console ID maps returned by `Inspect.Console.List()`, preserves the public `interfaceVersion=1`, and continues to mark native transcript capture/social chat send as unverified. Mocked Lua 5.1 test coverage grew from 81 to **83**. The revised code was validated against the shipped Gadgets addon examples and historical RIFT API documentation, not yet independently accepted in the physical client.
+
+See [v0.2.7 implementation, source findings, risks and live checklist](docs/V0_2_7_NATIVE_CHANNEL_DISCOVERY.md).

@@ -10,8 +10,13 @@ local function read(obj,name)
     if good and type(value)=="boolean" then return value end
     return nil
 end
-local channelFlags={"say","yell","tell","party","raid","guild","officer",
-    "system","npc","channel","emote","combatGood","combatBad"}
+-- Documented Inspect.Console.Detail boolean subscriptions (not message text).
+-- "channel" is a separate name->enabled table, never a boolean flag.
+local channelFlags={"say","yell","tell","party","raid","raidWarning","guild","officer",
+    "system","npc","emote","combatGood","combatBad","combatOther",
+    "combatNeutral","combatSpecial","craftingSelf","craftingOther",
+    "lootMoney","lootGroup","lootItem","experience","achievement",
+    "notoriety","skill","purchase","accolade"}
 local function readable(value,maximum)
     return type(value)=="string" and #value>0 and #value<=maximum
         and not value:find("[%z\1-\31\127]")
@@ -24,6 +29,27 @@ local function channels(info)
         if type(value)=="boolean" then out[name]=value end
     end
     return out
+end
+-- Public channel names can be either a lookup map or a sequence in mocks.
+-- Bound and sort user-controlled text; absence never implies no chat exists.
+local function publicChannels(info)
+    local names,seen={},{}
+    local source=type(info)=="table" and info.channel or nil
+    if type(source)~="table" then return names,false end
+    local scanned,truncated=0,false
+    for key,value in pairs(source) do
+        scanned=scanned+1
+        if scanned>32 then truncated=true;break end
+        local name=type(key)=="string" and value==true and key
+            or type(key)=="number" and type(value)=="string" and value or nil
+        if readable(name,72) and not seen[name] then
+            seen[name]=true
+            if #names<16 then names[#names+1]=name
+            else truncated=true end
+        end
+    end
+    table.sort(names)
+    return names,truncated
 end
 local function readConsoles(out,inspect)
     if type(inspect)~="table" or type(inspect.Console)~="table"
@@ -51,6 +77,8 @@ local function readConsoles(out,inspect)
         if row.detailAvailable then
             if readable(info.name,60) then row.name=info.name end
             row.channels=channels(info)
+            row.publicChannels,row.publicChannelsTruncated=publicChannels(info)
+            row.publicChannelCount=#row.publicChannels
         end
         out.consoles[#out.consoles+1]=row
     end

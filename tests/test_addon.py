@@ -239,14 +239,14 @@ class AddonRuntimeTests(unittest.TestCase):
         lua.execute((ADDON / "AddonMessages.lua").read_text(encoding="utf-8"))
         lua.execute((ADDON / "NativeChatProbe.lua").read_text(encoding="utf-8"))
         lua.execute((ADDON / "ConsoleMirror.lua").read_text(encoding="utf-8"))
-        lua.execute('assert(loadstring('+_lua_quote(self.main)+'))({identifier="RiftChatModern",version="0.2.6"})')
+        lua.execute('assert(loadstring('+_lua_quote(self.main)+'))({identifier="RiftChatModern",version="0.2.7"})')
         lua.execute(scenario)
 
     def test_startup_ui_theme_drag_focus_and_version(self):
         self.run_lua(r'''
 fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")
 fire(Event.Addon.Load.End,"RiftChatModern")
-assert(#displays==1 and displays[1]:find("v0.2.6",1,true))
+assert(#displays==1 and displays[1]:find("v0.2.7",1,true))
 local api=RiftChatModernAPI
 assert(api.interfaceVersion==1 and api.GetStatus().ready)
 assert(api.GetStatus().historyCount==1)
@@ -254,7 +254,7 @@ local active=assert(api.Show())
 assert(frames.RiftChatModernWindow.visible)
 assert(frames.RiftChatModernWindow.width==760)
 assert(frames.RiftChatModernWindow.height==618)
-assert(frames.RCMVersion.text=="v0.2.6")
+assert(frames.RCMVersion.text=="v0.2.7")
 assert(frames.RCMInput.kind=="RiftTextfield")
 assert(api.FocusEditor())
 assert(api.GetStatus().editorFocused==true)
@@ -493,7 +493,10 @@ Inspect.Console={
     List=function() return {"v001","v002"} end,
     Detail=function(id)
         if id=="v001" then return {id=id,name="General",
-            say=true,tell=true,party=false,system=true,npc=true} end
+            say=true,tell=true,party=false,system=true,npc=true,
+            raidWarning=true,lootMoney=true,
+            channel={["World@Deepwood"]=true,["LookingForGroup"]=true,
+                ["Trade"]=false}} end
         return {id=id,name="Guild",guild=true,officer=false}
     end
 }
@@ -507,10 +510,13 @@ assert(state.nativeTranscriptReadable==false)
 assert(api.Submit(":native channels"))
 local line=api.GetHistory("dev","",1,0)[1].text
 assert(line:find("General: say, tell",1,true))
+assert(line:find("raidWarning",1,true))
+assert(line:find("public: LookingForGroup, World@Deepwood",1,true))
 assert(line:find("Guild: guild",1,true))
 assert(api.Submit(":native copy"))
 assert(copied:find("RIFT native console subscriptions",1,true))
 assert(copied:find("Guild: guild",1,true))
+assert(copied:find("public: LookingForGroup, World@Deepwood",1,true))
 assert(not copied:find("player chat transcript",1,true))
 ''')
 
@@ -540,7 +546,7 @@ def _lua_quote(text):
 class ManifestTests(unittest.TestCase):
     def test_loader_contract(self):
         text=MANIFEST.read_text(encoding="utf-8")
-        for key,value in {"Identifier":"RiftChatModern","Version":"0.2.6","Environment":"4.3"}.items():
+        for key,value in {"Identifier":"RiftChatModern","Version":"0.2.7","Environment":"4.3"}.items():
             self.assertRegex(text,rf'(?m)^{key} = "{re.escape(value)}"$')
         self.assertRegex(text,r'(?m)^Email = "placeholder@example.com"')
         self.assertIn('"Core.lua", "AddonMessages.lua", "NativeChatProbe.lua", "ConsoleMirror.lua", "Main.lua"',text)

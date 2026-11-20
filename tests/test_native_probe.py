@@ -97,6 +97,57 @@ assert(observed.consoles[3].channels.combatGood==true)
 assert(observed.nativeTranscriptReadable==false)
 ''')
 
+    def test_real_console_map_and_named_public_channels(self):
+        # RIFT Inspect.Console.List is commonly {id=true}, and Detail.channel
+        # is a mapping of public channel names, not a boolean subscription.
+        self.run_lua(r'''
+local got=RiftChatModernNativeProbe.capture(nil,{Console={
+    List=function() return {v005=true,v001=true} end,
+    Detail=function(id)
+        if id=="v001" then return {name="General",id=id,say=true,
+            guild=false,raidWarning=true,lootMoney=true,combatSpecial=true,
+            channel={["World@Deepwood"]=true,["LookingForGroup"]=true,
+                ["Trade"]=false}}
+        end
+        return {name="Combat",id=id,combatNeutral=true,
+            channel={"Zone@Deepwood","World@Deepwood"}}
+    end
+}})
+assert(got.consoleCount==2 and got.consoleListReady)
+assert(got.consoles[1].id=="v001")
+assert(got.consoles[1].channels.raidWarning==true)
+assert(got.consoles[1].channels.lootMoney==true)
+assert(got.consoles[1].channels.combatSpecial==true)
+assert(got.consoles[1].channels.channel==nil)
+assert(got.consoles[1].publicChannelCount==2)
+assert(got.consoles[1].publicChannels[1]=="LookingForGroup")
+assert(got.consoles[1].publicChannels[2]=="World@Deepwood")
+assert(got.consoles[1].publicChannelsTruncated==false)
+assert(got.consoles[2].publicChannelCount==2)
+assert(got.consoles[2].publicChannels[1]=="World@Deepwood")
+assert(got.consoles[2].publicChannels[2]=="Zone@Deepwood")
+assert(got.nativeTranscriptReadable==false)
+assert(got.nativeSocialSendAvailable==false)
+''')
+
+    def test_public_channels_reject_malformed_and_bound_untrusted_tables(self):
+        self.run_lua(r'''
+local channels={[""]=true,["bad"..string.char(10).."name"]=true,["disabled"]=false,
+    [1]="Local",[2]="Local"}
+for i=1,200 do channels["zone_"..string.format("%03d",i)]=true end
+local captured=RiftChatModernNativeProbe.capture(nil,{Console={
+    List=function() return {"v001"} end,
+    Detail=function() return {id="v001",name="General",channel=channels} end
+}})
+local one=captured.consoles[1]
+assert(one.detailAvailable and #one.publicChannels<=16)
+assert(one.publicChannelsTruncated==true)
+for _,name in ipairs(one.publicChannels) do
+    assert(name~="" and not name:find(string.char(10),1,true) and name~="disabled")
+end
+assert(captured.nativeTranscriptReadable==false)
+''')
+
     def test_console_detail_errors_and_large_list_are_bounded(self):
         self.run_lua(r'''
 local count=0

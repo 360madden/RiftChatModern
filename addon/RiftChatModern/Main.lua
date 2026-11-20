@@ -2,7 +2,7 @@
 -- Native player say/tell/guild transmit and full native chat interception are NOT
 -- exposed by the verified addon APIs. This UI never pretends to send those.
 local info = ...
-local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.6"
+local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.7"
 local Core = _G.RiftChatModernCore
 local MessageBridge = _G.RiftChatModernAddonMessages
 local NativeProbe = _G.RiftChatModernNativeProbe
@@ -868,8 +868,11 @@ local function getNativeConsoles()
         focusCount=0,windows={},nativeTranscriptReadable=false,
         nativeSocialSendAvailable=false}
 end
-local nativeChannelNames={"say","tell","guild","party","officer","raid",
-    "system","npc","channel","combatGood","combatBad"}
+local nativeChannelNames={"say","yell","tell","party","raid","raidWarning",
+    "guild","officer","system","npc","emote","combatGood","combatBad",
+    "combatOther","combatNeutral","combatSpecial","craftingSelf",
+    "craftingOther","lootMoney","lootGroup","lootItem","experience",
+    "achievement","notoriety","skill","purchase","accolade"}
 local function nativeProbeCommand(args)
     local data=getNativeConsoles()
     args=(args or ""):lower()
@@ -883,8 +886,15 @@ local function nativeProbeCommand(args)
                     enabled[#enabled+1]=key
                 end
             end
-            lines[#lines+1]=(entry.name or entry.id)..": "
-                ..(#enabled>0 and table.concat(enabled,", ") or "(none/unknown)")
+            local public=entry.publicChannels or {}
+            local summary=#enabled>0 and table.concat(enabled,", ") or "(none/unknown)"
+            if #public>0 then
+                summary=summary.." | public: "..table.concat(public,", ")
+                if entry.publicChannelsTruncated then summary=summary..", ..." end
+            elseif entry.publicChannelsTruncated then
+                summary=summary.." | public: (truncated)"
+            end
+            lines[#lines+1]=(entry.name or entry.id)..": "..summary
         end
         if args=="copy" then
             if not Command or type(Command.CopyToClipboard)~="function" then
