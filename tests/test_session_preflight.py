@@ -185,5 +185,49 @@ class SessionPreflightTests(unittest.TestCase):
         self.assertTrue(bound["canAttemptSupervisedLogTest"])
         self.assertFalse(bound["readyForLiveChatAcceptance"])
 
+    def test_error_handler_companion_is_not_crash_proof_when_game_is_running(self):
+        log=self.docs/"RIFT"/"Log.txt"
+        log.write_bytes(b"synthetic\n")
+        rows=[{"name":p.GAME,"pid":42992},
+              {"name":p.ERROR_HANDLER,"pid":31856}]
+        output=p.make_report(rows,"AMD-DESKTOP",self.docs,"fixture",[log],
+                             {"hwnd":24252650,"present":True,"pid":42992},
+                             42992,"AMD-DESKTOP")
+        self.assertEqual(output["processState"],"game_plus_error_handler")
+        self.assertTrue(output["hasRunningGameProcess"])
+        self.assertTrue(output["canAttemptSupervisedLogTest"])
+        self.assertNotIn("no_unambiguous_active_game_process",output["blockers"])
+        self.assertIn("error_handler_companion_present_not_crash_evidence",output["hints"])
+        self.assertFalse(output["canClaimGameLoaded"])
+        self.assertFalse(output["canClaimLiveChatReception"])
+
+    def test_error_handler_only_remains_blocked_when_game_is_absent(self):
+        log=self.docs/"RIFT"/"Log.txt"
+        log.write_bytes(b"synthetic\n")
+        output=p.make_report([{"name":p.ERROR_HANDLER,"pid":31856}],
+                             "AMD-DESKTOP",self.docs,"fixture",[log],
+                             None,None,"AMD-DESKTOP")
+        self.assertFalse(output["hasRunningGameProcess"])
+        self.assertFalse(output["canAttemptSupervisedLogTest"])
+        self.assertIn("no_unambiguous_active_game_process",output["blockers"])
+
+    def test_multibox_with_companion_requires_exact_target_window(self):
+        log=self.docs/"RIFT"/"Log.txt"
+        log.write_bytes(b"synthetic\n")
+        rows=[{"name":p.GAME,"pid":42992},
+              {"name":p.GAME,"pid":44556},
+              {"name":p.ERROR_HANDLER,"pid":31856}]
+        ambiguous=p.make_report(rows,"AMD-DESKTOP",self.docs,"fixture",[log],
+                                None,None,"AMD-DESKTOP")
+        self.assertEqual(ambiguous["processState"],
+                         "multiple_games_plus_error_handler")
+        self.assertIn("multiple_game_processes_require_exact_target",
+                      ambiguous["blockers"])
+        selected=p.make_report(rows,"AMD-DESKTOP",self.docs,"fixture",[log],
+                               {"hwnd":24252650,"present":True,"pid":42992},
+                               42992,"AMD-DESKTOP")
+        self.assertTrue(selected["canAttemptSupervisedLogTest"])
+        self.assertFalse(selected["canClaimLiveChatReception"])
+
 if __name__=="__main__":
     unittest.main()

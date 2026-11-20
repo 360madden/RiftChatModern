@@ -213,13 +213,18 @@ def make_report(processes:list[dict],host:str,docs:Path|None,
         reasons.append("window_identity_mismatch")
     selected=bool(expected_pid and window and window.get("present")
                   and window.get("pid")==expected_pid and expected_pid in active)
-    if state=="multiple_game_processes" and not selected:
-        reasons.append("multiple_game_processes_require_exact_target")
-    elif state not in ("game_process_present","multiple_game_processes"):
+    if state in ("multiple_game_processes","multiple_games_plus_error_handler"):
+        if not selected:
+            reasons.append("multiple_game_processes_require_exact_target")
+    elif state not in ("game_process_present","game_plus_error_handler"):
         reasons.append("no_unambiguous_active_game_process")
     files=inspect_log_candidates(candidates)
     settings=(game_config or {}).get("settings") or {}
     hints=[]
+    if state in ("game_plus_error_handler","multiple_games_plus_error_handler"):
+        # RIFT may start its error-handler companion alongside the game.
+        # The helper's existence is not evidence that the game crashed.
+        hints.append("error_handler_companion_present_not_crash_evidence")
     if settings.get("LogConsole") is False:
         hints.append("rift_cfg_logconsole_false_observed_runtime_semantics_unverified")
     if not any(x["exists"] and Path(x["path"]).name.casefold()=="log.txt" for x in files):
@@ -237,6 +242,7 @@ def make_report(processes:list[dict],host:str,docs:Path|None,
         "logCandidates":files,
         "canClaimLiveChatReception":False,
         "canClaimGameLoaded":False,
+        "hasRunningGameProcess":len(active)>0,
         "gameInputSent":False,"gameLoggingChanged":False,
         "readyForLiveChatAcceptance":False,
         "canAttemptSupervisedLogTest":not bool(reasons),

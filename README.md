@@ -313,7 +313,7 @@ From **Windows PowerShell** at `C:\work\RiftChatModern`:
 & "C:\work\riftreader2\.venv\Scripts\python.exe" -B tools\rcm_session_preflight.py --expect-host AMD-DESKTOP
 ```
 
-On November 20, this preflight confirmed **RIFT had exited while its Error Handler remained open**, and no noncombat `Log.txt` existed at the game's **explicitly configured** Documents directory or fallback candidates. The real `Rift.cfg` contained `LogConsole=False` and `LogCombatConsole=False`; those are recorded configuration values, **not yet verified runtime log state**. Exit code `2` denotes a **blocked preflight**, not a diagnosis. Do not reuse a previous PID/HWND after restarting RIFT. See [physical-session evidence, known limitations, and recovery checklist](docs/SESSION_PREFLIGHT_AND_RIFT_ERROR_20261120.md).
+On November 20, the preflight first found an **exited game with its Error Handler open**. After a user restart at **12:49 PM EST**, it independently confirmed a live game and exact window binding (PID `42992`/HWND `24252650`). RIFT and its error-handler companion began **at the same timestamp**, so the helper's presence alone is **not a crash indication**; the preflight now handles this correctly. The only remaining live log-test blocker was an absent `Log.txt`. The real `Rift.cfg` contained `LogConsole=False` and `LogCombatConsole=False`, which are observed configuration values, **not confirmed runtime log state**. Exit code `2` denotes a blocked **log reception** preflight, not a diagnosis. Fresh process identity is required after every subsequent restart. See [physical-session evidence, correction, and acceptance checklist](docs/SESSION_PREFLIGHT_AND_RIFT_ERROR_20261120.md).
 
 ## Authoritative chat-log directory (Windows tooling only)
 

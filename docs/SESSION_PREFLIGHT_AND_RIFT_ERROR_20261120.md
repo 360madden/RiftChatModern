@@ -60,3 +60,17 @@ Exit codes: **0** means basic process/log prerequisites for a supervised investi
 **Validation:** 13/13 focused preflight fixture tests passed, including exact target identity, multibox ambiguity, configured document-path priority, whitelisted `Rift.cfg` keys, and `LogConsole=False` remaining a hint rather than native-log proof. The actual AMD-DESKTOP preflight returned exit code 2, correctly identifying the error handler and missing noncombat log file. This is an expected blocked result, not a test failure.
 
 This is a **host tooling and research checkpoint**. The v0.2.10 Lua addon, `.toc`, SavedVariables, and installed game files have not been modified as part of this diagnostic. No new in-game release is required.
+
+## Restart observation and preflight correction — 12:56 PM EST
+
+A subsequent user-initiated restart produced a **new** physical RIFT process, PID `42992`, and game HWND `24252650`. Win32 `IsWindow` and `GetWindowThreadProcessId` independently matched the window to the running game. Windows process start times show both `rift_x64.exe` (42992) and the new `rifterrorhandler_x64.exe` (31856) started at **12:49:20 PM**, consistent with the error-handler process being launched as a companion. Its presence alone is **not proof of a new crash**. The previous error-handler-only observation remains a historical fact about the earlier, exited game session.
+
+The current RIFT diagnostic log lists `Rift Chat Modern` in the addon-loading sequence and finishes with `Entering world (100% complete)` at about **12:50 PM EST**. No fatal/exception message appeared in that diagnostic log. This supports startup progression, not confirmation of RCM window rendering or all addon operations.
+
+A bug was found in the **host-only** `rcm_session_preflight.py`: it incorrectly treated `game_plus_error_handler` as a missing active game. The corrected preflight regards one verified game plus its error-handler companion as a valid live process state, while still rejecting `error_handler_only` and requiring exact PID/HWND binding for multiple simultaneously running game clients. A specific `error_handler_companion_present_not_crash_evidence` hint was added. The fix does not start or focus RIFT.
+
+The corrected preflight was run with `--expect-host AMD-DESKTOP --expected-pid 42992 --expected-hwnd 24252650`. It verified the new live game and window, and **only** reported `no_log_file_found_in_known_paths` as a blocker. The configured `LogConsole=False` remains a hint, not confirmed runtime logging state. **Do not confuse a blocked log test with a crashed game.**
+
+The in-game addon remains v0.2.10; 10/10 installed files matched source by SHA-256 after the restart. The on-disk check alone does not prove `/rcm import` works in the physical game.
+
+The remaining live acceptance steps are to inspect the RCM window and send a one-part `/rcm import` manually in RIFT's original chat input. Screenshot capture via WinApp remained blocked by `UI_TURN_BUSY`, so no visual UI acceptance was claimed.
