@@ -6,7 +6,7 @@
 
 A compact, dark-mode chat window that can receive addon diagnostics, record event history, filter/search, copy to clipboard, and expose a command API to **all our RIFT repositories**. LuaPadModern inspired the editor focus design; this is **original code** with no LuaPadModern dependency or source modifications.
 
-**Development record:** [concept through v0.2.2, including failures and live proof](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md), [v0.2.3 navigation](docs/V0_2_3_NAVIGATION_AND_RELEASE.md), [v0.2.4 resizing](docs/V0_2_4_RESIZE.md), [v0.2.5 codebase bug hunt](docs/V0_2_5_CODEBASE_BUGHUNT.md), [v0.2.6 editor improvements / deployment receipt](docs/V0_2_6_EDITOR_HISTORY_AND_SEARCH.md), [v0.2.7 console subscription discovery](docs/V0_2_7_NATIVE_CHANNEL_DISCOVERY.md), [v0.2.8 Log.txt probe pilot](docs/V0_2_8_LOG_PROBE_HANDOFF.md), [host chat observer research / tests](docs/HOST_CHAT_OBSERVER_20261120.md), [v0.2.9 manual host ingress](docs/V0_2_9_MANUAL_HOST_INGRESS.md), [v0.2.10 transfer recovery / guarded deployment](docs/V0_2_10_IMPORT_RECOVERY_AND_DEPLOYMENT.md), and [player-chat transport alternatives (historical REST, logging, native API)](docs/CHAT_TRANSPORT_ALTERNATIVES_20261120.md).
+**Development record:** [concept through v0.2.2, including failures and live proof](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md), [v0.2.3 navigation](docs/V0_2_3_NAVIGATION_AND_RELEASE.md), [v0.2.4 resizing](docs/V0_2_4_RESIZE.md), [v0.2.5 codebase bug hunt](docs/V0_2_5_CODEBASE_BUGHUNT.md), [v0.2.6 editor improvements / deployment receipt](docs/V0_2_6_EDITOR_HISTORY_AND_SEARCH.md), [v0.2.7 console subscription discovery](docs/V0_2_7_NATIVE_CHANNEL_DISCOVERY.md), [v0.2.8 Log.txt probe pilot](docs/V0_2_8_LOG_PROBE_HANDOFF.md), [host chat observer research / tests](docs/HOST_CHAT_OBSERVER_20261120.md), [v0.2.9 manual host ingress](docs/V0_2_9_MANUAL_HOST_INGRESS.md), [v0.2.10 transfer recovery / guarded deployment](docs/V0_2_10_IMPORT_RECOVERY_AND_DEPLOYMENT.md), [player-chat transport alternatives (historical REST, logging, native API)](docs/CHAT_TRANSPORT_ALTERNATIVES_20261120.md), and [legacy addon audit / raw log-format discovery](docs/CHAT_REFERENCE_AUDIT_AND_LOG_DISCOVERY_20261120.md).
 
 ## Implemented
 
@@ -286,3 +286,18 @@ See [v0.2.10 release notes, tests, deployment proof and live checklist](docs/V0_
 ## Native player-chat reception research
 
 The [November 20 transport alternatives report](docs/CHAT_TRANSPORT_ALTERNATIVES_20261120.md) compares historical RIFT mobile REST chat, actual addon chat APIs, the local `Log.txt` watcher, and a bounded external client-inspection fallback. An older `rift.net` C# client did implement remote RIFT guild chat in 2015, but the RIFT Mobile app was retired and only certain event-tracker API functions were reportedly retained. **No old remote chat endpoint has been verified working in 2026.** The highest-value acceptance work remains obtaining a *real* RIFT player-chat log sample and independently proving one manual RCM import inside the game, not adding another unverified proxy layer.
+
+## Host-side reference audit and raw-log discovery (no in-game version change)
+
+**Archive audit:** `tools/audit_rift_addon_archive.py` inspects RIFT addon ZIPs without extracting or running archived addon code. It checks `RiftAddon.toc` startup files, Lua 5.1 syntax only, recognizable RIFT API calls and WoW-specific API patterns. The 2013 *Nubz Rift Instant Messenger* archive contains a RIFT manifest but showed **61 WoW-style API/XML indicators and no recognized RIFT API calls**. It is not reliable evidence of RIFT player-chat reception.
+
+**Raw log sampling:** `tools/rcm-chat-observer.cjs --sample-raw-lines 5 --timeout-ms 60000` can now print up to five **fresh decoded lines**, including unknown formats that the historical candidate parser ignores. Each sample is UTF-8-byte bounded and identified as **unverified physical RIFT origin**. Unlike the default observer, this explicit option may reveal real chat text in the Windows console, so use it only for deliberately supervised tests.
+
+From Windows PowerShell in `C:\work\RiftChatModern`:
+
+```powershell
+& "C:\work\riftreader2\.venv\Scripts\python.exe" -B tools\audit_rift_addon_archive.py artifacts\external-references\NubzRiftInstantMessenger-2013.zip
+node .\tools\rcm-chat-observer.cjs --sample-raw-lines 5 --timeout-ms 60000
+```
+
+These host-only changes passed **116/116 Python/Lua and 24/24 Node tests**. The in-game release remains **v0.2.10**; no new addon files or `.toc` deployment are required. **No physical game-produced `Log.txt` has yet been proven.** See the [source audit, limitations, tests and live checklist](docs/CHAT_REFERENCE_AUDIT_AND_LOG_DISCOVERY_20261120.md).

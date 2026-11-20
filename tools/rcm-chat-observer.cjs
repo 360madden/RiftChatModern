@@ -84,14 +84,17 @@ function parseCandidateLine(line) {
     textBytes:Buffer.byteLength(body,"utf8"),truncated:bounded.truncated
   };
 }
-function attachChatObserver(tailer, onCandidate, includeText=false) {
+function attachChatObserver(tailer, onCandidate, includeText=false, onRawLine=null) {
   if(!tailer || typeof tailer.readLine!=="function" ||
-     typeof tailer.poll!=="function" || typeof onCandidate!=="function") {
+     typeof tailer.poll!=="function" || typeof onCandidate!=="function" ||
+     (onRawLine!==null && typeof onRawLine!=="function")) {
     throw Error("Unsupported LuaPadModern LogTailProbe interface");
   }
   const original=tailer.readLine;
   let candidateCount=0;
   tailer.readLine=function(line,when) {
+    // Raw decoded lines require an explicitly enabled, bounded callback.
+    if(onRawLine)onRawLine(line,when);
     // Do not copy marker probes into the social-chat feed.
     if(!line.includes("LPB_PROBE|")){
       const parsed=parseCandidateLine(line);
@@ -115,14 +118,14 @@ function validLogPath(value) {
 }
 function options(argv) {
   const out={timeoutMs:120000,pollMs:100,maxCandidates:200,includeText:false,
-    prepareImport:false,
+    prepareImport:false,rawSampleLines:0,
     nonce:"RCM_CHAT_"+crypto.randomBytes(8).toString("hex")};
   for(let i=0;i<argv.length;i++) {
     const flag=argv[i];
     if(flag==="--include-text"){out.includeText=true;continue}
     if(flag==="--prepare-import"){out.prepareImport=true;out.includeText=true;continue}
     if(flag==="--help"){out.help=true;continue}
-    if(!["--path","--nonce","--timeout-ms","--poll-ms","--max-candidates"].includes(flag) ||
+    if(!["--path","--nonce","--timeout-ms","--poll-ms","--max-candidates","--sample-raw-lines"].includes(flag) ||
       !argv[i+1])throw Error("Unsupported or incomplete option: "+flag);
     const val=argv[++i];
     if(flag==="--path")out.filePath=validLogPath(val);
@@ -133,11 +136,12 @@ function options(argv) {
       const range={
         "--timeout-ms":[1000,300000],
         "--poll-ms":[25,1000],
-        "--max-candidates":[1,2000]
+        "--max-candidates":[1,2000],
+        "--sample-raw-lines":[1,30]
       }[flag];
       if(n<range[0] || n>range[1])throw Error("Option out of range: "+flag);
       out[{"--timeout-ms":"timeoutMs","--poll-ms":"pollMs",
-        "--max-candidates":"maxCandidates"}[flag]]=n;
+        "--max-candidates":"maxCandidates","--sample-raw-lines":"rawSampleLines"}[flag]]=n;
     }
   }
   return out;
@@ -148,9 +152,10 @@ function start(argv=process.argv.slice(2)) {
   if(cfg.help){
     process.stdout.write("node tools/rcm-chat-observer.cjs [--path ABSOLUTE_Log.txt] "+
       "[--timeout-ms 120000] [--poll-ms 100] [--max-candidates 200] "+
-      "[--nonce TOKEN] [--include-text] [--prepare-import]\n"+
+      "[--nonce TOKEN] [--include-text] [--prepare-import] [--sample-raw-lines 5]\n"+
       "Read-only candidate RIFT chat observer. Defaults to metadata-only. "+
-      "Output format is historical/unverified. --prepare-import prints manual /rcm commands, never sends game input.\n");
+      "Output format historical/unverified. --sample-raw-lines emits bounded decoded log text (explicit opt-in).\n"+
+      "--prepare-import prints manual /rcm commands. Never sends game input.\n");
     return;
   }
   const emit=(item)=>process.stdout.write(JSON.stringify(item)+"\n");
@@ -159,7 +164,7 @@ function start(argv=process.argv.slice(2)) {
     candidates.find(x=>fs.existsSync(path.dirname(x)))||candidates[0];
   let remainingCandidates=candidates.length>0&&!fs.existsSync(filePath);
   const startAt=Date.now();
-  let count=0,ignoredCount=0,completed=false,timer=null;
+  let count=0,ignoredCount=0,rawSamples=0,completed=false,timer=null;
   let tailer,stats;
   function createTailer(file,fromStart=false){
     const t=new LogTailProbe({filePath:file,nonce:cfg.nonce,fromStart});
@@ -173,7 +178,16 @@ function start(argv=process.argv.slice(2)) {
         try{emit(encodeRecord(event))}
         catch(e){emit({event:"import_skipped",reason:"unencodable_candidate"})}
       }
-    },cfg.includeText);
+    },cfg.includeText,(line,observedAt)=>{
+      if(rawSamples>=cfg.rawSampleLines)return;
+      rawSamples++;
+      const preview=safePrefix(line,1024);
+      emit({event:"raw_log_sample",source:"RIFT_Log.txt",
+        observedAt:new Date(observedAt).toISOString(),encoding:t.encoding||"unknown",
+        decodedLine:preview.text,decodedUtf8Bytes:Buffer.byteLength(line,"utf8"),
+        lineTruncated:preview.truncated,physicalRiftOriginVerified:false,
+        note:"Decoded text, not byte-for-byte disk evidence when source is UTF-16"});
+    });
     return {t,s};
   }
   let current=createTailer(filePath);
@@ -184,13 +198,15 @@ function start(argv=process.argv.slice(2)) {
   emit({event:"started",source:"RIFT_Log.txt",path:filePath,nonce:cfg.nonce,
     gameInputSent:false,gameLoggingChanged:false,transportVerified:false,
     candidateFormatVerified:false,includeText:cfg.includeText,
-    prepareImport:cfg.prepareImport,automaticGameInput:false,
+    prepareImport:cfg.prepareImport,rawSampleLines:cfg.rawSampleLines,
+    automaticGameInput:false,
     mode:"historical-bracket-candidate",timeoutMs:cfg.timeoutMs});
   function finish(reason,code=0){
     if(completed)return;
     completed=true;if(timer)clearInterval(timer);
     tailer.close();
     emit({event:"finished",reason,candidates:count,ignored:ignoredCount,
+      rawSamples,
       probeMatched:Boolean(tailer.match),transportVerified:false,
       elapsedMs:Date.now()-startAt});
     process.exitCode=code;
@@ -217,6 +233,7 @@ function start(argv=process.argv.slice(2)) {
       else emit(x);
     }
     if(tailer.match)finish("marker_matched");
+    else if(cfg.rawSampleLines>0 && rawSamples>=cfg.rawSampleLines)finish("raw_sample_limit");
     else if(count>=cfg.maxCandidates)finish("candidate_limit");
   },cfg.pollMs);
   process.once("SIGINT",()=>finish("interrupted",130));

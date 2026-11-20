@@ -8,7 +8,7 @@ const {spawn}=require("node:child_process");
 
 const observer=path.resolve(__dirname,"..","tools","rcm-chat-observer.cjs");
 
-function launchFixture(lines,includeText,prepareImport=false){
+function launchFixture(lines,includeText,prepareImport=false,rawSampleLines=0){
   return new Promise((resolve,reject)=>{
     const dir=fs.mkdtempSync(path.join(os.tmpdir(),"rcm-observer-cli-"));
     const file=path.join(dir,"Log.txt");
@@ -18,6 +18,7 @@ function launchFixture(lines,includeText,prepareImport=false){
       "--timeout-ms","2500","--poll-ms","25","--max-candidates","10"];
     if(includeText)args.push("--include-text");
     if(prepareImport)args.push("--prepare-import");
+    if(rawSampleLines)args.push("--sample-raw-lines",String(rawSampleLines));
     const proc=spawn(process.execPath,args,{windowsHide:true,stdio:["ignore","pipe","pipe"]});
     let stdout="",stderr="",records=[],started=false,closed=false;
     const cleanup=()=>fs.rmSync(dir,{recursive:true,force:true});
@@ -61,6 +62,7 @@ test("CLI tails only new candidate chat and returns a marker receipt",async()=>{
   assert.equal(chat[0].sender,"NewPlayer");
   assert.equal(chat[0].kind,"guild");
   assert.equal("text" in chat[0],false);
+  assert.equal(r.records.filter(x=>x.event==="raw_log_sample").length,0);
   assert.equal(chat.some(x=>x.sender==="OldPlayer"),false);
   assert.ok(r.records.some(x=>x.event==="matched"));
   assert.ok(r.records.some(x=>x.event==="finished"&&x.reason==="marker_matched"));
@@ -83,6 +85,33 @@ test("CLI emits human-pasteable /rcm import commands only when explicitly enable
   assert.equal(payload,"G\0Atank\0Guild\0Hello from fixture");
   assert.equal(r.records[0].prepareImport,true);
   assert.ok(r.records.some(x=>x.event==="matched"));
+});
+test("opt-in raw-line discovery sees previously unknown formats but never stale lines",async()=>{
+  const r=await launchFixture(
+    "unknown line format from 2026\n" +
+    "a second log line 🌋\n",
+    false,false,2);
+  assert.equal(r.code,0);
+  assert.equal(r.started,true);
+  const samples=r.records.filter(x=>x.event==="raw_log_sample");
+  assert.equal(samples.length,2);
+  assert.equal(samples[0].decodedLine,"unknown line format from 2026");
+  assert.equal(samples[1].decodedLine,"a second log line 🌋");
+  assert.equal(samples[0].physicalRiftOriginVerified,false);
+  assert.equal(samples[0].encoding,"utf8");
+  assert.equal(r.records[0].rawSampleLines,2);
+  assert.equal(r.records.filter(x=>x.event==="candidate_chat").length,0);
+  assert.ok(r.records.some(x=>x.event==="finished" && x.reason==="raw_sample_limit"));
+  assert.equal(r.records.some(x=>JSON.stringify(x).includes("OldPlayer")),false);
+});
+test("raw sample truncates long decoded text at UTF-8 boundaries",async()=>{
+  const r=await launchFixture("🌋".repeat(350)+"\n",false,false,1);
+  assert.equal(r.code,0);
+  const sample=r.records.find(x=>x.event==="raw_log_sample");
+  assert.ok(sample);
+  assert.equal(sample.decodedUtf8Bytes,1400);
+  assert.equal(Buffer.byteLength(sample.decodedLine,"utf8"),1024);
+  assert.equal(sample.lineTruncated,true);
 });
 test("CLI includes bounded message body only after explicit --include-text",async()=>{
   const r=await launchFixture(
