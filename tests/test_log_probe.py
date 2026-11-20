@@ -27,7 +27,7 @@ class LogProbeTests(unittest.TestCase):
         for filename in FILES:
             source = (ADDON / filename).read_text(encoding="utf-8")
             lua.execute("assert(loadstring(" + _lua_quote(source) +
-                        "))({identifier='RiftChatModern',version='0.2.13'}, {})")
+                        "))({identifier='RiftChatModern',version='0.2.14'}, {})")
         lua.execute(script)
 
     def test_explicit_logprobe_emits_luapad_compatible_marker(self):

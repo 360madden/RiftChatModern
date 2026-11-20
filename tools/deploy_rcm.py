@@ -17,9 +17,12 @@ from pathlib import Path
 import re
 import shutil
 import socket
+import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
+
+from rcm_session_preflight import GAME, parse_tasklist
 
 ADDON = "RiftChatModern"
 MODULES = ("Core.lua", "AddonMessages.lua", "NativeChatProbe.lua",
@@ -192,6 +195,28 @@ def apply_copy(source: Path, target: Path, plan: dict, project: Path) -> dict:
             "backups": str(backup_dir), "rollback": False}
 
 
+def running_game_pids() -> list[int]:
+    """Independently query all Windows processes; refuse an uncertain apply."""
+    if os.name != "nt":
+        raise RuntimeError("game_process_query_unavailable_non_windows")
+    try:
+        completed = subprocess.run(["tasklist.exe", "/fo", "csv", "/nh"],
+                                   capture_output=True, text=True, timeout=12,
+                                   encoding="utf-8", errors="replace")
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise RuntimeError("game_process_query_failed") from error
+    if completed.returncode != 0 or not completed.stdout.strip():
+        raise RuntimeError("game_process_query_failed")
+    # Reuse the exact-process parser from RCM's read-only session preflight.
+    # An Error Handler companion is not evidence that the game is running.
+    rows = parse_tasklist(completed.stdout)
+    pids = [row["pid"] for row in rows if row["name"] == GAME]
+    if GAME in completed.stdout.casefold() and not pids:
+        # Never treat a malformed PID for a listed game as proof it is closed.
+        raise RuntimeError("game_process_query_unparseable")
+    return pids
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="Copy after explicit host verification")
@@ -219,9 +244,15 @@ def main(argv: list[str] | None = None) -> int:
             "version": plan["version"], "mode": "apply" if args.apply else "dry_run",
             "sourceFiles": len(plan["files"]), "changedFiles": changes,
             "savedVariablesTouched": False, "gameInputSent": False,
-            "physicalGameLoaded": False
+            "physicalGameLoaded": False,
+            "gameProcessCheck": "not_checked"
         }
         if args.apply:
+            live_pids = running_game_pids()
+            if live_pids:
+                raise RuntimeError("RIFT is running (PID " + ", ".join(map(str,live_pids))
+                                   + "); close the game before deploying")
+            result["gameProcessCheck"] = "closed"
             result.update(apply_copy(source, target, plan, project))
             result["hashVerified"] = all(
                 sha256(source / rel) == sha256(target / rel) for rel in plan["files"]

@@ -148,5 +148,62 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(paths,[root])
 
 
+    def test_apply_refuses_live_game_before_writing_any_file(self):
+        target_main=self.target/"Main.lua"
+        before=target_main.read_bytes()+b"\n-- installed older version\n"
+        target_main.write_bytes(before)
+        stream=io.StringIO()
+        with mock.patch.object(deploy_rcm,"running_game_pids",create=True,return_value=[23164]):
+            with contextlib.redirect_stdout(stream):
+                rc=deploy_rcm.main(["--apply","--expect-host",socket.gethostname(),
+                                    "--target",str(self.target)])
+        self.assertEqual(rc,1)
+        self.assertEqual(target_main.read_bytes(),before)
+        response=json.loads(stream.getvalue())
+        self.assertFalse(response["success"])
+        self.assertIn("running",response["error"].lower())
+
+    def test_apply_fails_closed_when_process_query_unavailable(self):
+        target_main=self.target/"Main.lua"
+        before=target_main.read_bytes()+b"\n-- installed older version\n"
+        target_main.write_bytes(before)
+        stream=io.StringIO()
+        with mock.patch.object(deploy_rcm,"running_game_pids",create=True,
+                               side_effect=RuntimeError("game_process_query_failed")):
+            with contextlib.redirect_stdout(stream):
+                rc=deploy_rcm.main(["--apply","--expect-host",socket.gethostname(),
+                                    "--target",str(self.target)])
+        self.assertEqual(rc,1)
+        self.assertEqual(target_main.read_bytes(),before)
+        response=json.loads(stream.getvalue())
+        self.assertFalse(response["success"])
+        self.assertIn("game_process_query_failed",response["error"])
+
+    def test_apply_after_verified_no_game_preserves_hash_receipts(self):
+        target_main=self.target/"Main.lua"
+        target_main.write_bytes(target_main.read_bytes()+b"\n-- older install\n")
+        stream=io.StringIO()
+        with mock.patch.object(deploy_rcm,"running_game_pids",create=True,return_value=[]):
+            with contextlib.redirect_stdout(stream):
+                rc=deploy_rcm.main(["--apply","--expect-host",socket.gethostname(),
+                                    "--target",str(self.target)])
+        self.assertEqual(rc,0)
+        response=json.loads(stream.getvalue())
+        self.assertEqual(response["gameProcessCheck"],"closed")
+        self.assertTrue(response["hashVerified"])
+        self.assertEqual(response["changed"],["Main.lua"])
+        self.assertEqual(target_main.read_bytes(),(self.source/"Main.lua").read_bytes())
+
+    def test_unparseable_game_row_blocks_apply_but_error_handler_alone_does_not(self):
+        fake=mock.Mock(returncode=0,stdout='"rift_x64.exe","INVALID_PID","Console"\n')
+        with mock.patch.object(deploy_rcm.os,"name","nt"):
+            with mock.patch.object(deploy_rcm.subprocess,"run",return_value=fake):
+                with self.assertRaisesRegex(RuntimeError,"game_process_query_unparseable"):
+                    deploy_rcm.running_game_pids()
+        fake.stdout='"rifterrorhandler_x64.exe","222","Console"\n'
+        with mock.patch.object(deploy_rcm.os,"name","nt"):
+            with mock.patch.object(deploy_rcm.subprocess,"run",return_value=fake):
+                self.assertEqual(deploy_rcm.running_game_pids(),[])
+
 if __name__=="__main__":
     unittest.main()

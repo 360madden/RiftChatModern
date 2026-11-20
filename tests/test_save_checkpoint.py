@@ -27,7 +27,7 @@ class SaveLifecycleTests(unittest.TestCase):
         for name in FILES:
             src=(ADDON/name).read_text(encoding="utf-8")
             lua.execute("assert(loadstring("+_lua_quote(src)+
-                        "))({identifier='RiftChatModern',version='0.2.13'}, {})")
+                        "))({identifier='RiftChatModern',version='0.2.14'}, {})")
         if setup:lua.execute(setup)
         lua.execute(body)
 
@@ -258,6 +258,73 @@ assert(after.eventSequence==1 and after.lastImportIdAtEvent==1)
 assert(after.onDiskVerified==false)
 assert(RiftChatModernSaved.saveCheckpoint.schemaVersion==2)
 ''', setup=old_schema)
+
+    def test_noop_filter_search_clear_do_not_claim_pending_save_changes(self):
+        lua=LuaRuntime(unpack_returned_tuples=True)
+        lua.execute((ADDON/"Core.lua").read_text(encoding="utf-8"))
+        lua.execute(r'''
+local saved={schemaVersion=2,history={},nextId=1,filter="all",search=""}
+local model=assert(RiftChatModernCore.new(saved))
+assert(model:recordSaveBegin(1700).pendingSessionChanges==false)
+local baseline=model:status().revision
+assert(model:setFilter("all"))
+assert(model:setSearch(""))
+assert(model:clear())
+assert(model:status().revision==baseline)
+assert(model:checkpointStatus().pendingSessionChanges==false)
+assert(model:setFilter("imports"))
+assert(model:checkpointStatus().pendingSessionChanges==true)
+assert(model:recordSaveBegin(1710).pendingSessionChanges==false)
+local filtered=model:status().revision
+assert(model:setFilter("imports"))
+assert(model:status().revision==filtered)
+assert(model:checkpointStatus().pendingSessionChanges==false)
+assert(model:setSearch("Atank"))
+assert(model:checkpointStatus().pendingSessionChanges==true)
+assert(model:recordSaveBegin(1720).pendingSessionChanges==false)
+local searched=model:status().revision
+assert(model:setSearch("Atank"))
+assert(model:status().revision==searched)
+assert(model:checkpointStatus().pendingSessionChanges==false)
+assert(model:publish("dev","real message","Tester",1730))
+assert(model:checkpointStatus().pendingSessionChanges==true)
+assert(model:recordSaveBegin(1740).pendingSessionChanges==false)
+assert(model:clear())
+assert(model:checkpointStatus().pendingSessionChanges==true)
+assert(model:recordSaveBegin(1750).pendingSessionChanges==false)
+assert(model:clear())
+assert(model:checkpointStatus().pendingSessionChanges==false)
+-- An absent persisted default is a real change when first initialized.
+local missing={schemaVersion=2,history={},nextId=1}
+local defaults=assert(RiftChatModernCore.new(missing))
+assert(defaults:recordSaveBegin(1760).pendingSessionChanges==false)
+assert(defaults:setFilter("all"))
+assert(defaults:checkpointStatus().pendingSessionChanges==true)
+assert(defaults:recordSaveBegin(1770).pendingSessionChanges==false)
+assert(defaults:setSearch(""))
+assert(defaults:checkpointStatus().pendingSessionChanges==true)
+''')
+
+    def test_repeated_tab_and_reset_clicks_preserve_ui_save_checkpoint(self):
+        self.run_game(r'''
+fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")
+fire(Event.Addon.Load.End,"RiftChatModern")
+local api=RiftChatModernAPI
+assert(api.Show())
+fire(Event.Addon.SavedVariables.Save.Begin,"RiftChatModern")
+assert(api.GetSaveCheckpointStatus().pendingSessionChanges==false)
+local revision=api.GetStatus().revision
+triggerFrame(frames.RCMTaball,Event.UI.Input.Mouse.Left.Click)
+triggerFrame(frames.RCMFindReset,Event.UI.Input.Mouse.Left.Click)
+assert(api.GetStatus().revision==revision)
+assert(api.GetSaveCheckpointStatus().pendingSessionChanges==false)
+triggerFrame(frames.RCMTabimports,Event.UI.Input.Mouse.Left.Click)
+assert(api.GetSaveCheckpointStatus().pendingSessionChanges==true)
+fire(Event.Addon.SavedVariables.Save.Begin,"RiftChatModern")
+assert(api.GetSaveCheckpointStatus().pendingSessionChanges==false)
+triggerFrame(frames.RCMTabimports,Event.UI.Input.Mouse.Left.Click)
+assert(api.GetSaveCheckpointStatus().pendingSessionChanges==false)
+''', setup='RiftChatModernSaved={schemaVersion=2,history={},nextId=1,filter="all",search=""}')
 
 if __name__=="__main__":
     unittest.main()

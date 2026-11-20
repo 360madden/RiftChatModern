@@ -226,9 +226,12 @@ end
 
 function Model:setFilter(filter)
     if not filters[filter] then return nil,"invalid_filter" end
+    -- A repeated tab selection must not falsely report pending disk changes.
+    -- An absent/invalid persisted default DOES count when first repaired.
+    local changed=self.filter~=filter or self.saved.filter~=filter
     self.filter=filter
     self.saved.filter=filter
-    self:_changed()
+    if changed then self:_changed() end
     return true
 end
 function Model:setSearch(value)
@@ -236,12 +239,15 @@ function Model:setSearch(value)
         or value:find("[%z\1-\8\11\12\14-\31]") then
         return nil,"invalid_search"
     end
+    local changed=self.search~=value or self.saved.search~=value
     self.search=value
     self.saved.search=value
-    self:_changed()
+    if changed then self:_changed() end
     return true
 end
 function Model:clear()
+    -- Empty history is already serialized as empty: do not manufacture a save.
+    if #self.saved.history==0 then return true end
     self.saved.history={}
     self:_changed()
     return true
@@ -346,7 +352,7 @@ function Model:commandCount()
     return count
 end
 function Model:status()
-    return {version="0.2.13",schemaVersion=2,
+    return {version="0.2.14",schemaVersion=2,
         provenanceRequired=true,historyCount=#self.saved.history,
         filter=self.filter,search=self.search,revision=self.revision,
         commandCount=self:commandCount(),nativeSocialSendAvailable=false,

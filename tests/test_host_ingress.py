@@ -50,7 +50,7 @@ class ManualHostIngressTests(unittest.TestCase):
             source = (ADDON / filename).read_text(encoding="utf-8")
             chunk = ("local f=assert(loadstring(" + _lua_quote(source)
                      + "));assert(f({identifier='RiftChatModern',"
-                     "version='0.2.13'}, {})==nil)")
+                     "version='0.2.14'}, {})==nil)")
             lua.execute(chunk)
         lua.execute('fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")')
         lua.execute('fire(Event.Addon.Load.End,"RiftChatModern")')
