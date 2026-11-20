@@ -31,7 +31,8 @@ A compact, dark-mode chat window that can receive addon diagnostics, record even
 | Register local commands from sibling addons | ✅ |
 | Built-in optional RPT Lab status/arm/mark/stop/last | ✅ |
 | **Reliable RIFT addon-data messaging to another client** | ✅ Lua 5.1 API mock; physical acceptance pending |
-| Windows-side **candidate social-chat observer**, using existing LuaPadModern log decoder | ✅ 14 Node observer tests; historical format only, physical Log.txt receipt pending |
+| Windows-side **candidate social-chat observer**, using existing LuaPadModern log decoder | ✅ Node observer tests; historical format only, physical Log.txt receipt pending |
+| **Physical RIFT session and log-path preflight** | ✅ read-only Windows process, HWND/PID, Documents and log checks; reports a crashed/exited client explicitly |
 | **Manual host-to-RCM chat import**, UTF-8/base64url chunks and `HOST?` provenance | ✅ v0.2.10 adds visible chunk receipts, transfer status/cancel; physical acceptance pending |
 | **Guarded installation**, hostname check, backups, manifest contract and SHA-256 | ✅ v0.2.10 fixture tests and actual AMD-DESKTOP deployment |
 | **Opt-in log feasibility probe** compatible with LuaPadModern `LogTailProbe` | ✅ v0.2.8 tests and cross-repo parser smoke; real RIFT disk transport unverified |
@@ -300,4 +301,16 @@ From Windows PowerShell in `C:\work\RiftChatModern`:
 node .\tools\rcm-chat-observer.cjs --sample-raw-lines 5 --timeout-ms 60000
 ```
 
-These host-only changes passed **116/116 Python/Lua and 24/24 Node tests**. The in-game release remains **v0.2.10**; no new addon files or `.toc` deployment are required. **No physical game-produced `Log.txt` has yet been proven.** See the [source audit, limitations, tests and live checklist](docs/CHAT_REFERENCE_AUDIT_AND_LOG_DISCOVERY_20261120.md).
+These host-only changes passed **116/116 Python/Lua and 24/24 Node tests** at that checkpoint. The in-game release remains **v0.2.10**; no new addon files or `.toc` deployment are required. **No physical game-produced `Log.txt` has yet been proven.** See the [source audit, limitations, tests and live checklist](docs/CHAT_REFERENCE_AUDIT_AND_LOG_DISCOVERY_20261120.md).
+
+## Read-only physical session / game-crash preflight
+
+The helper `tools/rcm_session_preflight.py` independently checks the **actual running RIFT process**, error-handler processes, the game's own `%APPDATA%\RIFT\Rift.cfg` `[Client] DocumentsDirectory` setting, fallback Documents paths, known `Log.txt` locations, and optional exact window PID/HWND. It distinguishes stale targets and multibox ambiguity instead of relying on previous desktop window listings. No input, network action, logging toggle, UI reload or game restart is performed.
+
+From **Windows PowerShell** at `C:\work\RiftChatModern`:
+
+```powershell
+& "C:\work\riftreader2\.venv\Scripts\python.exe" -B tools\rcm_session_preflight.py --expect-host AMD-DESKTOP
+```
+
+On November 20, this preflight confirmed **RIFT had exited while its Error Handler remained open**, and no noncombat `Log.txt` existed at the game's **explicitly configured** Documents directory or fallback candidates. The real `Rift.cfg` contained `LogConsole=False` and `LogCombatConsole=False`; those are recorded configuration values, **not yet verified runtime log state**. Exit code `2` denotes a **blocked preflight**, not a diagnosis. Do not reuse a previous PID/HWND after restarting RIFT. See [physical-session evidence, known limitations, and recovery checklist](docs/SESSION_PREFLIGHT_AND_RIFT_ERROR_20261120.md).
