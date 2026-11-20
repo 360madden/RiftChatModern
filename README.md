@@ -6,13 +6,13 @@
 
 A compact, dark-mode chat window that can receive addon diagnostics, record event history, filter/search, copy to clipboard, and expose a command API to **all our RIFT repositories**. LuaPadModern inspired the editor focus design; this is **original code** with no LuaPadModern dependency or source modifications.
 
-**Development record:** [concept through v0.2.2, including failures and live proof](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md), [v0.2.3 navigation](docs/V0_2_3_NAVIGATION_AND_RELEASE.md), [v0.2.4 resizing](docs/V0_2_4_RESIZE.md), [v0.2.5 codebase bug hunt](docs/V0_2_5_CODEBASE_BUGHUNT.md), [v0.2.6 editor improvements / deployment receipt](docs/V0_2_6_EDITOR_HISTORY_AND_SEARCH.md), [v0.2.7 console subscription discovery](docs/V0_2_7_NATIVE_CHANNEL_DISCOVERY.md), [v0.2.8 Log.txt probe pilot](docs/V0_2_8_LOG_PROBE_HANDOFF.md), [host chat observer research / tests](docs/HOST_CHAT_OBSERVER_20261120.md), [v0.2.9 manual host ingress](docs/V0_2_9_MANUAL_HOST_INGRESS.md), [v0.2.10 transfer recovery / guarded deployment](docs/V0_2_10_IMPORT_RECOVERY_AND_DEPLOYMENT.md), [player-chat transport alternatives (historical REST, logging, native API)](docs/CHAT_TRANSPORT_ALTERNATIVES_20261120.md), [legacy addon audit / raw log-format discovery](docs/CHAT_REFERENCE_AUDIT_AND_LOG_DISCOVERY_20261120.md), and [v0.2.11 structured provenance and schema migration](docs/V0_2_11_STRUCTURED_PROVENANCE.md).
+**Development record:** [concept through v0.2.2, including failures and live proof](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md), [v0.2.3 navigation](docs/V0_2_3_NAVIGATION_AND_RELEASE.md), [v0.2.4 resizing](docs/V0_2_4_RESIZE.md), [v0.2.5 codebase bug hunt](docs/V0_2_5_CODEBASE_BUGHUNT.md), [v0.2.6 editor improvements / deployment receipt](docs/V0_2_6_EDITOR_HISTORY_AND_SEARCH.md), [v0.2.7 console subscription discovery](docs/V0_2_7_NATIVE_CHANNEL_DISCOVERY.md), [v0.2.8 Log.txt probe pilot](docs/V0_2_8_LOG_PROBE_HANDOFF.md), [host chat observer research / tests](docs/HOST_CHAT_OBSERVER_20261120.md), [v0.2.9 manual host ingress](docs/V0_2_9_MANUAL_HOST_INGRESS.md), [v0.2.10 transfer recovery / guarded deployment](docs/V0_2_10_IMPORT_RECOVERY_AND_DEPLOYMENT.md), [player-chat transport alternatives (historical REST, logging, native API)](docs/CHAT_TRANSPORT_ALTERNATIVES_20261120.md), [legacy addon audit / raw log-format discovery](docs/CHAT_REFERENCE_AUDIT_AND_LOG_DISCOVERY_20261120.md), [v0.2.11 structured provenance and schema migration](docs/V0_2_11_STRUCTURED_PROVENANCE.md), and [v0.2.11 physical RIFT acceptance](docs/V0_2_11_PHYSICAL_ACCEPTANCE_20261120.md).
 
 ## Implemented
 
 | Feature | Current state |
 | --- | --- |
-| Modern dark UI, default 760×618, **21pt title / 16pt message font** | ✅ v0.2.2 basic UI live-verified; later revisions offline-verified, live acceptance pending |
+| Modern dark UI, default 760×618, **21pt title / 16pt message font** | ✅ v0.2.11 window and version physically verified on AMD-DESKTOP (other UI features remain separately tested) |
 | Dedicated **18pt editor**, getter-verified input/search focus badge, Enter dispatch | ✅ Lua 5.1 mock; physical acceptance pending |
 | **Session-only Up/Down command recall**, 32 entries, restores unsent draft | ✅ v0.2.6 Lua 5.1 tests; live key acceptance pending |
 | Search field stays synchronized with `:find` and `/rcm find` | ✅ v0.2.6 regression tests |
@@ -20,7 +20,7 @@ A compact, dark-mode chat window that can receive addon diagnostics, record even
 | **Resizable window**, responsive message-history rows and saved width/height | ✅ v0.2.4 Lua 5.1 geometry tests; physical acceptance pending |
 | **Paged detail reading** for long messages at compact window sizes | ✅ v0.2.4 Lua 5.1 tests |
 | Bundled Lato Regular/Bold fonts and original OFL license | ✅ SHA-256 verified |
-| All / Chat / **Imports** / System / NPC / Addons / Dev tabs | ✅ |
+| All / Chat / **Imports** / System / NPC / Addons / Dev tabs | ✅ IMPORTS tab physically verified with one host-imported message in v0.2.11 |
 | Timestamped history, paging, search | ✅ |
 | Copy filtered chat history to clipboard, including `:copy` | ✅ Via Command.CopyToClipboard |
 | **Click-to-expand full messages** and copy one message | ✅ Lua 5.1 UI tests |
@@ -33,7 +33,7 @@ A compact, dark-mode chat window that can receive addon diagnostics, record even
 | **Reliable RIFT addon-data messaging to another client** | ✅ Lua 5.1 API mock; physical acceptance pending |
 | Windows-side **candidate social-chat observer**, using existing LuaPadModern log decoder | ✅ Node observer tests; historical format only, physical Log.txt receipt pending |
 | **Physical RIFT session and log-path preflight** | ✅ read-only Windows process, HWND/PID, Documents and log checks; reports a crashed/exited client explicitly |
-| **Manual host-to-RCM import** with separate kind, origin, and claimed channel | ✅ v0.2.10 physically accepted; v0.2.11 structural model and migration tested; live v0.2.11 pending |
+| **Manual host-to-RCM import** with separate kind, origin, and claimed channel | ✅ **v0.2.11 physically accepted**: original native RIFT chat input → imported row displayed as HOST/GUILD, not GUILD |
 | **Guarded installation**, hostname check, backups, manifest contract and SHA-256 | ✅ v0.2.10 fixture tests and actual AMD-DESKTOP deployment |
 | **Opt-in log feasibility probe** compatible with LuaPadModern `LogTailProbe` | ✅ v0.2.8 tests and cross-repo parser smoke; real RIFT disk transport unverified |
 | **Native console read-only capability probe** | ✅ Lua 5.1 getter/mock tests |
@@ -319,6 +319,12 @@ On November 20, the preflight first found an **exited game with its Error Handle
 
 The host observer now selects `Log.txt` from **RIFT's own `%APPDATA%\RIFT\Rift.cfg` `[Client] DocumentsDirectory`** when available, instead of silently following an unrelated Documents fallback. Explicit `--path` and deliberate `LUAPAD_LOG_CANDIDATES` overrides take priority. The `started` JSON event reports `pathSelection` and the selected path.
 
-When the configured file does not exist yet, the observer waits for it to appear and reads newly created content without treating synthetic or stale data as live evidence. This behavior is backed by **27/27 Node.js tests**, including an actual child-process test; **129/129 Lua/Python tests** remain green. The installed RCM addon is still v0.2.10 with no Lua or manifest changes.
+When the configured file does not exist yet, the observer waits for it to appear and reads newly created content without treating synthetic or stale data as live evidence. This behavior is backed by **27/27 Node.js tests**, including an actual child-process test; **129/129 Lua/Python tests** were green at that checkpoint. At that earlier Windows-only checkpoint the installed addon remained v0.2.10; the current deployed release is v0.2.11.
 
 See [host observer configured-path implementation, verification and supervised live-test procedure](docs/HOST_CHAT_LOG_PATH_SELECTION_20261120.md).
+
+## v0.2.11 physical acceptance — November 20
+
+Following a user-initiated RIFT restart, the fresh AMD-DESKTOP game instance was identified independently (PID `31820`, HWND `3805750`). The **v0.2.11 UI**, full history, and **IMPORTS** tab were visually confirmed in the physical client. A new message was generated through `tools/rcm-chat-import.cjs`, entered and submitted in RIFT's **original native chat**, and appeared as **HOST/GUILD · RCMTest** with the body `v0.2.11 provenance classification check`. ALL history increased from 34 to 35 messages, and the IMPORTS tab showed exactly **one** record.
+
+This establishes end-to-end **manual host import and correct provenance display**. It does **not** establish normal server-delivered Guild chat reception, automatic chat mirroring, or yet prove schema-v2 bytes were persisted to the saved file after a clean game exit. The previous v0.2.10 test record was absent from the old on-disk v1 save and could not itself be physically migrated. Detailed evidence, local ignored screenshot hash, successful checks, and remaining limitations: [v0.2.11 physical acceptance report](docs/V0_2_11_PHYSICAL_ACCEPTANCE_20261120.md).
