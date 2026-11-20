@@ -6,6 +6,8 @@
 
 A compact, dark-mode chat window that can receive addon diagnostics, record event history, filter/search, copy to clipboard, and expose a command API to **all our RIFT repositories**. LuaPadModern inspired the editor focus design; this is **original code** with no LuaPadModern dependency or source modifications.
 
+**Development record:** [Complete project history — concept, version timeline, failures, fixes, live proof, and outstanding work](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md).
+
 ## Implemented
 
 | Feature | Current state |
@@ -154,6 +156,6 @@ Reference: https://github-wiki-see.page/m/chrisbecke/Igor/wiki/RIFT-API-Document
 
 See [addon messaging and native-console probe](docs/ADDON_TRANSPORT.md) for the exact APIs, reliable-send restrictions and evidence limits.
 
-**v0.2.2 startup hotfix (November 20):** RIFT reported four real addon-load errors in v0.2.1 (Core, AddonMessages, NativeChatProbe and ConsoleMirror). Their top-level module return values were removed from RunOnStartup execution, and a dedicated loader-contract regression test was added. This is offline-validated and deployed, but **live RIFT reloading is still required to confirm the four errors are gone**. See [live startup fix](docs/V0_2_2_LIVE_STARTUP_FIX.md).
+**v0.2.2 startup hotfix (November 20):** RIFT reported four real addon-load errors in v0.2.1 (Core, AddonMessages, NativeChatProbe and ConsoleMirror). Their top-level module return values were removed from RunOnStartup execution, and a dedicated loader-contract regression test was added. The fix was subsequently **observed working in the physical RIFT client**: v0.2.2 loaded, /rcm opened, the editor-focus indicator responded, and the window dragged. No new four-module assertions were observed in the captured startup portion; this is not an exhaustive absence-of-errors guarantee. See [live startup fix](docs/V0_2_2_LIVE_STARTUP_FIX.md) and [live acceptance report](docs/LIVE_ACCEPTANCE_V0_2_2_20261120.md).
 
 Built on AMD-DESKTOP for reusable RIFT development tooling.
