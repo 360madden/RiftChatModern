@@ -53,7 +53,7 @@ def main():
     draw.text((382, 402), "CHAT UI   /   ADDON TOOLS   /   DIAGNOSTICS",
               font=font(23, True), fill=(125, 211, 252))
     draw.rounded_rectangle((380, 481, 593, 529), radius=20, fill=(20, 75, 76))
-    draw.text((403, 490), "LUA 5.1  •  v0.2.20",
+    draw.text((403, 490), "LUA 5.1  •  v0.2.21",
               font=font(19, True), fill=(165, 243, 230))
     draw.text((80, 582), "github.com/360madden/RiftChatModern",
               font=font(20), fill=(148, 163, 184))

@@ -118,6 +118,7 @@ def execute(argv: list[str] | None = None, *,
     previous: int | None = None
     target_hwnd: int | None = None
     changed = False
+    was_iconic = False
     result: dict = {"schema": SCHEMA, "status": "capture_not_attempted",
                     "inspection": {"pid": identity["pid"],
                                    "hwnd": identity["hwnd"]},
@@ -129,8 +130,12 @@ def execute(argv: list[str] | None = None, *,
                   "title": "RIFT"}
         target_hwnd, target_pid = focus._validate_target(target)
         previous = int(focus.get_foreground() or 0)
-        focus_receipt = focus._focus(target_hwnd, target_pid, 250)
+        was_iconic = bool(focus.is_iconic(target_hwnd))
         changed = previous != target_hwnd
+        # A minimized DirectX client needs more than the usual quarter-second
+        # to restore its renderer before RIFT will handle Numpad Multiply.
+        focus_receipt = focus._focus(target_hwnd, target_pid,
+                                    1250 if was_iconic else 250)
         result["focusReceipt"] = focus_receipt
         result["focusChanged"] = changed
         code, screenshot_receipt = session([
@@ -167,7 +172,11 @@ def execute(argv: list[str] | None = None, *,
                 result["restoredPreviousForeground"] = current == previous
             elif focus.is_window(previous):
                 focus._restore(previous, target_hwnd)
-                if int(focus.get_foreground() or 0) != previous:
+                after_restore = int(focus.get_foreground() or 0)
+                if after_restore == target_hwnd:
+                    # Retry the proven attached-thread focus only if RIFT
+                    # still owns foreground. Never steal a third application's
+                    # newly acquired focus.
                     previous_thread, previous_pid = focus._owner(previous)
                     if previous_thread and previous_pid:
                         focus._focus(previous, previous_pid, 250)
@@ -178,6 +187,13 @@ def execute(argv: list[str] | None = None, *,
                                            else "restore_unverified")
             else:
                 result["restoreStatus"] = "previous_window_no_longer_exists"
+            # Restore an originally minimized RIFT window only after leaving
+            # its foreground. A new user-selected foreground is never stolen.
+            if (was_iconic and previous != target_hwnd and
+                int(focus.get_foreground() or 0) != target_hwnd and
+                focus.is_window(target_hwnd)):
+                focus.show_window(target_hwnd, 6)  # SW_MINIMIZE
+                result["minimizedStateRestored"] = bool(focus.is_iconic(target_hwnd))
         except Exception as exc:
             result["restoreStatus"] = "restore_exception"
             result["restoreReason"] = str(exc)

@@ -2,7 +2,7 @@
 -- Native player say/tell/guild transmit and full native chat interception are NOT
 -- exposed by the verified addon APIs. This UI never pretends to send those.
 local info = ...
-local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.20"
+local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.21"
 local Core = _G.RiftChatModernCore
 local MessageBridge = _G.RiftChatModernAddonMessages
 local NativeProbe = _G.RiftChatModernNativeProbe
@@ -23,7 +23,8 @@ local C = {
     hover={0.10,0.24,0.29,0.91}, accent={0.12,0.82,0.83,1},
     text={0.94,0.98,0.99,1}, muted={0.66,0.78,0.82,1},
     warning={1.0,0.75,0.46,1}, good={0.40,0.94,0.72,1},
-    clear={0,0,0,0}, input={0.035,0.105,0.13,0.38}
+    clear={0,0,0,0}, input={0.035,0.105,0.13,0.38},
+    info={0.60,0.78,1,1}
 }
 local model,panel,editor,searchField,statusField,focusIndicator,rows,tabLabels,drag
 local resize, resizeGrip, header, handle, titleFrame, versionFrame, divider
@@ -370,10 +371,19 @@ local function selectedMessage()
     if not model or not selectedId then return nil,"no_selection" end
     return model:getMessage(selectedId)
 end
+-- A detail reader is a true modal, not a transparent overlay of active
+-- history rows. Same-layer sibling ordering is undefined in RIFT, so hiding
+-- the backing rows is required to prevent overlapping glyphs and hitboxes.
+local function showHistoryRows(visible)
+    for i,item in ipairs(rows or {}) do
+        item.frame:SetVisible(visible and i<=LINES)
+    end
+end
 local function closeDetails()
     selectedId=nil
     detailPageIndex=1
     if detailOverlay then detailOverlay:SetVisible(false) end
+    showHistoryRows(true)
     return true
 end
 local function copyMessage()
@@ -433,6 +443,7 @@ local function openMessage(id)
     if detailOverlay and detailBody and detailTitle then
         detailTitle:SetText(string.format("%s  •  %s  •  #%d",
             Core.rowLabel(row),row.source,row.id))
+        showHistoryRows(false)
         detailOverlay:SetVisible(true)
         refreshDetail()
     end
@@ -451,30 +462,43 @@ render=function()
         visibleOffset=oldestOffset
         selection,total=model:getHistory(model.filter,model.search,LINES,visibleOffset)
     end
-    -- One width computation per redraw; no per-message geometry work.
-    local capacity=math.max(34,math.floor(((list and list:GetWidth() or 666)-65)/7.6))
+    -- Each row owns four independent text frames rather than one padded
+    -- monolithic string. This keeps channel/source provenance visible while
+    -- allowing the message to claim every remaining pixel on resize.
     for i=1,LINES do
+        local item=rows[i]
         local r=selection[i]
-        rows[i].messageId=r and r.id or nil
+        item.messageId=r and r.id or nil
         if r then
-            local ts="--:--"
+            local ts="--:--:--"
             if os and os.date then
-                local ok,value=pcall(os.date,"%H:%M",math.floor(r.at))
+                -- Local Windows time, with seconds. The stored epoch is never
+                -- rewritten and time formatting never affects message data.
+                local ok,value=pcall(os.date,"%H:%M:%S",math.floor(r.at))
                 if ok and type(value)=="string" then ts=value end
             end
-            local msg=string.format("%s  %-18s  %-14s %s",ts,
-                cutUtf8(Core.rowShortLabel(r),18),cutUtf8(r.source,14),r.text)
-            -- Wider windows expose more of each message, without changing saved text.
-            rows[i].entry:SetText(cutUtf8(msg,capacity))
-            local color=(r.kind=="dev" or r.kind=="import") and C.accent or
-                r.kind=="system" and C.warning or
-                r.kind=="npc" and C.good or C.text
-            ink(rows[i].entry,color)
-            rgba(rows[i].marker,color)
-            rows[i].marker:SetVisible(true)
+            local color=r.kind=="import" and C.accent
+                or r.kind=="npc" and C.good
+                or r.kind=="system" and C.warning
+                or r.kind=="dev" and C.info or C.accent
+            item.time:SetText(ts)
+            item.channel:SetText("["..cutUtf8(Core.rowShortLabel(r),12).."]")
+            item.sender:SetText(cutUtf8(r.source,
+                math.max(6,math.floor(item.sender:GetWidth()/7.5)-2)))
+            item.entry:SetText(cutUtf8(r.text,
+                math.max(12,math.floor(item.entry:GetWidth()/8.2)-2)))
+            ink(item.time,C.muted)
+            ink(item.channel,color)
+            ink(item.sender,r.kind=="npc" and C.good or C.text)
+            ink(item.entry,C.text)
+            rgba(item.marker,color)
+            item.marker:SetVisible(true)
         else
-            rows[i].entry:SetText("")
-            rows[i].marker:SetVisible(false)
+            item.time:SetText("")
+            item.channel:SetText("")
+            item.sender:SetText("")
+            item.entry:SetText("")
+            item.marker:SetVisible(false)
         end
     end
     local count=math.max(0,total-visibleOffset)
@@ -624,7 +648,11 @@ local function makeRow(i)
         i%2==0 and C.card or C.alt)
     row:SetMouseMasking("full")
     local marker=frame("LineMarker"..i,row,2,3,3,ROW_H-6,C.accent)
-    rows[i]={entry=text("LineText"..i,row,"",9,2,634,22,16,C.text),
+    rows[i]={
+        time=text("LineTime"..i,row,"",12,2,72,22,14,C.muted,true),
+        channel=text("LineChannel"..i,row,"",90,2,124,22,14,C.accent,true),
+        sender=text("LineSender"..i,row,"",222,2,115,22,15,C.text,true),
+        entry=text("LineText"..i,row,"",345,2,301,22,16,C.text),
         frame=row,marker=marker,messageId=nil}
     row:EventAttach(Event.UI.Input.Mouse.Left.Click,function()
         local id=rows[i].messageId
@@ -661,10 +689,16 @@ layoutWindow=function()
     LINES=count
     for i,row in ipairs(rows) do
         if i<=count then
-            place(row.frame,list,5,6+(i-1)*ROW_H,cardW-10,ROW_H)
+            local rowW=cardW-10
+            local senderW=rowW<=620 and 92 or 115
+            local bodyX=222+senderW+8
+            place(row.frame,list,5,6+(i-1)*ROW_H,rowW,ROW_H)
             place(row.marker,row.frame,2,3,3,ROW_H-6)
-            place(row.entry,row.frame,9,2,cardW-32,22)
-            row.frame:SetVisible(true)
+            place(row.time,row.frame,12,2,72,22)
+            place(row.channel,row.frame,90,2,124,22)
+            place(row.sender,row.frame,222,2,senderW,22)
+            place(row.entry,row.frame,bodyX,2,rowW-bodyX-8,22)
+            row.frame:SetVisible(not selectedId)
         else
             row.messageId=nil
             row.frame:SetVisible(false)
@@ -829,8 +863,12 @@ local function makeUi()
     -- Complete-message reader overlays only the message list, not the controls.
     -- The regular rows remain available immediately after CLOSE.
     detailOverlay=frame("DetailOverlay",list,4,4,658,318,C.header)
+    -- The detail reader is a modal: backing history siblings are hidden
+    -- while open. Preserve the RIFT-tested child/texture layer relationship
+    -- (negative-layer background, default-layer text/buttons) rather than
+    -- moving the parent above its own children.
     controls._skin.detail=controls._skinTexture("DetailPlate",detailOverlay,"glass_detail")
-    if controls._skin.detail then rgba(detailOverlay,C.clear) end
+    rgba(detailOverlay,C.header)
     detailOverlay:SetMouseMasking("full")
     detailTitle=text("DetailTitle",detailOverlay,"MESSAGE DETAILS",
         14,13,520,25,18,C.accent,true)

@@ -24,11 +24,12 @@ PIN = {
 
 
 class FakeFocus:
-    def __init__(self, *, previous=0x30ADA, target=0x360BC4):
+    def __init__(self, *, previous=0x30ADA, target=0x360BC4, iconic=False):
         self.previous = previous
         self.target = target
         self.current = previous
         self.calls = []
+        self.iconic = iconic
 
     def _validate_target(self, target):
         self.calls.append(("validate", dict(target)))
@@ -40,9 +41,18 @@ class FakeFocus:
         return self.current
 
     def _focus(self, hwnd, pid, delay):
-        self.calls.append(("focus", hwnd, pid))
+        self.calls.append(("focus", hwnd, pid, delay))
         self.current = hwnd
+        self.iconic = False
         return {"exactHwndForeground": True}
+
+    def is_iconic(self, hwnd):
+        return self.iconic
+
+    def show_window(self, hwnd, how):
+        assert how == 6
+        self.calls.append(("minimize", hwnd))
+        self.iconic = True
 
     def _owner(self, hwnd):
         return 400, 500
@@ -93,6 +103,21 @@ class ManagedScreenshotTests(unittest.TestCase):
         self.assertEqual(len(input_calls), 1)
         self.assertIn("--ack-single-screenshot", input_calls[0])
         self.assertEqual([c[0] for c in f.calls], ["validate", "focus", "restore"])
+
+    def test_original_minimized_state_is_restored_after_real_screenshot(self):
+        f = FakeFocus(iconic=True)
+        code, report, _ = self.call(
+            ["--capture", "--ack-temporary-focus", "--ack-single-screenshot"],
+            backend=f, shot=lambda args:(0, {"status":"new_post_key_image_verified",
+                                           "gameInputSent":True,
+                                           "screenshotFileVerified":True}))
+        self.assertEqual(code, 0)
+        self.assertTrue(report["restoredPreviousForeground"])
+        self.assertTrue(report["minimizedStateRestored"])
+        self.assertTrue(f.iconic)
+        self.assertEqual(f.current, f.previous)
+        self.assertIn(("minimize", f.target), f.calls)
+        self.assertTrue(any(c[0]=="focus" and c[3]>=1200 for c in f.calls))
 
     def test_dryrun_never_constructs_focus_or_triggers_input(self):
         def shot(args):
@@ -170,6 +195,23 @@ class ManagedScreenshotTests(unittest.TestCase):
         self.assertEqual(report["restoreStatus"], "external_focus_change_preserved")
         self.assertEqual(f.current, external)
         self.assertNotIn("restore", [x[0] for x in f.calls])
+
+    def test_foreground_stolen_during_restore_is_not_reclaimed(self):
+        class InterruptedRestore(FakeFocus):
+            def _restore(self, previous, target):
+                self.calls.append(("restore", previous))
+                self.current = 0x999999  # another application became active
+        f = InterruptedRestore()
+        code, report, _ = self.call(
+            ["--capture", "--ack-temporary-focus", "--ack-single-screenshot"],
+            backend=f, shot=lambda args:(0, {
+                "status":"new_post_key_image_verified",
+                "gameInputSent":True, "screenshotFileVerified":True}))
+        self.assertEqual(code, 0)
+        self.assertEqual(f.current, 0x999999)
+        self.assertEqual(report["restoreStatus"], "restore_unverified")
+        self.assertFalse(report["restoredPreviousForeground"])
+        self.assertEqual(len([c for c in f.calls if c[0]=="focus"]), 1)
 
     def test_user_starts_in_foreground_does_not_switch_away(self):
         f=FakeFocus(previous=PIN["pid"],target=0x360BC4)

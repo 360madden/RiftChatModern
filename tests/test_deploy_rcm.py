@@ -63,7 +63,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertIsNone(again["backups"])
 
     def test_new_texture_directory_is_created_and_verified(self):
-        # Simulate an existing pre-v0.2.20 RIFT installation with no textures.
+        # Simulate an existing pre-v0.2.21 RIFT installation with no textures.
         shutil.rmtree(self.target / "textures")
         plan = deploy_rcm.preflight(self.source, self.target)
         textures = {p for p in plan["changed"] if p.parts[0] == "textures"}

@@ -1,4 +1,4 @@
-"""RiftChatModern v0.2.20 complete-message reader and clipboard controls."""
+"""RiftChatModern v0.2.21 complete-message reader and clipboard controls."""
 from pathlib import Path
 import sys
 import unittest
@@ -23,7 +23,7 @@ class MessageReaderTests(unittest.TestCase):
             lua.execute((ADDON / name).read_text(encoding="utf-8"))
         main=(ADDON/"Main.lua").read_text(encoding="utf-8")
         lua.execute("assert(loadstring("+_lua_quote(main)+"))"
-                    "({identifier='RiftChatModern',version='0.2.20'})")
+                    "({identifier='RiftChatModern',version='0.2.21'})")
         lua.execute(source)
 
     def test_click_row_opens_full_text_and_copy_selected(self):
@@ -38,6 +38,12 @@ assert(row.id==2)
 assert(frames.RCMLineText2.text:find("...",1,true))
 triggerFrame(frames.RCMLine2,Event.UI.Input.Mouse.Left.Click)
 assert(frames.RCMDetailOverlay.visible==true)
+-- The detail reader is modal: history rows must not paint or intercept
+-- input behind its content (physically reproduced on v0.2.21).
+assert(frames.RCMLine1.visible==false)
+assert(frames.RCMLine2.visible==false)
+assert(frames.RCMDetailPlate.layer==-8) -- texture below detail text/buttons
+assert(frames.RCMDetailOverlay.bg[4]>=0.9)
 assert(frames.RCMDetailBody.wrap==true)
 local chunks={frames.RCMDetailBody.text}
 for i=1,16 do
@@ -58,7 +64,33 @@ assert(api.CopySelectedMessage())
 assert(copied=="RR2: "..long)
 triggerFrame(frames.RCMDetailClose,Event.UI.Input.Mouse.Left.Click)
 assert(frames.RCMDetailOverlay.visible==false)
+assert(frames.RCMLine1.visible==true)
+assert(frames.RCMLine2.visible==true)
 assert(not api.GetSelectedMessage())
+''')
+
+    def test_modal_remains_isolated_when_resizing_and_new_messages_arrive(self):
+        self.run_lua(r'''
+fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")
+fire(Event.Addon.Load.End,"RiftChatModern")
+local api=RiftChatModernAPI
+assert(api.Show())
+local msg=assert(api.Publish("dev","inspect me","RR2"))
+assert(api.OpenMessage(msg.id))
+assert(frames.RCMDetailOverlay.visible==true)
+for _,dims in ipairs({{680,480},{1100,800}}) do
+    assert(api.SetWindowSize(dims[1],dims[2]))
+    for i=1,api.GetStatus().visibleRows do
+        assert(frames["RCMLine"..i].visible==false,
+            "history row visible under message modal: "..i)
+    end
+end
+assert(api.Publish("dev","not behind modal","RRE"))
+assert(frames.RCMLine1.visible==false)
+assert(api.CloseMessage())
+for i=1,api.GetStatus().visibleRows do
+    assert(frames["RCMLine"..i].visible==true)
+end
 ''')
 
     def test_selected_id_stays_valid_across_filter_or_paging(self):

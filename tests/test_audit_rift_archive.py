@@ -54,7 +54,7 @@ class ArchiveAuditTests(unittest.TestCase):
                     z.write(member,arcname="RiftChatModern/"+member.relative_to(live_source).as_posix())
         r=inspect_archive(self.zip)
         self.assertEqual(r["identifier"],"RiftChatModern")
-        self.assertEqual(r["version"],"0.2.20")
+        self.assertEqual(r["version"],"0.2.21")
         self.assertEqual(r["missingStartupFiles"],[])
         self.assertEqual(r["verdict"],"rift_api_candidate_needs_live_test")
         self.assertTrue(all(x["lua51SyntaxOnly"] for x in r["lua51SyntaxOnly"]))

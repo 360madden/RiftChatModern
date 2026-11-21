@@ -6,7 +6,7 @@
 
 **A modern, draggable chat-style console and developer diagnostics hub for RIFT Live.**
 
-[![Version](https://img.shields.io/badge/version-0.2.20-14b8a6?style=for-the-badge)](addon/RiftChatModern/RiftAddon.toc)
+[![Version](https://img.shields.io/badge/version-0.2.21-14b8a6?style=for-the-badge)](addon/RiftChatModern/RiftAddon.toc)
 [![RIFT Live](https://img.shields.io/badge/game-RIFT%20Live-0ea5e9?style=for-the-badge)](https://www.trionworlds.com/rift/)
 [![Lua 5.1](https://img.shields.io/badge/runtime-Lua%205.1-334155?style=for-the-badge)](addon/RiftChatModern/)
 [![Status](https://img.shields.io/badge/status-active%20development-f59e0b?style=for-the-badge)](#project-status)
@@ -31,7 +31,7 @@ RCM is built to support other RIFT addons as a shared diagnostics surface—not 
 <div align="center">
 <img src="assets/screenshots/rcm-v0.2.2-physical-names-redacted.png" alt="Actual RIFT Live client showing an early RiftChatModern window after a drag test" width="900"/>
 
-<sub>Real in-game development screenshot from **v0.2.2** (November 20, 2026). The current addon is v0.2.20; this older capture is shown as historical UI evidence, not as a current-version screenshot. The two small player-name labels are blurred for privacy.</sub>
+<sub>Real in-game development screenshot from **v0.2.2** (November 20, 2026). The current addon is v0.2.21; this older capture is shown as historical UI evidence, not as a current-version screenshot. The two small player-name labels are blurred for privacy.</sub>
 </div>
 
 ## What RCM can do
@@ -39,6 +39,7 @@ RCM is built to support other RIFT addons as a shared diagnostics surface—not 
 | | Feature | Details |
 |:--:|---|---|
 | 🖥️ | **Glass UI (v0.2.20)** | Translucent charcoal PNG surfaces, cyan outlines, responsive hover tabs, readable fonts, saved placement and dimensions |
+| 💬 | **Separated message columns (v0.2.21)** | Local timestamps to seconds, colored channel labels, sender names, and independently sized message previews |
 | 💬 | **Message workspace** | Tabs for All, Chat, Imports, System, NPC, Addons, and Dev |
 | 🔎 | **Find and inspect** | Search, paginated history, expandable message details, copy/export |
 | ⌨️ | **Local command editor** | Dedicated input, focus feedback, local `:` commands, session-only command recall |
@@ -139,9 +140,9 @@ The API also provides history retrieval, subscriptions, UI controls, copy helper
 
 | Area | Current evidence |
 |---|---|
-| **Addon release** | v0.2.20; installed package hash-verified and **visibly observed inside RIFT** via native screenshot, November 21, 2026 |
-| **Physical RIFT evidence** | v0.2.20 glass UI/window/version visible in native JPEG; earlier v0.2.11 manual host import. Full live interaction checks still pending |
-| **Offline regression suite** | **278 Python/Lua and 58 Node tests passed** (November 21, 2026), including PNG assets, visual-state fallback, and safe texture-folder deployment |
+| **Addon release** | **v0.2.21** physically loaded and tested in RIFT Live; installed package hash-verified on AMD-DESKTOP |
+| **Physical RIFT evidence** | v0.2.21 four-column history, real DEV/ALL tab switching, modal detail opening/closing independently verified using native game screenshots; other interactions still need acceptance |
+| **Offline regression suite** | **297 Python/Lua and 58 Node tests passed** (November 21, 2026), including physical-issue modal isolation tests, responsive columns, guarded Windows input and deployment |
 | **Windows host tooling** | .NET 10 editor batch preflight, exact-candidate gate, and simulated end-to-end import tested |
 | **Native player social chat** | **Not verified**; current noncombat `Log.txt` capture still needs a physical trial |
 | **Automatic in-game import** | **Not verified**; guarded sender is an opt-in prototype |
@@ -156,6 +157,8 @@ The homepage is intentionally concise. The complete development history—includ
 |---|---|
 | 🎨 [v0.2.20 Glass UI](docs/V0_2_20_GLASS_UI_20261121.md) | Original PNG skin, interactive Lua styling, compatibility tests, and physical acceptance checklist |
 | 📸 [Real v0.2.20 RIFT screenshot evidence](docs/V0_2_20_NATIVE_SCREENSHOT_ACCEPTANCE_20261121.md) | Verified in-game screen capture and managed temporary foreground; private image not published |
+| 💬 [v0.2.21 Message columns](docs/V0_2_21_MESSAGE_COLUMNS_20261121.md) | Local seconds, distinct source/channel/message fields, responsive layout and test evidence |
+| 📷 [v0.2.21 Physical UI acceptance](docs/V0_2_21_PHYSICAL_ACCEPTANCE_20261121.md) | Native screenshot receipts, real tab tests, modal root-cause fix, failed experiments and verified recovery |
 | 📚 [Complete engineering archive](docs/ENGINEERING_ARCHIVE_README_THROUGH_20261121.md) | Previous detailed README, preserved in full |
 | 🧭 [Development history](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md) | Original concept, initial build, fixes, and live findings |
 | 🧱 [Addon transport](docs/ADDON_TRANSPORT.md) | RIFT addon-data messaging and API constraints |

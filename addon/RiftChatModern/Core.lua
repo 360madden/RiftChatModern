@@ -380,7 +380,7 @@ function Model:commandCount()
     return count
 end
 function Model:status()
-    return {version="0.2.20",schemaVersion=2,
+    return {version="0.2.21",schemaVersion=2,
         provenanceRequired=true,historyCount=#self.saved.history,
         filter=self.filter,search=self.search,revision=self.revision,
         commandCount=self:commandCount(),nativeSocialSendAvailable=false,

@@ -35,7 +35,7 @@ class RiftStartupContractTests(unittest.TestCase):
                 value = lua.execute(
                     "local chunk=assert(loadstring(" + _lua_quote(source)
                     + "));return chunk({identifier='RiftChatModern',"
-                      "version='0.2.20'}, {})")
+                      "version='0.2.21'}, {})")
                 self.assertIsNone(value, f"{name} must not return from RIFT RunOnStartup")
         lua.execute('''
 assert(type(RiftChatModernCore)=="table")
@@ -47,7 +47,7 @@ assert(type(RiftChatModernAPI)=="table")
 assert(RiftChatModernAPI.GetHostIngressStatus().ready==false)
 fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")
 fire(Event.Addon.Load.End,"RiftChatModern")
-assert(RiftChatModernAPI.GetStatus().version=="0.2.20")
+assert(RiftChatModernAPI.GetStatus().version=="0.2.21")
 assert(RiftChatModernAPI.GetStatus().ready)
 ''')
 

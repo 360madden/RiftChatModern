@@ -32,7 +32,7 @@ class ProvenanceSchemaTests(unittest.TestCase):
         for module in MODULES:
             source=(ADDON/module).read_text(encoding="utf-8")
             lua.execute("assert(loadstring("+_lua_quote(source)+
-                        "))({identifier='RiftChatModern',version='0.2.20'}, {})")
+                        "))({identifier='RiftChatModern',version='0.2.21'}, {})")
         lua.execute(script)
 
     def test_migrate_35_legacy_records_preserves_ids_times_and_real_category(self):
@@ -216,8 +216,10 @@ assert(api.Show())
 assert(frames.RCMTabimports and frames.RCMTabimportsLabel.text=="IMPORTS")
 local imports,total=api.GetHistory("imports","",10,0)
 assert(total==1 and imports[1].kind=="import")
-assert(frames.RCMLineText1.text:find("HOST/GUILD",1,true))
-assert(not frames.RCMLineText1.text:find(" GUILD  RCMTest",1,true))
+assert(frames.RCMLineChannel1.text=="[HOST/GUILD]")
+assert(frames.RCMLineSender1.text=="RCMTest")
+assert(frames.RCMLineText1.text:find("live import check",1,true))
+assert(frames.RCMLineChannel1.text~="[GUILD]")
 assert(api.OpenMessage(imports[1].id))
 assert(frames.RCMDetailTitle.text:find("HOST IMPORT / Guild",1,true))
 assert(api.CopySelectedMessage())

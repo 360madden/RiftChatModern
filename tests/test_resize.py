@@ -1,4 +1,4 @@
-"""RCM v0.2.20 resize/viewport and persistence contracts using Lua 5.1 mocks.
+"""RCM v0.2.21 resize/viewport and persistence contracts using Lua 5.1 mocks.
 
 These tests verify code geometry and event handling, not physical RIFT mouse behavior.
 """
@@ -26,7 +26,7 @@ class ResizeTests(unittest.TestCase):
                      "ConsoleMirror.lua", "HostIngress.lua", "Main.lua"):
             source = (ADDON / name).read_text(encoding="utf-8")
             lua.execute("assert(loadstring(" + _lua_quote(source) +
-                        "))({identifier='RiftChatModern',version='0.2.20'}, {})")
+                        "))({identifier='RiftChatModern',version='0.2.21'}, {})")
         lua.execute(script)
 
     def test_every_active_child_fits_parent_across_window_sizes(self):
@@ -96,7 +96,8 @@ assert(p:GetLeft()==x and p:GetTop()==y)
 local needed=math.floor((p.height-292-10)/24)
 assert(api.GetStatus().visibleRows==needed)
 assert(frames.RCMLine19.visible)
-assert(frames.RCMLineText1.width==p.width-126)
+assert(frames.RCMLineText1.width==frames.RCMLine1.width-
+    frames.RCMLineText1.anchorX-8)
 held=false
 triggerFrame(frames.RCMResizeGrip,Event.UI.Input.Mouse.Left.Upoutside)
 assert(RiftChatModernSaved.ui.w==970 and RiftChatModernSaved.ui.h==810)
@@ -157,7 +158,8 @@ assert(p:GetLeft()+p.width==UIParent:GetWidth())
 assert(p:GetTop()+p.height==UIParent:GetHeight())
 assert(api.GetStatus().visibleRows>13)
 assert(frames.RCMLine8.visible)
-assert(frames.RCMLineText1.width==p.width-126)
+assert(frames.RCMLineText1.width==frames.RCMLine1.width-
+    frames.RCMLineText1.anchorX-8)
 assert(not api.SetWindowSize(0/0,700))
 assert(not api.SetWindowSize("oops",700))
 assert(api.GetStatus().windowWidth==p.width)

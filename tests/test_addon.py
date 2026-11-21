@@ -245,14 +245,14 @@ class AddonRuntimeTests(unittest.TestCase):
         lua.execute((ADDON / "NativeChatProbe.lua").read_text(encoding="utf-8"))
         lua.execute((ADDON / "ConsoleMirror.lua").read_text(encoding="utf-8"))
         lua.execute((ADDON / "HostIngress.lua").read_text(encoding="utf-8"))
-        lua.execute('assert(loadstring('+_lua_quote(self.main)+'))({identifier="RiftChatModern",version="0.2.20"})')
+        lua.execute('assert(loadstring('+_lua_quote(self.main)+'))({identifier="RiftChatModern",version="0.2.21"})')
         lua.execute(scenario)
 
     def test_startup_ui_theme_drag_focus_and_version(self):
         self.run_lua(r'''
 fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")
 fire(Event.Addon.Load.End,"RiftChatModern")
-assert(#displays==1 and displays[1]:find("v0.2.20",1,true))
+assert(#displays==1 and displays[1]:find("v0.2.21",1,true))
 local api=RiftChatModernAPI
 assert(api.interfaceVersion==2 and api.GetStatus().ready)
 assert(RiftChatModernSaved.schemaVersion==2)
@@ -261,7 +261,7 @@ local active=assert(api.Show())
 assert(frames.RiftChatModernWindow.visible)
 assert(frames.RiftChatModernWindow.width==760)
 assert(frames.RiftChatModernWindow.height==618)
-assert(frames.RCMVersion.text=="v0.2.20")
+assert(frames.RCMVersion.text=="v0.2.21")
 assert(frames.RCMInput.kind=="RiftTextfield")
 assert(api.FocusEditor())
 assert(api.GetStatus().editorFocused==true)
@@ -553,7 +553,7 @@ def _lua_quote(text):
 class ManifestTests(unittest.TestCase):
     def test_loader_contract(self):
         text=MANIFEST.read_text(encoding="utf-8")
-        for key,value in {"Identifier":"RiftChatModern","Version":"0.2.20","Environment":"4.3"}.items():
+        for key,value in {"Identifier":"RiftChatModern","Version":"0.2.21","Environment":"4.3"}.items():
             self.assertRegex(text,rf'(?m)^{key} = "{re.escape(value)}"$')
         self.assertRegex(text,r'(?m)^Email = "placeholder@example.com"')
         self.assertIn('"Core.lua", "AddonMessages.lua", "NativeChatProbe.lua", "ConsoleMirror.lua", "HostIngress.lua", "Main.lua"',text)
