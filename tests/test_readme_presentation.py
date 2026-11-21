@@ -14,7 +14,7 @@ DOCS = ROOT / "docs" / "README.md"
 BANNER = ROOT / "assets" / "rcm-banner.svg"
 LOGO = ROOT / "assets" / "rcm-logo.svg"
 SCREENSHOT = ROOT / "assets" / "screenshots" / "rcm-v0.2.2-physical-names-redacted.png"
-CURRENT_SCREENSHOT = ROOT / "assets" / "screenshots" / "rcm-v0.2.21-live-ui-cropped.jpg"
+CURRENT_SCREENSHOT = ROOT / "assets" / "screenshots" / "rcm-v0.2.22-native-console-live-cropped.jpg"
 ARCHIVE = ROOT / "docs" / "ENGINEERING_ARCHIVE_README_THROUGH_20261121.md"
 
 
@@ -49,22 +49,22 @@ class ReadmePresentationTests(unittest.TestCase):
         with SCREENSHOT.open("rb") as image:
             self.assertEqual(image.read(8), bytes([137, 80, 78, 71, 13, 10, 26, 10]))
         body = README.read_text(encoding="utf-8")
-        self.assertIn("Earlier redacted v0.2.2 screenshot", body)
+        self.assertIn("redacted v0.2.2 image", body)
         self.assertIn("rcm-v0.2.2-physical-names-redacted.png", body)
         self.assertNotIn('src="assets/screenshots/rcm-v0.2.2-physical-names-redacted.png"', body)
         self.assertNotIn('src="assets/screenshots/rcm-v0.2.2-physical.png"', body)
 
-    def test_current_homepage_is_real_privacy_cropped_v021_jpeg(self):
+    def test_current_homepage_is_real_privacy_cropped_v022_jpeg(self):
         self.assertTrue(CURRENT_SCREENSHOT.is_file())
         with Image.open(CURRENT_SCREENSHOT) as image:
             self.assertEqual(image.format, "JPEG")
-            self.assertEqual(image.size, (992, 820))
+            self.assertEqual(image.size, (975, 810))
             image.verify()
         body = README.read_text(encoding="utf-8")
-        self.assertIn('src="assets/screenshots/rcm-v0.2.21-live-ui-cropped.jpg"', body)
-        self.assertIn("v0.2.21", body)
-        self.assertIn("exclude the character name and private HUD", body)
-        self.assertIn("Genuine RIFT Live screenshot", body)
+        self.assertIn('src="assets/screenshots/rcm-v0.2.22-native-console-live-cropped.jpg"', body)
+        self.assertIn("v0.2.22", body)
+        self.assertIn("exclude the player name and private HUD", body)
+        self.assertIn("Real RIFT Live screenshot", body)
 
     def test_social_preview_png_is_valid_size(self):
         preview = ROOT / "assets" / "rcm-social-preview.png"

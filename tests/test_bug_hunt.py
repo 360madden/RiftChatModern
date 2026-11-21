@@ -23,11 +23,11 @@ class BugHuntTests(unittest.TestCase):
         lua = LuaRuntime(unpack_returned_tuples=True)
         if source == "main":
             lua.execute(RIFT_MOCK)
-            for name in ("Core.lua", "AddonMessages.lua", "NativeChatProbe.lua",
+            for name in ("Core.lua", "AddonMessages.lua", "NativeChatProbe.lua", "ConsoleCategories.lua",
                          "ConsoleMirror.lua", "HostIngress.lua", "Main.lua"):
                 module = (ADDON / name).read_text(encoding="utf-8")
                 lua.execute("assert(loadstring("+_lua_quote(module)+
-                            "))({identifier='RiftChatModern',version='0.2.21'}, {})")
+                            "))({identifier='RiftChatModern',version='0.2.22'}, {})")
         else:
             lua.execute((ADDON / source).read_text(encoding="utf-8"))
         lua.execute(script)
@@ -66,11 +66,11 @@ function proto:SetPoint(...)
     original(self,...)
 end
 ''')
-        for name in ("Core.lua", "AddonMessages.lua", "NativeChatProbe.lua",
+        for name in ("Core.lua", "AddonMessages.lua", "NativeChatProbe.lua", "ConsoleCategories.lua",
                      "ConsoleMirror.lua", "HostIngress.lua", "Main.lua"):
             src = (ADDON / name).read_text(encoding="utf-8")
             lua.execute("assert(loadstring("+_lua_quote(src)+
-                        "))({identifier='RiftChatModern',version='0.2.21'}, {})")
+                        "))({identifier='RiftChatModern',version='0.2.22'}, {})")
         lua.execute(r'''
 fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")
 fire(Event.Addon.Load.End,"RiftChatModern")

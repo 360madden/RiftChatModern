@@ -16,7 +16,7 @@ except ImportError:
     LuaRuntime=None
 
 ADDON=Path(__file__).resolve().parents[1]/"addon"/"RiftChatModern"
-FILES=("Core.lua","AddonMessages.lua","NativeChatProbe.lua",
+FILES=("Core.lua","AddonMessages.lua","NativeChatProbe.lua", "ConsoleCategories.lua",
        "ConsoleMirror.lua","HostIngress.lua","Main.lua")
 
 @unittest.skipUnless(LuaRuntime is not None,"Lua 5.1 via Lupa required")
@@ -27,7 +27,7 @@ class SaveLifecycleTests(unittest.TestCase):
         for name in FILES:
             src=(ADDON/name).read_text(encoding="utf-8")
             lua.execute("assert(loadstring("+_lua_quote(src)+
-                        "))({identifier='RiftChatModern',version='0.2.21'}, {})")
+                        "))({identifier='RiftChatModern',version='0.2.22'}, {})")
         if setup:lua.execute(setup)
         lua.execute(body)
 

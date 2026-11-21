@@ -31,7 +31,7 @@ SENDER_PROJECT = ROOT / "tools" / "RcmEditorSender" / "RcmEditorSender.csproj"
 SENDER_DLL = ROOT / "tools" / "RcmEditorSender" / "bin" / "Release" / "net10.0-windows" / "RcmEditorSender.dll"
 NODE = shutil.which("node")
 DOTNET = shutil.which("dotnet")
-MODULES = ("Core.lua", "AddonMessages.lua", "NativeChatProbe.lua",
+MODULES = ("Core.lua", "AddonMessages.lua", "NativeChatProbe.lua", "ConsoleCategories.lua",
            "ConsoleMirror.lua", "HostIngress.lua", "Main.lua")
 
 
@@ -87,7 +87,7 @@ class EditorSenderRoundtripTests(unittest.TestCase):
         for name in MODULES:
             source = (ADDON / name).read_text(encoding="utf-8")
             lua.execute("local f=assert(loadstring(" + _lua_quote(source) +
-                        "));assert(f({identifier='RiftChatModern',version='0.2.21'}, {})==nil)")
+                        "));assert(f({identifier='RiftChatModern',version='0.2.22'}, {})==nil)")
         lua.execute('fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")')
         lua.execute('fire(Event.Addon.Load.End,"RiftChatModern")')
         lua.execute("assert(RiftChatModernAPI.Show())")

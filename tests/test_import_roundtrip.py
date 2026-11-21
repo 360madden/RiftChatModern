@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ADDON = ROOT / "addon" / "RiftChatModern"
 NODE = shutil.which("node") or r"C:\Program Files\nodejs\node.exe"
 ENCODER = ROOT / "tools" / "rcm-chat-import.cjs"
-MODULES = ("Core.lua", "AddonMessages.lua", "NativeChatProbe.lua",
+MODULES = ("Core.lua", "AddonMessages.lua", "NativeChatProbe.lua", "ConsoleCategories.lua",
            "ConsoleMirror.lua", "HostIngress.lua", "Main.lua")
 
 
@@ -83,7 +83,7 @@ class ImportRoundTripTests(unittest.TestCase):
         for module in MODULES:
             text = (ADDON / module).read_text(encoding="utf-8")
             lua.execute("assert(loadstring(" + _lua_quote(text) +
-                        "))({identifier='RiftChatModern',version='0.2.21'}, {})")
+                        "))({identifier='RiftChatModern',version='0.2.22'}, {})")
         lua.execute('fire(Event.Addon.SavedVariables.Load.End, "RiftChatModern")')
         lua.execute('fire(Event.Addon.Load.End, "RiftChatModern")')
         return lua

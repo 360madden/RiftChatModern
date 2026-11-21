@@ -2,7 +2,7 @@
 -- Native player say/tell/guild transmit and full native chat interception are NOT
 -- exposed by the verified addon APIs. This UI never pretends to send those.
 local info = ...
-local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.21"
+local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.22"
 local Core = _G.RiftChatModernCore
 local MessageBridge = _G.RiftChatModernAddonMessages
 local NativeProbe = _G.RiftChatModernNativeProbe
@@ -11,7 +11,7 @@ local HostIngress = _G.RiftChatModernHostIngress
 local DEFAULT_W, DEFAULT_H, MIN_W, MIN_H=760,618,680,480
 local W,H,LINES=DEFAULT_W,DEFAULT_H,13
 local ROW_H,MAX_ROWS=24,80
-local TAB_ORDER={"all","chat","imports","system","npc","addons","dev"}
+local TAB_ORDER={"all","imports","system","npc","addons","dev","native"}
 local ACTION_ORDER={"Copy","Clear","Focus","Mirror"}
 local ACTION_WEIGHTS={170/587,98/587,145/587,174/587}
 -- Version 0.2.20: image-backed glass chrome. Colors below remain the safe
@@ -128,6 +128,8 @@ end
 -- to 60 distinct upvalues. Extra direct state captures break addon loading.
 controls=controls or {}
 controls._skin={}
+controls._categories=_G.RiftChatModernConsoleCategories
+controls._native={active=false,group="game",sourceIndex=nil,page=0,snapshot=nil,lines={}}
 controls._commandActions={
     recall=recallCommand,
     changed=function(current)
@@ -501,16 +503,36 @@ render=function()
             item.marker:SetVisible(false)
         end
     end
+    local nativeActive=controls._native.active==true
+    if controls._native.panel then
+        controls._native.panel:SetVisible(nativeActive)
+    end
+    if nativeActive then
+        showHistoryRows(false)
+        if controls._native.paint then controls._native.paint() end
+    elseif not selectedId then
+        showHistoryRows(true)
+    end
     local count=math.max(0,total-visibleOffset)
     local first=#selection>0 and (count-#selection+1) or 0
     if selectedId then
         local current=model:getMessage(selectedId)
         if not current then closeDetails() end
     end
-    notifyUi(string.format("%d messages  •  showing %d–%d  •  %s  •  native chat separate",
-        total,first,count,model.filter))
+    if nativeActive then
+        notifyUi("Read-only RIFT console subscriptions; no native player-chat transcript")
+    else
+        notifyUi(string.format("%d messages  •  showing %d–%d  •  %s  •  native chat separate",
+            total,first,count,model.filter))
+    end
+    if controls.PageUp and controls.PageDown then
+        controls.PageUp.label:SetText(nativeActive and "PREV" or "OLDER")
+        controls.PageDown.label:SetText(nativeActive and "NEXT" or "NEWER")
+    end
     for key,label in pairs(tabLabels or {}) do
-        local selected=key==model.filter
+        local selected=nativeActive and key=="native"
+            or (not nativeActive and (key==model.filter
+                or key=="imports" and model.filter=="chat"))
         ink(label,selected and C.accent or C.muted)
         local item=controls and controls["Tab"..key]
         if item and item.active~=selected then
@@ -708,6 +730,24 @@ layoutWindow=function()
     end
     local overlayW,overlayH=cardW-8,cardH-8
     place(detailOverlay,list,4,4,overlayW,overlayH)
+    local native=controls._native
+    if native.panel then
+        place(native.panel,list,4,4,overlayW,overlayH)
+        place(native.title,native.panel,14,10,math.max(100,overlayW-278),24)
+        placeButton("NativeSource",native.panel,overlayW-250,9,132,27)
+        placeButton("NativeRefresh",native.panel,overlayW-110,9,98,27)
+        local groupWidth=(overlayW-20-4*6)/5
+        for i,entry in ipairs(native.groupButtons or {}) do
+            placeButton("NativeGroup"..entry[1],native.panel,
+                10+(i-1)*(groupWidth+6),42,groupWidth,30)
+        end
+        native.pageSize=math.max(2,math.min(16,math.floor((overlayH-128)/23)))
+        for i,line in ipairs(native.line) do
+            place(line.label,native.panel,18,82+(i-1)*23,overlayW-122,23)
+            place(line.state,native.panel,overlayW-85,82+(i-1)*23,65,23)
+        end
+        place(native.note,native.panel,14,overlayH-29,overlayW-28,22)
+    end
     if controls._skin.detail then place(controls._skin.detail,detailOverlay,0,0,overlayW,overlayH) end
     place(detailTitle,detailOverlay,14,13,overlayW-138,25)
     place(detailBody,detailOverlay,14,51,overlayW-28,math.max(24,overlayH-124))
@@ -821,12 +861,25 @@ local function makeUi()
     end)
     divider=frame("Divider",panel,0,58,W,1,C.accent)
     tabLabels={}
-    local tabs={{"all","ALL"},{"chat","CHAT"},{"imports","IMPORTS"},
-        {"system","SYSTEM"},{"npc","NPC"},{"addons","ADDONS"},{"dev","DEV"}}
+    local tabs={{"all","ALL"},{"imports","IMPORTS"},
+        {"system","NOTICES"},{"npc","NPC SAY"},{"addons","ADDONS"},{"dev","DEV"},
+        {"native","CONSOLE"}}
     for i,tab in ipairs(tabs) do
         local name,display=tab[1],tab[2]
         local b,label=button("Tab"..name,display,panel,16+(i-1)*122,69,110,34,
-            function() model:setFilter(name);visibleOffset=0;render() end)
+            function()
+                if name=="native" then
+                    closeDetails()
+                    controls._native.active=true
+                    controls._native.snapshot=nil
+                    controls._native.page=0
+                else
+                    controls._native.active=false
+                    model:setFilter(name);visibleOffset=0
+                end
+                render()
+            end)
+        label:SetFontSize(13)
         tabLabels[name]=label
     end
     findLabel=text("FindLabel",panel,"SEARCH",17,118,60,25,15,C.muted,true)
@@ -847,12 +900,20 @@ local function makeUi()
         searchField:SetText(""); model:setSearch("");visibleOffset=0;render()
     end)
     button("PageUp","OLDER",panel,686,160,64,34,function()
+        if controls._native.active then
+            controls._native.page=math.max(0,controls._native.page-1)
+            render();return
+        end
         local _,total=model:getHistory(model.filter,model.search,1,0)
         local oldestOffset=total>0 and math.floor((total-1)/LINES)*LINES or 0
         visibleOffset=math.min(oldestOffset,visibleOffset+LINES)
         render()
     end)
     button("PageDown","NEWER",panel,686,205,64,34,function()
+        if controls._native.active then
+            controls._native.page=controls._native.page+1
+            render();return
+        end
         visibleOffset=math.max(0,visibleOffset-LINES);render()
     end)
     rows={}
@@ -885,8 +946,56 @@ local function makeUi()
         352,275,100,22,14,C.muted,true)
     button("DetailClose","CLOSE",detailOverlay,551,267,94,36,closeDetails)
     detailOverlay:SetVisible(false)
+    -- Read-only native RIFT console inspector. These are configured
+    -- subscriptions from Inspect.Console.Detail, not received social text.
+    local native=controls._native
+    native.panel=frame("NativeCatalog",list,4,4,658,318,C.header)
+    native.panel:SetMouseMasking("full")
+    native.title=text("NativeCatalogTitle",native.panel,"RIFT CONSOLE SETTINGS",
+        14,12,300,24,17,C.accent,true)
+    native.note=text("NativeCatalogNote",native.panel,
+        "Subscription metadata only; NOT a chat transcript",
+        14,289,600,22,13,C.muted)
+    native.line={}
+    for i=1,16 do
+        native.line[i]={
+            label=text("NativeCategoryLabel"..i,native.panel,"",
+                18,82+(i-1)*23,380,23,16,C.text),
+            state=text("NativeCategoryState"..i,native.panel,"",
+                520,82+(i-1)*23,90,23,15,C.muted,true)}
+    end
+    native.groupButtons={{"game","GAME"},{"loot","LOOT"},{"player","PLAYER"},
+        {"public","CHANNELS"},{"combat","COMBAT"}}
+    for _,entry in ipairs(native.groupButtons) do
+        local key,title=entry[1],entry[2]
+        button("NativeGroup"..key,title,native.panel,10,42,95,30,function()
+            native.group=key;native.page=0;render()
+        end)
+    end
+    button("NativeSource","NEXT CONSOLE",native.panel,395,9,127,27,function()
+        local snapshot=native.snapshot
+        local count=snapshot and snapshot.consoleCount or 0
+        if count>0 then
+            local _,index=controls._categories.choose(snapshot,native.sourceIndex)
+            native.sourceIndex=index%count+1
+            native.page=0
+        end
+        render()
+    end)
+    button("NativeRefresh","REFRESH",native.panel,532,9,101,27,function()
+        native.snapshot=nil
+        native.page=0
+        render()
+    end)
+    native.panel:SetVisible(false)
     button("Copy","COPY HISTORY",panel,14,490,170,35,copyHistory,true)
     button("Clear","CLEAR",panel,195,490,98,35,function()
+        if controls._native.active then
+            if statusField then
+                statusField:SetText("History CLEAR is disabled in read-only CONSOLE view")
+            end
+            return
+        end
         closeDetails();model:clear();visibleOffset=0;render()
     end)
     button("Focus","FOCUS INPUT",panel,304,490,145,35,focusEditor)
@@ -1163,6 +1272,55 @@ local function getNativeConsoles()
         focusCount=0,windows={},nativeTranscriptReadable=false,
         nativeSocialSendAvailable=false}
 end
+-- A read-only view of RIFT's *configured* console subscriptions. This
+-- cannot read the message transcript or change the game's console options.
+controls._native.paint=function()
+    local view=controls._native
+    if not view.panel or not view.active then return end
+    if not view.snapshot then view.snapshot=getNativeConsoles() end
+    local catalog=controls._categories
+    if not catalog then
+        view.title:SetText("RIFT CONSOLE SETTINGS • categories unavailable")
+        view.note:SetText("No native category registry loaded.")
+        for _,line in ipairs(view.line) do
+            line.label:SetVisible(false);line.state:SetVisible(false)
+        end
+        return
+    end
+    local group=catalog.group(view.snapshot,view.group,view.sourceIndex)
+    if not group then return end
+    local pagesize=view.pageSize or 8
+    local total=#group.entries
+    local pages=math.max(1,math.ceil(total/pagesize))
+    view.page=math.min(math.max(0,view.page),pages-1)
+    view.title:SetText(group.consoleName.." • "..group.title)
+    for i,line in ipairs(view.line) do
+        local index=view.page*pagesize+i
+        local entry=i<=pagesize and group.entries[index] or nil
+        line.label:SetVisible(entry~=nil)
+        line.state:SetVisible(entry~=nil)
+        if entry then
+            line.label:SetText(entry.label)
+            line.state:SetText(entry.state)
+            local color=entry.state=="ON" and C.good
+                or entry.state=="OFF" and C.muted
+                or entry.state=="N/A" and C.warning or C.info
+            ink(line.state,color)
+            ink(line.label,C.text)
+        end
+    end
+    if group.id=="public" and total==0 then
+        view.note:SetText("No enabled public names reported; disabled names unknown")
+    else
+        view.note:SetText(string.format("%d ON / %d OFF / %d ? / %d N/A  •  page %d/%d  •  no chat text",
+            group.enabled,group.disabled,group.unknown,group.notExposed,
+            view.page+1,pages))
+    end
+    for _,item in ipairs(view.groupButtons or {}) do
+        local ref=controls["NativeGroup"..item[1]]
+        if ref then ink(ref.label,item[1]==view.group and C.good or C.text) end
+    end
+end
 local nativeChannelNames={"say","yell","tell","party","raid","raidWarning",
     "guild","officer","system","npc","emote","combatGood","combatBad",
     "combatOther","combatNeutral","combatSpecial","craftingSelf",
@@ -1171,6 +1329,24 @@ local nativeChannelNames={"say","yell","tell","party","raid","raidWarning",
 local function nativeProbeCommand(args)
     local data=getNativeConsoles()
     args=(args or ""):lower()
+    local catalog=controls._categories
+    if args=="help" then
+        return ":native view | groups | game | loot | player | public | combat | channels | copy (subscriptions, NOT messages)"
+    elseif args=="view" then
+        closeDetails()
+        controls._native.active=true
+        controls._native.group="game"
+        controls._native.page=0
+        controls._native.snapshot=data
+        if panel then render() end
+        return "Read-only RIFT console subscriptions view; NOT a chat transcript."
+    elseif catalog and (args=="groups" or args=="map") then
+        return boundedUtf8(catalog.overview(data),512)
+    elseif catalog and (args=="game" or args=="loot" or args=="player"
+        or args=="public" or args=="combat") then
+        local summary=catalog.summary(data,args)
+        return summary or "Console subscription categories unavailable."
+    end
     if args=="channels" or args=="copy" then
         if not data.consoleListReady then return "Console list API unavailable." end
         local lines={"RIFT native console subscriptions (metadata, not chat text):"}
@@ -1440,6 +1616,10 @@ _G.RiftChatModernAPI={
         data.windowWidth=W;data.windowHeight=H
         data.minimumWindowWidth=MIN_W;data.minimumWindowHeight=MIN_H
         data.visibleRows=LINES
+        data.displayMode=controls._native.active and "native_subscriptions" or "history"
+        data.nativeSubscriptionsReadOnly=true
+        data.nativeTranscriptReadable=false
+        data.nativeSourceGroup=controls._native.active and controls._native.group or nil
         data.commandHistoryCount=#commandHistory
         data.commandHistoryPersisted=false
         data.saveCheckpoint=saveStatus()

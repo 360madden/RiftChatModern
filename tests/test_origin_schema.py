@@ -16,7 +16,7 @@ except ImportError:
 
 ROOT=Path(__file__).resolve().parents[1]
 ADDON=ROOT/"addon"/"RiftChatModern"
-MODULES=("Core.lua","AddonMessages.lua","NativeChatProbe.lua",
+MODULES=("Core.lua","AddonMessages.lua","NativeChatProbe.lua", "ConsoleCategories.lua",
          "ConsoleMirror.lua","HostIngress.lua","Main.lua")
 
 @unittest.skipUnless(LuaRuntime is not None,"Lupa Lua 5.1 required")
@@ -32,7 +32,7 @@ class ProvenanceSchemaTests(unittest.TestCase):
         for module in MODULES:
             source=(ADDON/module).read_text(encoding="utf-8")
             lua.execute("assert(loadstring("+_lua_quote(source)+
-                        "))({identifier='RiftChatModern',version='0.2.21'}, {})")
+                        "))({identifier='RiftChatModern',version='0.2.22'}, {})")
         lua.execute(script)
 
     def test_migrate_35_legacy_records_preserves_ids_times_and_real_category(self):

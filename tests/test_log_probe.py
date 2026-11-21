@@ -15,7 +15,7 @@ except ImportError:
     LuaRuntime = None
 
 ADDON = Path(__file__).resolve().parents[1] / "addon" / "RiftChatModern"
-FILES = ("Core.lua", "AddonMessages.lua", "NativeChatProbe.lua",
+FILES = ("Core.lua", "AddonMessages.lua", "NativeChatProbe.lua", "ConsoleCategories.lua",
          "ConsoleMirror.lua", "HostIngress.lua", "Main.lua")
 
 
@@ -27,7 +27,7 @@ class LogProbeTests(unittest.TestCase):
         for filename in FILES:
             source = (ADDON / filename).read_text(encoding="utf-8")
             lua.execute("assert(loadstring(" + _lua_quote(source) +
-                        "))({identifier='RiftChatModern',version='0.2.21'}, {})")
+                        "))({identifier='RiftChatModern',version='0.2.22'}, {})")
         lua.execute(script)
 
     def test_explicit_logprobe_emits_luapad_compatible_marker(self):

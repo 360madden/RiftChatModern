@@ -1,4 +1,4 @@
-"""RiftChatModern v0.2.21 complete-message reader and clipboard controls."""
+"""RiftChatModern v0.2.22 complete-message reader and clipboard controls."""
 from pathlib import Path
 import sys
 import unittest
@@ -19,11 +19,11 @@ class MessageReaderTests(unittest.TestCase):
     def run_lua(self,source):
         lua=LuaRuntime(unpack_returned_tuples=True)
         lua.execute(RIFT_MOCK)
-        for name in ("Core.lua","AddonMessages.lua","NativeChatProbe.lua","ConsoleMirror.lua","HostIngress.lua"):
+        for name in ("Core.lua","AddonMessages.lua","NativeChatProbe.lua", "ConsoleCategories.lua","ConsoleMirror.lua","HostIngress.lua"):
             lua.execute((ADDON / name).read_text(encoding="utf-8"))
         main=(ADDON/"Main.lua").read_text(encoding="utf-8")
         lua.execute("assert(loadstring("+_lua_quote(main)+"))"
-                    "({identifier='RiftChatModern',version='0.2.21'})")
+                    "({identifier='RiftChatModern',version='0.2.22'})")
         lua.execute(source)
 
     def test_click_row_opens_full_text_and_copy_selected(self):
@@ -39,7 +39,7 @@ assert(frames.RCMLineText2.text:find("...",1,true))
 triggerFrame(frames.RCMLine2,Event.UI.Input.Mouse.Left.Click)
 assert(frames.RCMDetailOverlay.visible==true)
 -- The detail reader is modal: history rows must not paint or intercept
--- input behind its content (physically reproduced on v0.2.21).
+-- input behind its content (physically reproduced on v0.2.22).
 assert(frames.RCMLine1.visible==false)
 assert(frames.RCMLine2.visible==false)
 assert(frames.RCMDetailPlate.layer==-8) -- texture below detail text/buttons

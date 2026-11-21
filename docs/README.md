@@ -33,6 +33,7 @@ as [the complete engineering archive](ENGINEERING_ARCHIVE_README_THROUGH_2026112
 | v0.2.19 | [Progress-based multipart idle deadline](V0_2_19_MULTIPART_IDLE_TIMEOUT_20261120.md) |
 | v0.2.20 | [Glass UI / reference-inspired skin](V0_2_20_GLASS_UI_20261121.md) |
 | v0.2.21 | [Independent timestamp/channel/sender/body columns](V0_2_21_MESSAGE_COLUMNS_20261121.md) |
+| v0.2.22 | [Native console subscription categories and provenance fixes](V0_2_22_NATIVE_RIFT_CONSOLE_CATEGORIES_20261121.md) |
 
 All intermediate milestone reports remain in this directory. See the
 [complete engineering archive](ENGINEERING_ARCHIVE_README_THROUGH_20261121.md)
@@ -64,13 +65,14 @@ physically verified. Host-imported chat remains labeled as host-origin data.
 ## Screenshot and physical acceptance
 
 - [Early physical UI acceptance](LIVE_ACCEPTANCE_V0_2_2_20261120.md)
+- [Physical v0.2.22 Game, Loot, Player, and Channel subscription acceptance](V0_2_22_NATIVE_RIFT_CONSOLE_CATEGORIES_20261121.md)
 - [Physical v0.2.21 drag/resize, editor input and persistence proof](V0_2_21_UI_INTERACTION_ACCEPTANCE_20261121.md)
 - [Physical v0.2.21 columns, tabs and modal acceptance](V0_2_21_PHYSICAL_ACCEPTANCE_20261121.md)
 - [Physical v0.2.20 screenshot and managed foreground acceptance](V0_2_20_NATIVE_SCREENSHOT_ACCEPTANCE_20261121.md)
 - [One-command screenshot workflow](RCM_ONE_COMMAND_SCREENSHOT_20261120.md)
 - [RIFT screenshot trigger](RCM_NUMPAD_SCREENSHOT_TRIGGER_20261120.md)
 
-The public homepage now displays a genuine, privacy-safe cropped
-v0.2.21 screenshot from the physical RIFT client. The historical v0.2.2
-screenshot is retained and separately labeled. See
+The public homepage displays a genuine, privacy-safe cropped
+v0.2.22 CONSOLE inspector screenshot from the physical RIFT client.
+The historical v0.2.21 and v0.2.2 images are retained and labeled. See
 [GitHub presentation and screenshot provenance](GITHUB_PRESENTATION_20261121.md).

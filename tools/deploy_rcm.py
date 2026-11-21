@@ -28,7 +28,7 @@ from rcm_session_preflight import GAME, parse_tasklist
 
 ADDON = "RiftChatModern"
 MODULES = ("Core.lua", "AddonMessages.lua", "NativeChatProbe.lua",
-           "ConsoleMirror.lua", "HostIngress.lua", "Main.lua")
+           "ConsoleCategories.lua", "ConsoleMirror.lua", "HostIngress.lua", "Main.lua")
 MAX_FILE = 16 * 1024 * 1024
 
 

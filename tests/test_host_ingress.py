@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ADDON = ROOT / "addon" / "RiftChatModern"
 ENCODER = ROOT / "tools" / "rcm-chat-import.cjs"
 NODE = shutil.which("node") or r"C:\Program Files\nodejs\node.exe"
-MODULES = ("Core.lua", "AddonMessages.lua", "NativeChatProbe.lua",
+MODULES = ("Core.lua", "AddonMessages.lua", "NativeChatProbe.lua", "ConsoleCategories.lua",
            "ConsoleMirror.lua", "HostIngress.lua", "Main.lua")
 
 
@@ -50,7 +50,7 @@ class ManualHostIngressTests(unittest.TestCase):
             source = (ADDON / filename).read_text(encoding="utf-8")
             chunk = ("local f=assert(loadstring(" + _lua_quote(source)
                      + "));assert(f({identifier='RiftChatModern',"
-                     "version='0.2.21'}, {})==nil)")
+                     "version='0.2.22'}, {})==nil)")
             lua.execute(chunk)
         if saved_setup:
             lua.execute(saved_setup)

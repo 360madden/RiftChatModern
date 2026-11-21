@@ -29,6 +29,17 @@ local function rowLabel(row)
         local title=row.channelName or channelTitle(row.channelKind) or "Unknown"
         return (originLabels[row.origin] or "UNVERIFIED").." / "..title
     end
+    -- A RIFT screen notification (Event.Chat.Notify) is NOT a general
+    -- native console "System" transcript entry. An Event.Chat.Npc row is
+    -- specifically NPC Say, not generic player Say. Preserve kind/filter
+    -- and stored history schema, but label the displayed provenance.
+    if row.kind=="system" and row.origin=="game_event" then
+        return "SCREEN NOTIFY"
+    elseif row.kind=="npc" and row.origin=="game_event" then
+        return "NPC SAY"
+    elseif row.kind=="system" and row.origin=="local_addon" then
+        return "RCM SYSTEM"
+    end
     return row.kind:upper()
 end
 local function rowShortLabel(row)
@@ -37,6 +48,9 @@ local function rowShortLabel(row)
             or row.origin=="legacy_unknown" and "LEGACY" or "EXTERNAL"
         return origin.."/"..(row.channelKind or "UNKNOWN"):upper()
     end
+    if row.kind=="system" and row.origin=="game_event" then return "NOTIFY" end
+    if row.kind=="npc" and row.origin=="game_event" then return "NPC SAY" end
+    if row.kind=="system" and row.origin=="local_addon" then return "RCM" end
     return row.kind:upper()
 end
 local function importFromLegacy(row)
@@ -380,7 +394,7 @@ function Model:commandCount()
     return count
 end
 function Model:status()
-    return {version="0.2.21",schemaVersion=2,
+    return {version="0.2.22",schemaVersion=2,
         provenanceRequired=true,historyCount=#self.saved.history,
         filter=self.filter,search=self.search,revision=self.revision,
         commandCount=self:commandCount(),nativeSocialSendAvailable=false,

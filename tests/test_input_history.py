@@ -1,4 +1,4 @@
-"""RiftChatModern v0.2.21 editor recall, draft and search-sync regressions.
+"""RiftChatModern v0.2.22 editor recall, draft and search-sync regressions.
 
 These are offline Lua 5.1 mock tests, not physical RIFT keyboard acceptance.
 """
@@ -15,7 +15,7 @@ except ImportError:
     LuaRuntime = None
 
 ADDON = Path(__file__).resolve().parents[1] / "addon" / "RiftChatModern"
-MODULES = ("Core.lua", "AddonMessages.lua", "NativeChatProbe.lua",
+MODULES = ("Core.lua", "AddonMessages.lua", "NativeChatProbe.lua", "ConsoleCategories.lua",
            "ConsoleMirror.lua", "HostIngress.lua", "Main.lua")
 
 
@@ -27,7 +27,7 @@ class InputHistoryTests(unittest.TestCase):
         for filename in MODULES:
             source = (ADDON / filename).read_text(encoding="utf-8")
             lua.execute("assert(loadstring(" + _lua_quote(source) +
-                        "))({identifier='RiftChatModern',version='0.2.21'}, {})")
+                        "))({identifier='RiftChatModern',version='0.2.22'}, {})")
         lua.execute(scenario)
 
     def test_up_down_cycles_and_restores_unsent_draft(self):

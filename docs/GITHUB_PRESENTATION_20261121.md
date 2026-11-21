@@ -8,7 +8,8 @@
 |---|---|
 | [`assets/rcm-banner.svg`](../assets/rcm-banner.svg) | Wide, editable vector banner at the top of the README |
 | [`assets/rcm-logo.svg`](../assets/rcm-logo.svg) | Reusable square RCM identity mark |
-| [`assets/screenshots/rcm-v0.2.21-live-ui-cropped.jpg`](../assets/screenshots/rcm-v0.2.21-live-ui-cropped.jpg) | **Current homepage image:** genuine physical RIFT Live v0.2.21 screenshot, cropped to the chat window; player name and HUD excluded |
+| [`assets/screenshots/rcm-v0.2.22-native-console-live-cropped.jpg`](../assets/screenshots/rcm-v0.2.22-native-console-live-cropped.jpg) | **Current homepage image:** genuine v0.2.22 RIFT Live CONSOLE subscriber view, player-name HUD cropped away |
+| [`assets/screenshots/rcm-v0.2.21-live-ui-cropped.jpg`](../assets/screenshots/rcm-v0.2.21-live-ui-cropped.jpg) | Historical v0.2.21 real chat-style layout, privacy-cropped, retained |
 | [`assets/screenshots/rcm-v0.2.2-physical-names-redacted.png`](../assets/screenshots/rcm-v0.2.2-physical-names-redacted.png) | Historical v0.2.2 physical screenshot; player-name regions blurred; retained for comparison |
 | [`assets/rcm-social-preview.png`](../assets/rcm-social-preview.png) | 1280×640 GitHub social sharing image, ready for upload |
 | [`tools/create_social_preview.py`](../tools/create_social_preview.py) | Reproducible social-preview generator (optional Pillow dependency) |
@@ -49,7 +50,11 @@ Do not report this setting as applied until it has been verified in GitHub.
 - Do not create a license without the owner's explicit choice. The code is
   public, but a general software license has not yet been selected.
 
-## Screenshot refresh completed: v0.2.21
+## Screenshot refresh completed: v0.2.22
+
+Current real RIFT native JPEG `2026-11-21_113211.jpg` (2560×1369; SHA-256 `f3fb2a1e655bea4dfe440f0c00911303d921fb4712eeb6679de1540e5c767edb`) was visually reviewed. The current README screenshot is a 975×810 pixel crop `(1540,355,2515,1165)` with SHA-256 `d2f28f6bee8556a30b303f8d01350040baaf4a9bb199016b990a53ec5f37c4a9`, taken from the original game image (no generated replacement). The player portrait, character name and native chat are outside its bounds. It shows real runtime public channel names and ON states.
+
+## Previous screenshot refresh: v0.2.21
 
 RCM v0.2.21 was verified running in the real RIFT client. The native JPEG
 `2026-11-21_101443.jpg` was inspected at 2560×1369 (SHA-256
