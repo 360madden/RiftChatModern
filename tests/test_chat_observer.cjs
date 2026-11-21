@@ -6,7 +6,7 @@ const os=require("node:os");
 const path=require("node:path");
 const {
   parseCandidateLine,attachChatObserver,safePrefix,validLogPath,
-  readConfiguredLogPath,resolveLogSelection,options
+  readConfiguredLogPath,readRiftClientConfig,resolveLogSelection,options
 }=require("../tools/rcm-chat-observer.cjs");
 const {LogTailProbe}=require("../../LuaPadModern/tools/rift-log-probe.cjs");
 
@@ -169,6 +169,38 @@ test("Rift.cfg DocumentsDirectory overrides stale fallback logs and reports sour
     assert.equal(override.filePath,path.join(legacy,"Log.txt"));
   }finally{fs.rmSync(dir,{recursive:true,force:true})}
 });
+test("Rift.cfg LogConsole is reported as persisted configuration, never a live state",()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),"rcm-logging-readiness-"));
+  try{
+    const roaming=path.join(dir,"Roaming");
+    const cfg=path.join(roaming,"RIFT","Rift.cfg");
+    fs.mkdirSync(path.dirname(cfg),{recursive:true});
+    const env={APPDATA:roaming,USERPROFILE:dir};
+    const docs=path.join(dir,"Redirected Documents");
+    fs.writeFileSync(cfg,[
+      "[Other]","LogConsole = True","[Client]",
+      "DocumentsDirectory = "+docs,"LogConsole = False",""
+    ].join("\n"));
+    const off=readRiftClientConfig(env);
+    assert.equal(off.filePath,path.join(docs,"Log.txt"));
+    assert.equal(off.logConsoleConfigured,false);
+    assert.equal(off.configReadable,true);
+    assert.equal(off.runtimeLoggingEnabledVerified,false);
+    assert.equal(Object.hasOwn(off,"chatHistory"),false);
+    fs.writeFileSync(cfg,"[Client]\nLogConsole = True\n");
+    const on=readRiftClientConfig(env);
+    assert.equal(on.logConsoleConfigured,true);
+    assert.equal(on.filePath,null);
+    assert.equal(on.runtimeLoggingEnabledVerified,false);
+    fs.writeFileSync(cfg,"[Client]\nLogConsole = suspicious\n");
+    assert.equal(readRiftClientConfig(env).logConsoleConfigured,null);
+    fs.rmSync(cfg);
+    const missing=readRiftClientConfig(env);
+    assert.equal(missing.logConsoleConfigured,null);
+    assert.equal(missing.configReadable,false);
+  }finally{fs.rmSync(dir,{recursive:true,force:true})}
+});
+
 test("invalid or oversized RIFT config fails safely to bounded default candidates",()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),"rcm-config-"));
   try{

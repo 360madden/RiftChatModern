@@ -121,39 +121,51 @@ function validLogPath(value) {
   }
   return path.resolve(value);
 }
-// RIFT's [Client] DocumentsDirectory overrides the conventional Windows
-// Documents location. Select that exact output root before guessing other
-// paths. This is bounded read-only configuration inspection, not game input.
-function readConfiguredLogPath(env=process.env) {
+// RIFT's [Client] DocumentsDirectory overrides conventional Documents.
+// Read the same bounded config once for both the exact log path and its saved
+// LogConsole flag. A disk setting is NOT proof of current in-game toggle state.
+function readRiftClientConfig(env=process.env) {
+  const result={filePath:null,logConsoleConfigured:null,
+    configReadable:false,runtimeLoggingEnabledVerified:false};
   const roaming=env.APPDATA ||
     (env.USERPROFILE ? path.join(env.USERPROFILE,"AppData","Roaming") : null);
-  if(typeof roaming!=="string" || !path.isAbsolute(roaming))return null;
+  if(typeof roaming!=="string" || !path.isAbsolute(roaming))return result;
   const config=path.join(roaming,"RIFT","Rift.cfg");
   let value;
   try {
     const info=fs.statSync(config);
-    if(!info.isFile() || info.size>512*1024)return null;
+    if(!info.isFile() || info.size>512*1024)return result;
     value=fs.readFileSync(config,"utf8").replace(/^\uFEFF/,"");
-  }catch(_){return null}
+  }catch(_){return result}
+  result.configReadable=true;
   let section="",root=null;
   for(const line of value.split(/\r?\n/)) {
     const hdr=/^\s*\[([A-Za-z_0-9]+)\]\s*$/.exec(line);
     if(hdr){section=hdr[1].toLowerCase();continue}
     if(section!=="client")continue;
     const item=/^\s*DocumentsDirectory\s*=\s*(.*?)\s*$/.exec(line);
-    if(!item)continue;
-    root=item[1].trim().replace(/^"(.*)"$/,"$1");
+    if(item)root=item[1].trim().replace(/^"(.*)"$/,"$1");
+    const flag=/^\s*LogConsole\s*=\s*(.*?)\s*$/i.exec(line);
+    if(flag) {
+      const raw=flag[1].trim();
+      result.logConsoleConfigured=/^true$/i.test(raw) ? true
+        : /^false$/i.test(raw) ? false : null;
+    }
   }
   if(typeof root!=="string" || root.length===0 || root.length>2048 ||
-    /[\x00-\x1F\x7F]/.test(root))return null;
+    /[\x00-\x1F\x7F]/.test(root))return result;
   root=root.replace(/%([A-Za-z_0-9]+)%/g,(_,key)=>{
     const match=Object.keys(env).find(name=>name.toLowerCase()===key.toLowerCase());
     return match ? env[match] : "%"+key+"%";
   });
-  if(!path.isAbsolute(root) || root.includes("%"))return null;
-  return path.join(root,"Log.txt");
+  if(!path.isAbsolute(root) || root.includes("%"))return result;
+  result.filePath=path.join(root,"Log.txt");
+  return result;
 }
-function resolveLogSelection(cfg,env=process.env) {
+function readConfiguredLogPath(env=process.env) {
+  return readRiftClientConfig(env).filePath;
+}
+function resolveLogSelection(cfg,env=process.env,clientConfig=null) {
   if(cfg.filePath){
     return {filePath:cfg.filePath,candidates:[cfg.filePath],source:"explicit_path"};
   }
@@ -164,7 +176,7 @@ function resolveLogSelection(cfg,env=process.env) {
       candidates.find(f=>fs.existsSync(path.dirname(f)))||candidates[0],
       candidates,source:"luapad_override"};
   }
-  const configured=readConfiguredLogPath(env);
+  const configured=(clientConfig||readRiftClientConfig(env)).filePath;
   if(configured){
     // An absent configured file is more useful than silently tailing an
     // unrelated stale log under some other historical Documents folder.
@@ -244,7 +256,8 @@ function start(argv=process.argv.slice(2)) {
     if(item.event==="started")startedEmitted=true;
     process.stdout.write(JSON.stringify(item)+"\n");
   };
-  const selection=resolveLogSelection(cfg);
+  const clientConfig=readRiftClientConfig();
+  const selection=resolveLogSelection(cfg,process.env,clientConfig);
   const candidates=selection.candidates;
   let filePath=selection.filePath;
   let remainingCandidates=candidates.length>0&&!fs.existsSync(filePath);
@@ -308,6 +321,14 @@ function start(argv=process.argv.slice(2)) {
   let initial=tailer.poll();
   emit({event:"started",source:"RIFT_Log.txt",path:filePath,
     pathSelection:selection.source,nonce:cfg.nonce,
+    persistedLogConsole:clientConfig.logConsoleConfigured,
+    configReadable:clientConfig.configReadable,
+    runtimeLoggingEnabledVerified:false,
+    loggingReadinessHint:clientConfig.logConsoleConfigured===false
+      ? "Rift.cfg LogConsole=False; saved setting suggests noncombat logging off, runtime state unverified; /log is a toggle"
+      : clientConfig.logConsoleConfigured===true
+        ? "Rift.cfg LogConsole=True; runtime logging still requires a live log receipt"
+        : "Rift.cfg LogConsole not verified; runtime logging state unknown",
     gameInputSent:false,gameLoggingChanged:false,transportVerified:false,
     candidateFormatVerified:false,includeText:cfg.includeText,
     prepareImport:cfg.prepareImport,rawSampleLines:cfg.rawSampleLines,
@@ -420,4 +441,4 @@ function start(argv=process.argv.slice(2)) {
 }
 if(require.main===module)start();
 module.exports={parseCandidateLine,attachChatObserver,safePrefix,validLogPath,
-  readConfiguredLogPath,resolveLogSelection,options,start};
+  readConfiguredLogPath,readRiftClientConfig,resolveLogSelection,options,start};

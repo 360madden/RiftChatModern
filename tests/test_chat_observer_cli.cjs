@@ -175,6 +175,9 @@ test("CLI follows RIFT configured path when the log file is created after startu
             started=true;
             assert.equal(event.pathSelection,"rift_cfg_documents_directory");
             assert.equal(event.path,file);
+            assert.equal(event.persistedLogConsole,false);
+            assert.equal(event.runtimeLoggingEnabledVerified,false);
+            assert.match(event.loggingReadinessHint,/LogConsole=False/);
             assert.equal(fs.existsSync(file),false);
             fs.appendFileSync(file,"unrecognized RIFT log format example\n");
           }
