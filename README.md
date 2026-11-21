@@ -46,6 +46,7 @@ RCM is built to support other RIFT addons as a shared diagnostics surface—not 
 | 🧩 | **Addon integration** | Publish diagnostics, register commands, subscribe to messages, inspect history |
 | 🛠️ | **Native CONSOLE inspector (v0.2.22)** | Read-only Game, Loot, Player, public Channel and Combat subscriptions; actual ON/OFF states, console selector and refresh |
 | 📥 | **Physically proven Say import (v0.2.23)** | Exactly one controlled live Say record traveled through RIFT Log.txt, Node observer, guarded editor import, in-game history, and disk SavedVariables |
+| ⏱️ | **Bounded Say follower (Windows helper)** | Read-only monitoring of newly appended, physically observed Say syntax; metadata redacted by default; opt-in editor import preparation without in-game submission |
 | 💾 | **Persistence** | Character-scoped SavedVariables with schema migration and save-status diagnostics |
 
 <sub>Feature support varies between offline Lua 5.1 regression tests and physical in-game acceptance. See [verified status and limitations](#project-status).</sub>
@@ -142,11 +143,12 @@ The API also provides history retrieval, subscriptions, UI controls, copy helper
 |---|---|
 | **Addon release** | **v0.2.23**, physically loaded in RIFT Live; the retained real Say import displays as **`[HOST/SAY]`** without a duplicate |
 | **Physical RIFT evidence** | v0.2.22 General, Loot and named public-channel subscriptions confirmed in native screenshots; v0.2.21 drag/resize, focus, details, message columns previously accepted |
-| **Offline regression suite** | **312 Python/Lua and 58 Node tests passed** (November 21, 2026), including physical UI regressions, responsive columns, foreground restoration, privacy-safe GitHub screenshots, and SavedVariables geometry audit |
+| **Offline regression suite** | **315 Python/Lua and 76 Node tests passed** (November 21, 2026), including source-integrity checks for bounded Say monitoring, physical UI regressions, foreground restoration, and SavedVariables geometry audit |
 | **Persistence** | Window position and size survived `/reloadui`; exact UI geometry and local DEV test entry independently found in the on-disk SavedVariables file |
 | **Windows host tooling** | Existing .NET 10 editor batch validator, exact-candidate gate; temporary RIFT foreground capture/return physically verified |
 | **Native player social chat** | One controlled **Say** message physically verified in a game-created Log.txt and subsequently in RCM Imports; Guild/Party/Tell/public capture remains unverified |
-| **Continuous in-game import** | **Not yet implemented**; one explicit, guarded Windows-to-RCM editor transfer is independently verified, with persistent disk receipt |
+| **Bounded host Say monitoring** | New read-only observer tracks fresh Say lines during finite sessions; offline tested, awaiting a second physical live-Say acceptance specific to this tool |
+| **Continuous in-game import** | **Not yet implemented**; the helper prepares batches but cannot automatically deliver them; one earlier explicit Windows-to-RCM transfer has a verified disk receipt |
 
 RCM is under active development. The main engineering priority is proving a reliable real-game social chat source, without mislabeling host-imported records or RIFT console configuration as a native chat transcript.
 
@@ -163,6 +165,7 @@ The homepage is intentionally concise. The complete development history—includ
 | 🖱️ [v0.2.21 Drag, resize, editor and persistence](docs/V0_2_21_UI_INTERACTION_ACCEPTANCE_20261121.md) | Physical mouse and keyboard acceptance, reload and on-disk state, focus-restoration hardening |
 | 🎛️ [v0.2.22 Native RIFT console categories](docs/V0_2_22_NATIVE_RIFT_CONSOLE_CATEGORIES_20261121.md) | Exact game categories, API research, physical ON/OFF evidence and unsupported native social chat boundary |
 | 📥 [v0.2.23 Real Say → RCM import](docs/V0_2_23_PHYSICAL_RIFT_SAY_LOG_IMPORT_20261121.md) | Physical game-created log record, qualified parser, exact single editor import and on-disk SavedVariables proof |
+| ⏱️ [Bounded Say follow (host-only)](docs/BOUNDED_SAY_FOLLOW_20261121.md) | New-only multi-message log monitoring, redacted by default; opt-in batches but no automatic RIFT delivery |
 | 📚 [Complete engineering archive](docs/ENGINEERING_ARCHIVE_README_THROUGH_20261121.md) | Previous detailed README, preserved in full |
 | 🧭 [Development history](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md) | Original concept, initial build, fixes, and live findings |
 | 🧱 [Addon transport](docs/ADDON_TRANSPORT.md) | RIFT addon-data messaging and API constraints |
@@ -180,7 +183,7 @@ To run the Windows development regression suite, use the configured Python envir
 
 ```powershell
 & "C:\work\riftreader2\.venv\Scripts\python.exe" -m unittest discover -s tests
-node --test tests/test_chat_import.cjs tests/test_chat_observer.cjs tests/test_chat_observer_cli.cjs tests/test_chat_batch_gate.cjs
+node --test tests/test_chat_import.cjs tests/test_chat_observer.cjs tests/test_chat_observer_cli.cjs tests/test_chat_batch_gate.cjs tests/test_live_say_batch.cjs tests/test_live_say_follow.cjs
 ```
 
 The local Python path above is a developer-workstation example, **not** an end-user installation requirement.
