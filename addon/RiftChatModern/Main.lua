@@ -2,7 +2,7 @@
 -- Native player say/tell/guild transmit and full native chat interception are NOT
 -- exposed by the verified addon APIs. This UI never pretends to send those.
 local info = ...
-local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.14"
+local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.15"
 local Core = _G.RiftChatModernCore
 local MessageBridge = _G.RiftChatModernAddonMessages
 local NativeProbe = _G.RiftChatModernNativeProbe
@@ -806,11 +806,35 @@ local function show(yes)
     if yes then render() end
     return true
 end
+-- The importer tracks only this session's transfer tokens, while real
+-- history rows can survive reloads. Query the retained model separately so
+-- the ID remains discoverable without fabricating a disk-save receipt.
+local function hostIngressStatus()
+    local state=hostIngress and hostIngress:status(clock()) or
+        {ready=false,mode="unavailable",liveChatVerified=false,
+         autoInputAvailable=false}
+    if model then
+        local rows,total=model:getHistory("imports","",1,0)
+        state.retainedImportCount=total or 0
+        state.lastRetainedImportMessageId=rows and rows[1] and rows[1].id or nil
+    else
+        state.retainedImportCount=0
+    end
+    return state
+end
 local function hostStatusSummary()
     if not hostIngress then return "Host manual import unavailable." end
-    local state=hostIngress:status(clock())
+    local state=hostIngressStatus()
     local summary=string.format("host candidate imports=%d | rejects=%d | duplicates=%d | cancelled=%d | expired=%d",
         state.imported,state.rejected,state.duplicates,state.cancelled,state.expired)
+    if state.lastImportedMessageId then
+        summary=summary.." | last imported history #"..state.lastImportedMessageId
+            .." (NOT verified on disk)"
+    end
+    if state.lastRetainedImportMessageId then
+        summary=summary.." | latest retained import history #"
+            ..state.lastRetainedImportMessageId.." (NOT verified on disk)"
+    end
     if state.pending then
         return string.format("Host import %s: %d/%d chunks | %s",
             state.pendingId,state.pendingParts,state.pendingTotal,summary)
@@ -872,7 +896,14 @@ local function parseSlash(_,args)
             if not ok then
                 notice("Host import rejected: "..tostring(result))
             elseif result=="imported_unverified" then
-                notice("Host candidate imported into RCM (NOT verified native chat).")
+                local receipt=hostIngress:status(clock())
+                if receipt.lastImportedMessageId then
+                    notice("Host candidate imported as RCM history #"
+                        ..receipt.lastImportedMessageId
+                        .."; NOT verified native chat; NOT verified on disk.")
+                else
+                    notice("Host candidate imported; history ID unavailable; NOT verified native chat; NOT verified on disk.")
+                end
             elseif result=="already_imported" or result=="already_received" then
                 notice("Host import duplicate chunk ignored ("..result..").")
             else
@@ -1262,11 +1293,7 @@ _G.RiftChatModernAPI={
         return resizeTo(width,height,true)
     end,
     GetSaveCheckpointStatus=saveStatus,
-    GetHostIngressStatus=function()
-        return hostIngress and hostIngress:status(clock())
-            or {ready=false,mode="unavailable",liveChatVerified=false,
-                autoInputAvailable=false}
-    end,
+    GetHostIngressStatus=hostIngressStatus,
     GetNativeConsoles=getNativeConsoles,
     GetConsoleMirrorStatus=mirrorStatus,
     SetConsoleMirror=setMirror,

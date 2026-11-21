@@ -91,7 +91,8 @@ function Ingress.new(publish)
     if type(publish)~="function" then return nil,"invalid_publisher" end
     return setmetatable({publish=publish,pending=nil,recent={},seen={},
         acceptedChunks=0,imported=0,rejected=0,duplicates=0,
-        expired=0,cancelled=0,publishFailed=0},Receiver)
+        expired=0,cancelled=0,publishFailed=0,
+        lastImportToken=nil,lastImportedMessageId=nil},Receiver)
 end
 function Receiver:_remember(id)
     self.recent[#self.recent+1]=id
@@ -165,8 +166,18 @@ function Receiver:receiveLine(line,at)
         self.publishFailed=self.publishFailed+1
         return nil,"publisher_refused"
     end
+    -- The real RCM publisher returns a copied history row with its assigned ID.
+    -- A bare success boolean is still accepted for external publishers, but
+    -- must never manufacture an ID that a disk auditor could mistake for proof.
+    local messageId=type(result)=="table" and result.id or nil
+    if type(messageId)~="number" or messageId~=messageId
+        or messageId<1 or messageId>1000000000000 or messageId%1~=0 then
+        messageId=nil
+    end
     self:_remember(id)
     self.imported=self.imported+1
+    self.lastImportToken=id
+    self.lastImportedMessageId=messageId
     return true,"imported_unverified"
 end
 function Receiver:status(at)
@@ -177,6 +188,8 @@ function Receiver:status(at)
         acceptedChunks=self.acceptedChunks,rejected=self.rejected,
         duplicates=self.duplicates,expired=self.expired,
         cancelled=self.cancelled,publishFailed=self.publishFailed,
+        lastImportToken=self.lastImportToken,
+        lastImportedMessageId=self.lastImportedMessageId,
         pending=p~=nil,pendingId=p and p.id or nil,
         pendingParts=p and p.count or 0,
         pendingTotal=p and p.total or 0}

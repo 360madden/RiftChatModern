@@ -43,15 +43,17 @@ class ManualHostIngressTests(unittest.TestCase):
             self.assertLessEqual(len(command), 160)
         return record
 
-    def lua(self):
+    def lua(self, saved_setup=""):
         lua = LuaRuntime(unpack_returned_tuples=True)
         lua.execute(RIFT_MOCK)
         for filename in MODULES:
             source = (ADDON / filename).read_text(encoding="utf-8")
             chunk = ("local f=assert(loadstring(" + _lua_quote(source)
                      + "));assert(f({identifier='RiftChatModern',"
-                     "version='0.2.14'}, {})==nil)")
+                     "version='0.2.15'}, {})==nil)")
             lua.execute(chunk)
+        if saved_setup:
+            lua.execute(saved_setup)
         lua.execute('fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")')
         lua.execute('fire(Event.Addon.Load.End,"RiftChatModern")')
         return lua
@@ -85,6 +87,70 @@ assert(RiftChatModernSaved.schemaVersion==2)
 assert(RiftChatModernCore.rowLabel(rows[1])=="HOST IMPORT / Guild")
 assert(RiftChatModernAPI.interfaceVersion==2)
 assert(RiftChatModernSaved.hostIngress==nil)
+''')
+
+    def test_import_receipt_exposes_exact_saved_history_id_without_disk_claim(self):
+        record=self.encode("guild","RCMProbe","Guild","verifiable candidate")
+        lua=self.lua()
+        self.send(lua,record["commands"])
+        lua.execute(r'''
+local rows,total=RiftChatModernAPI.GetHistory("imports","verifiable candidate",10,0)
+assert(total==1 and rows[1].kind=="import")
+local id=rows[1].id
+local stat=RiftChatModernAPI.GetHostIngressStatus()
+assert(stat.imported==1 and stat.lastImportedMessageId==id)
+assert(stat.lastImportToken=="ABCDEF123456")
+assert(displays[#displays]:find("history #"..id,1,true))
+assert(displays[#displays]:find("NOT verified on disk",1,true))
+assert(RiftChatModernAPI.GetSaveCheckpointStatus().pendingSessionChanges)
+fire(slash.rcm,"import status")
+assert(displays[#displays]:find("last imported history #"..id,1,true))
+assert(displays[#displays]:find("NOT verified on disk",1,true))
+''')
+        self.send(lua,record["commands"])
+        lua.execute(r'''
+local rows,total=RiftChatModernAPI.GetHistory("imports","verifiable candidate",10,0)
+assert(total==1)
+assert(RiftChatModernAPI.GetHostIngressStatus().lastImportedMessageId==rows[1].id)
+assert(displays[#displays]:find("duplicate chunk ignored",1,true))
+''')
+
+    def test_import_history_id_survives_fresh_session_status_lookup(self):
+        saved=r'''
+RiftChatModernSaved={schemaVersion=2,nextId=52,history={
+    {id=50,at=1700,kind="system",origin="local_addon",source="RIFT",text="earlier"},
+    {id=51,at=1701,kind="import",origin="host_manual",source="RCMProbe",
+        channelKind="guild",channelName="Guild",text="previous import retained"}
+},saveCheckpoint={formatVersion=1,schemaVersion=2,sequence=1,at=1702,
+    historyCount=2,nextId=52,lastHistoryId=51,lastImportId=51}}
+'''
+        lua=self.lua(saved_setup=saved)
+        lua.execute(r'''
+local state=RiftChatModernAPI.GetHostIngressStatus()
+assert(state.ready and state.imported==0)
+assert(state.lastImportedMessageId==nil) -- Not imported this session
+assert(state.retainedImportCount==1)
+assert(state.lastRetainedImportMessageId==51)
+local rows,count=RiftChatModernAPI.GetHistory("imports","",5,0)
+assert(count==1 and rows[1].id==51)
+fire(slash.rcm,"import status")
+assert(displays[#displays]:find("latest retained import history #51",1,true))
+assert(displays[#displays]:find("NOT verified on disk",1,true))
+assert(RiftChatModernAPI.GetSaveCheckpointStatus().eventSequence==1)
+assert(RiftChatModernAPI.GetSaveCheckpointStatus().onDiskVerified==false)
+''')
+
+    def test_boolean_publisher_cannot_invent_history_id(self):
+        record=self.encode("party","RCMProbe","Party","boolean callback receipt")
+        lua=self.lua()
+        command=record["commands"][0][len("/rcm import "):]
+        lua.execute(r'''
+local recv=assert(RiftChatModernHostIngress.new(function() return true end))
+local ok,reply=recv:receiveLine('''+_lua_quote(command)+r''',1700)
+assert(ok==true and reply=="imported_unverified")
+local state=recv:status()
+assert(state.imported==1 and state.lastImportedMessageId==nil)
+assert(state.lastImportToken=="ABCDEF123456")
 ''')
 
     def test_utf8_multichunk_out_of_order_and_duplicate_replay(self):
