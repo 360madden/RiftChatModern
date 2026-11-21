@@ -8,6 +8,7 @@ param(
     [ValidateRange(25, 1000)][int]$PollMs = 100,
     [string]$LogPath,
     [ValidateRange(0, 30)][int]$SampleRawLines = 0,
+    [switch]$RequireChatAfterMarker,
     [switch]$Preview
 )
 
@@ -38,6 +39,7 @@ try {
         [string]($TimeoutSeconds * 1000), '--poll-ms', [string]$PollMs)
     if ($LogPath) { $argsList += @('--path', $LogPath) }
     if ($SampleRawLines -gt 0) { $argsList += @('--sample-raw-lines', [string]$SampleRawLines) }
+    if ($RequireChatAfterMarker) { $argsList += '--require-chat-after-marker' }
     [ordered]@{
         event              = $(if ($Preview) { 'preview' } else { 'watcher_starting' })
         host               = $env:COMPUTERNAME
@@ -52,9 +54,10 @@ try {
         timeoutSeconds     = $TimeoutSeconds
         pollMs             = $PollMs
         rawSampleLines     = $SampleRawLines
+        requireChatAfterMarker = [bool]$RequireChatAfterMarker
         logPath            = $(if ($LogPath) { $LogPath } else { 'resolved at runtime by RCM observer' })
         pathSelectionPolicy = $(if ($LogPath) { 'explicit LogPath' } else { 'Rift.cfg [Client] DocumentsDirectory first; LuaPad fallback only if missing/invalid' })
-        instruction        = 'After the observer emits started with its selected path, enter rcmEditorCommand in the loaded RCM editor. Enable /log manually only after confirming its existing state; /log is a toggle.'
+        instruction        = $(if ($RequireChatAfterMarker) { 'Wait for started, then enter rcmEditorCommand in RCM. ONLY after chat_phase_armed appears, send one NEW native player chat line; messages before this receipt do not count. First confirm /log state; it is a toggle.' } else { 'After started, enter rcmEditorCommand in the loaded RCM editor. Enable /log manually only after confirming its existing state; /log is a toggle.' })
         note               = 'RCM observer reuses the LuaPad decoder. Check started.pathSelection. The console marker alone is NOT a verified log receipt or social-chat capture. Raw-line samples can include private chat, so enable explicitly.'
     } | ConvertTo-Json -Compress
     if ($Preview) { exit 0 }

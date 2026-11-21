@@ -4,7 +4,7 @@ const assert=require("node:assert/strict");
 const fs=require("node:fs");
 const os=require("node:os");
 const path=require("node:path");
-const {spawn}=require("node:child_process");
+const {spawn,spawnSync}=require("node:child_process");
 
 const observer=path.resolve(__dirname,"..","tools","rcm-chat-observer.cjs");
 
@@ -183,4 +183,169 @@ test("CLI includes bounded message body only after explicit --include-text",asyn
   assert.equal(chat.length,1);
   assert.equal(chat[0].text,"こんにちは from chat");
   assert.equal(chat[0].verifiedLiveFormat,false);
+});
+
+
+function twoPhaseFixture({beforeMarker="",afterArmed="",rawSampleLines=0,
+  truncateAfterArmed=false,replaceWithChatAfterArmed=false,replayMarker=false}={}){
+  return new Promise((resolve,reject)=>{
+    const dir=fs.mkdtempSync(path.join(os.tmpdir(),"rcm-observer-two-phase-"));
+    const file=path.join(dir,"Log.txt");
+    fs.writeFileSync(file,"[Guild][OldPlayer]: stale content\n");
+    const args=[observer,"--path",file,"--nonce","RCM_PHASE_20261120",
+      "--require-chat-after-marker","--timeout-ms","1600","--poll-ms","25"];
+    if(rawSampleLines)args.push("--sample-raw-lines",String(rawSampleLines));
+    const proc=spawn(process.execPath,args,{windowsHide:true,
+      stdio:["ignore","pipe","pipe"]});
+    let buffer="",stderr="",events=[],closed=false,armed=false,started=false;
+    const abort=setTimeout(()=>{if(!closed)proc.kill()},3500);
+    const cleanup=()=>fs.rmSync(dir,{recursive:true,force:true});
+    proc.stdout.on("data",data=>{
+      buffer+=data.toString();
+      let index;
+      while((index=buffer.indexOf("\n"))>=0){
+        const line=buffer.slice(0,index);buffer=buffer.slice(index+1);
+        if(!line)continue;
+        let event;try{event=JSON.parse(line)}catch(err){reject(err);return}
+        events.push(event);
+        if(event.event==="started"&&!started){
+          started=true;
+          fs.appendFileSync(file,beforeMarker+
+            "LPB_PROBE|RCM_PHASE_20261120|unknown\n");
+        }
+        if(event.event==="chat_phase_armed"&&!armed){
+          armed=true;
+          if(truncateAfterArmed)fs.truncateSync(file,0);
+          else if(replaceWithChatAfterArmed)
+            fs.writeFileSync(file,"[Guild][Injected]: must not count\n");
+          else if(replayMarker)
+            fs.appendFileSync(file,"LPB_PROBE|RCM_PHASE_20261120|unknown\n");
+          else if(afterArmed)fs.appendFileSync(file,afterArmed);
+        }
+        if(event.event==="chat_phase_rearmed"&&afterArmed)
+          fs.appendFileSync(file,afterArmed);
+      }
+    });
+    proc.stderr.on("data",data=>{stderr+=data.toString()});
+    proc.on("error",error=>{clearTimeout(abort);cleanup();reject(error)});
+    proc.on("close",code=>{
+      closed=true;clearTimeout(abort);cleanup();
+      if(stderr)reject(new Error(stderr));
+      else resolve({code,events,armed,started});
+    });
+  });
+}
+
+test("two-phase mode confirms log marker THEN a freshly submitted chat candidate",async()=>{
+  const result=await twoPhaseFixture({
+    beforeMarker:"[Guild][BeforeProbe]: must not satisfy after-marker gate\n",
+    afterArmed:"[Guild][AfterProbe]: bounded secret should stay redacted\n"
+  });
+  assert.equal(result.code,0);
+  assert.equal(result.armed,true);
+  const events=result.events;
+  const marker=events.findIndex(e=>e.event==="matched");
+  const armed=events.findIndex(e=>e.event==="chat_phase_armed");
+  const candidate=events.findIndex(e=>e.event==="candidate_chat");
+  assert.ok(marker>=0 && armed>marker && candidate>armed);
+  assert.equal(events[candidate].sender,"AfterProbe");
+  assert.equal(events[candidate].afterMarker,true);
+  assert.equal("text" in events[candidate],false);
+  assert.equal(JSON.stringify(events).includes("bounded secret"),false);
+  assert.equal(JSON.stringify(events).includes("BeforeProbe"),false);
+  const finished=events.find(e=>e.event==="finished");
+  assert.equal(finished.reason,"chat_candidate_after_marker");
+  assert.equal(finished.probeMatched,true);
+  assert.equal(finished.chatCandidatesAfterMarker,1);
+  assert.equal(finished.transportVerified,false);
+});
+
+test("two-phase mode cannot count old or pre-marker chat as proof",async()=>{
+  const result=await twoPhaseFixture({
+    beforeMarker:"[Guild][BeforeProbe]: not after the confirmed marker\n"
+  });
+  assert.equal(result.code,2);
+  assert.equal(result.armed,true);
+  assert.equal(result.events.filter(e=>e.event==="candidate_chat").length,0);
+  const finished=result.events.find(e=>e.event==="finished");
+  assert.equal(finished.reason,"timeout_waiting_chat_after_marker");
+  assert.equal(finished.probeMatched,true);
+  assert.equal(finished.chatCandidatesAfterMarker,0);
+});
+
+test("two-phase opt-in raw discovery never confuses unrecognized format with verified chat",async()=>{
+  const result=await twoPhaseFixture({
+    afterArmed:"Some unknown client format 🌋\n",rawSampleLines:1
+  });
+  assert.equal(result.code,2);
+  const raw=result.events.find(e=>e.event==="raw_log_sample");
+  assert.ok(raw);
+  assert.equal(raw.decodedLine,"Some unknown client format 🌋");
+  assert.equal(raw.physicalRiftOriginVerified,false);
+  const finished=result.events.find(e=>e.event==="finished");
+  assert.equal(finished.reason,"raw_sample_limit_without_chat_candidate");
+  assert.equal(finished.chatCandidatesAfterMarker,0);
+});
+
+test("two-phase mode fails closed when Log.txt is truncated after the marker",async()=>{
+  const result=await twoPhaseFixture({truncateAfterArmed:true});
+  assert.equal(result.armed,true);
+  assert.equal(result.code,2);
+  assert.ok(result.events.some(e=>e.event==="file_reset"));
+  const finished=result.events.find(e=>e.event==="finished");
+  assert.equal(finished.reason,"chat_source_changed_after_marker");
+  assert.equal(finished.probeMatched,true);
+  assert.equal(finished.chatCandidatesAfterMarker,0);
+});
+
+test("file replacement and a fresh-looking chat line cannot forge second-stage proof",async()=>{
+  const result=await twoPhaseFixture({replaceWithChatAfterArmed:true});
+  assert.equal(result.code,2);
+  assert.equal(result.armed,true);
+  assert.ok(result.events.some(e=>e.event==="file_reset"));
+  assert.equal(result.events.filter(e=>e.event==="candidate_chat").length,0);
+  assert.equal(result.events.find(e=>e.event==="finished").reason,
+    "chat_source_changed_after_marker");
+});
+
+test("a repeated marker rearms the second phase rather than freezing its tailer",async()=>{
+  const result=await twoPhaseFixture({replayMarker:true,
+    afterArmed:"[Guild][AfterRearm]: fresh after second marker\n"});
+  assert.equal(result.code,0);
+  assert.ok(result.events.some(e=>e.event==="chat_phase_rearmed"));
+  assert.equal(result.events.filter(e=>e.event==="candidate_chat").length,1);
+  assert.equal(result.events.find(e=>e.event==="finished").reason,
+    "chat_candidate_after_marker");
+});
+
+test("startup receipt precedes candidates arriving in the initial poll",()=>{
+  // Inject one first-poll record in a separate Node process; no RIFT or log file.
+  const script=`
+    const {LogTailProbe}=require(${JSON.stringify(path.resolve(__dirname,"..","..","LuaPadModern","tools","rift-log-probe.cjs"))});
+    const original=LogTailProbe.prototype.poll;
+    let first=true;
+    LogTailProbe.prototype.poll=function(...args){
+      if(first){
+        first=false;
+        const when=Date.now();
+        this.readLine("[Guild][EarlyPlayer]: first poll fixture",when);
+        this.readLine("LPB_PROBE|RCM_ORDER_20261120|unknown",when);
+        return this.match ? [{event:"file_opened",offset:0},this.match] : [];
+      }
+      return original.apply(this,args);
+    };
+    require(${JSON.stringify(observer)}).start([
+      "--nonce","RCM_ORDER_20261120","--timeout-ms","1000","--poll-ms","25"]);
+  `;
+  const run=spawnSync(process.execPath,["-e",script],{
+    cwd:path.resolve(__dirname,".."),windowsHide:true,encoding:"utf8",timeout:4000
+  });
+  assert.equal(run.status,0,run.stderr);
+  const events=run.stdout.trim().split(/\r?\n/).map(JSON.parse);
+  assert.equal(events[0].event,"started");
+  assert.equal(events[1].event,"file_opened");
+  assert.equal(events[2].event,"candidate_chat");
+  assert.equal(events[2].sender,"EarlyPlayer");
+  assert.ok(events.some(x=>x.event==="matched"));
+  assert.ok(events.some(x=>x.event==="finished"&&x.reason==="marker_matched"));
 });

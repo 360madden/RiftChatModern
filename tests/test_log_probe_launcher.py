@@ -29,13 +29,15 @@ class RcmLogProbeLauncherTests(unittest.TestCase):
 
     def test_preview_selects_rcm_observer_and_explicit_raw_sample_only(self):
         result = self.invoke(["-Preview", "-Nonce", "RCM_PROBE_20261120",
-                              "-SampleRawLines", "3"])
+                              "-SampleRawLines", "3", "-RequireChatAfterMarker"])
         self.assertEqual(result.returncode, 0, result.stderr)
         receipt = json.loads(result.stdout.strip())
         self.assertEqual(receipt["event"], "preview")
         self.assertTrue(receipt["watcher"].endswith("rcm-chat-observer.cjs"))
         self.assertIn("Rift.cfg", receipt["pathSelectionPolicy"])
         self.assertEqual(receipt["rawSampleLines"], 3)
+        self.assertTrue(receipt["requireChatAfterMarker"])
+        self.assertIn("chat_phase_armed", receipt["instruction"])
         self.assertFalse(receipt["gameInputSent"])
         self.assertFalse(receipt["loggingChanged"])
         self.assertFalse(receipt["transportVerified"])
@@ -65,7 +67,8 @@ class RcmLogProbeLauncherTests(unittest.TestCase):
             env = os.environ.copy()
             env["APPDATA"] = str(appdata)
             result = self.invoke(
-                ["-Nonce", "RCM_PROBE_20261120", "-TimeoutSeconds", "1"],
+                ["-Nonce", "RCM_PROBE_20261120", "-TimeoutSeconds", "1",
+                 "-RequireChatAfterMarker"],
                 env=env)
             self.assertEqual(result.returncode, 2, result.stderr)
             lines = [json.loads(line) for line in result.stdout.splitlines()
@@ -74,6 +77,7 @@ class RcmLogProbeLauncherTests(unittest.TestCase):
             stopped = next(row for row in lines if row.get("event") == "finished")
             self.assertEqual(started["pathSelection"],
                              "rift_cfg_documents_directory")
+            self.assertTrue(started["requireChatAfterMarker"])
             self.assertEqual(Path(started["path"]),
                              docs / "Log.txt")
             self.assertFalse(started["transportVerified"])

@@ -173,12 +173,16 @@ function resolveLogSelection(cfg,env=process.env) {
 }
 function options(argv) {
   const out={timeoutMs:120000,pollMs:100,maxCandidates:200,includeText:false,
-    prepareImport:false,rawSampleLines:0,
+    prepareImport:false,rawSampleLines:0,requireChatAfterMarker:false,
     nonce:"RCM_CHAT_"+crypto.randomBytes(8).toString("hex")};
   for(let i=0;i<argv.length;i++) {
     const flag=argv[i];
     if(flag==="--include-text"){out.includeText=true;continue}
     if(flag==="--prepare-import"){out.prepareImport=true;out.includeText=true;continue}
+    if(flag==="--require-chat-after-marker"){
+      if(out.requireChatAfterMarker)throw Error("Duplicate two-phase option");
+      out.requireChatAfterMarker=true;continue;
+    }
     if(flag==="--help"){out.help=true;continue}
     if(!["--path","--nonce","--timeout-ms","--poll-ms","--max-candidates","--sample-raw-lines"].includes(flag) ||
       !argv[i+1])throw Error("Unsupported or incomplete option: "+flag);
@@ -207,33 +211,65 @@ function start(argv=process.argv.slice(2)) {
   if(cfg.help){
     process.stdout.write("node tools/rcm-chat-observer.cjs [--path ABSOLUTE_Log.txt] "+
       "[--timeout-ms 120000] [--poll-ms 100] [--max-candidates 200] "+
-      "[--nonce TOKEN] [--include-text] [--prepare-import] [--sample-raw-lines 5]\n"+
+      "[--nonce TOKEN] [--include-text] [--prepare-import] [--sample-raw-lines 5] "+
+      "[--require-chat-after-marker]\n"+
       "Read-only candidate RIFT chat observer. Defaults to metadata-only. "+
+      "Two-phase mode arms a new file tail after the marker before counting social candidates. "+
       "Output format historical/unverified. --sample-raw-lines emits bounded decoded log text (explicit opt-in).\n"+
       "--prepare-import prints manual /rcm commands. Never sends game input.\n");
     return;
   }
-  const emit=(item)=>process.stdout.write(JSON.stringify(item)+"\n");
+  // An initial poll can observe a newly created log and call readLine before
+  // the readiness receipt is printed. Buffer only those bounded early callbacks
+  // so downstream consumers can always treat `started` as the first event.
+  const early=[];
+  let startedEmitted=false;
+  const emit=(item)=>{
+    if(!startedEmitted && item.event!=="started"){
+      early.push(item);return;
+    }
+    if(item.event==="started")startedEmitted=true;
+    process.stdout.write(JSON.stringify(item)+"\n");
+  };
   const selection=resolveLogSelection(cfg);
   const candidates=selection.candidates;
   let filePath=selection.filePath;
   let remainingCandidates=candidates.length>0&&!fs.existsSync(filePath);
   const startAt=Date.now();
   let count=0,ignoredCount=0,rawSamples=0,completed=false,timer=null;
+  let markerMatched=false,chatPhaseArmed=false,chatCandidatesAfterMarker=0;
+  let pendingCandidates=[];
   let tailer,stats;
+  function publishCandidate(event){
+    if(count>=cfg.maxCandidates){ignoredCount++;return}
+    count++;
+    if(cfg.requireChatAfterMarker && chatPhaseArmed){
+      chatCandidatesAfterMarker++;
+      event.afterMarker=true;
+    }
+    emit(event);
+    if(cfg.prepareImport){
+      // Opt-in manual preview, NOT automatic injection into RIFT.
+      // Note: emitted text and slash commands contain the message body.
+      try{emit(encodeRecord(event))}
+      catch(e){emit({event:"import_skipped",reason:"unencodable_candidate"})}
+    }
+  }
   function createTailer(file,fromStart=false){
     const t=new LogTailProbe({filePath:file,nonce:cfg.nonce,fromStart});
     const s=attachChatObserver(t,event=>{
-      if(count>=cfg.maxCandidates){ignoredCount++;return}
-      count++;
-      emit(event);
-      if(cfg.prepareImport) {
-        // Opt-in manual preview, NOT automatic injection into RIFT.
-        // Note: emitted text and slash commands contain the message body.
-        try{emit(encodeRecord(event))}
-        catch(e){emit({event:"import_skipped",reason:"unencodable_candidate"})}
+      // A chat line observed BEFORE the marker cannot satisfy the second
+      // stage, even if it arrived in the same filesystem read as the marker.
+      if(cfg.requireChatAfterMarker && !chatPhaseArmed)return;
+      if(cfg.requireChatAfterMarker){
+        // File reset/error events are reported AFTER readLine callbacks.
+        // Defer publication until the poll's source-identity evidence arrives.
+        if(pendingCandidates.length>=cfg.maxCandidates){ignoredCount++;return}
+        pendingCandidates.push(event);return;
       }
+      publishCandidate(event);
     },cfg.includeText,(line,observedAt)=>{
+      if(cfg.requireChatAfterMarker && !chatPhaseArmed)return;
       if(rawSamples>=cfg.rawSampleLines)return;
       rawSamples++;
       const preview=safePrefix(line,1024);
@@ -255,25 +291,62 @@ function start(argv=process.argv.slice(2)) {
     gameInputSent:false,gameLoggingChanged:false,transportVerified:false,
     candidateFormatVerified:false,includeText:cfg.includeText,
     prepareImport:cfg.prepareImport,rawSampleLines:cfg.rawSampleLines,
+    requireChatAfterMarker:cfg.requireChatAfterMarker,
     automaticGameInput:false,
-    mode:"historical-bracket-candidate",timeoutMs:cfg.timeoutMs});
+    mode:cfg.requireChatAfterMarker ? "marker_then_candidate_chat"
+      : "historical-bracket-candidate",timeoutMs:cfg.timeoutMs});
   function finish(reason,code=0){
     if(completed)return;
     completed=true;if(timer)clearInterval(timer);
     tailer.close();
     emit({event:"finished",reason,candidates:count,ignored:ignoredCount,
-      rawSamples,
-      probeMatched:Boolean(tailer.match),transportVerified:false,
+      rawSamples,chatCandidatesAfterMarker,chatPhaseArmed,
+      probeMatched:markerMatched||Boolean(tailer.match),transportVerified:false,
+      candidateFormatVerified:false,physicalRiftOriginVerified:false,
       elapsedMs:Date.now()-startAt});
     process.exitCode=code;
   }
-  for(const x of initial) {
-    if(x.event!=="matched")emit(x);
-    else {emit(x);finish("marker_matched",0)}
+  // The shared LuaPad tailer stops reading permanently once its nonce is
+  // matched. For a real chat-source trial we must OPEN A NEW tailer at the
+  // current end of file, then explicitly tell the operator when to send chat.
+  // This prevents pre-marker text (including text in the matching file read)
+  // from being misclassified as a post-marker social-chat sample.
+  function armChatPhase(rearm=false){
+    pendingCandidates=[];
+    tailer.close();
+    current=createTailer(filePath);
+    tailer=current.t;stats=current.s;
+    const baseline=tailer.poll();
+    for(const event of baseline)emit(event);
+    if(!tailer.opened||tailer.match){
+      finish("chat_phase_setup_failed",2);return;
+    }
+    chatPhaseArmed=true;
+    emit({event:rearm?"chat_phase_rearmed":"chat_phase_armed",
+      source:"RIFT_Log.txt",path:filePath,nonce:cfg.nonce,
+      mode:"fresh_tail_after_marker",startingOffset:tailer.offset,
+      transportVerified:false,candidateFormatVerified:false,
+      gameInputSent:false,
+      instruction:"Now send one NEW chat message in RIFT; earlier messages do not count."});
+  }
+  function markerDetected(){
+    markerMatched=true;
+    if(cfg.requireChatAfterMarker)armChatPhase(chatPhaseArmed);
+    else finish("marker_matched",0);
+  }
+  // File-open/reset evidence must precede initial candidate callbacks, and
+  // marker receipts follow them. A marker found in the first poll is not lost.
+  for(const x of initial){if(x.event!=="matched")emit(x)}
+  for(const x of early)emit(x);
+  for(const x of initial){
+    if(x.event==="matched"){emit(x);markerDetected();break}
   }
   if(completed)return;
   timer=setInterval(()=>{
-    if(Date.now()-startAt>=cfg.timeoutMs){finish("timeout",2);return}
+    if(Date.now()-startAt>=cfg.timeoutMs){
+      finish(cfg.requireChatAfterMarker&&markerMatched
+        ?"timeout_waiting_chat_after_marker":"timeout",2);return;
+    }
     if(remainingCandidates&&!fs.existsSync(filePath)){
       const discovered=candidates.find(x=>fs.existsSync(x));
       if(discovered){
@@ -284,13 +357,33 @@ function start(argv=process.argv.slice(2)) {
       }
     }
     const events=tailer.poll();
-    for(const x of events){
-      if(x.event!=="matched")emit(x);
-      else emit(x);
+    for(const event of events)emit(event);
+    if(cfg.requireChatAfterMarker && chatPhaseArmed && events.some(event=>
+      event.event==="file_reset" || event.event==="file_disappeared" ||
+      event.event==="read_error")){
+      // A reset/replacement can replay earlier file bytes. Do not treat
+      // candidates in that same poll as fresh post-marker evidence.
+      pendingCandidates=[];
+      finish("chat_source_changed_after_marker",2);return;
     }
-    if(tailer.match)finish("marker_matched");
-    else if(cfg.rawSampleLines>0 && rawSamples>=cfg.rawSampleLines)finish("raw_sample_limit");
-    else if(count>=cfg.maxCandidates)finish("candidate_limit");
+    if(pendingCandidates.length){
+      const ready=pendingCandidates;pendingCandidates=[];
+      for(const candidate of ready)publishCandidate(candidate);
+    }
+    if(cfg.requireChatAfterMarker && chatCandidatesAfterMarker>0){
+      finish("chat_candidate_after_marker",0);return;
+    }
+    if(tailer.match){
+      markerDetected();return;
+    }
+    if(cfg.rawSampleLines>0 && rawSamples>=cfg.rawSampleLines){
+      finish(cfg.requireChatAfterMarker
+        ?"raw_sample_limit_without_chat_candidate":"raw_sample_limit",
+        cfg.requireChatAfterMarker?2:0);
+    }else if(count>=cfg.maxCandidates){
+      finish(cfg.requireChatAfterMarker
+        ?"chat_candidate_after_marker":"candidate_limit",0);
+    }
   },cfg.pollMs);
   process.once("SIGINT",()=>finish("interrupted",130));
 }
