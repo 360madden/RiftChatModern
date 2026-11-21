@@ -58,8 +58,18 @@ function extract(lines) {
         throw Error("Candidate arrived before the proven marker boundary");
       if (awaitImport)throw Error("Missing import record after exact candidate");
       if (item.chatTextMatched===true) {
-        if (item.truncated===true || item.verifiedLiveFormat===true ||
-            item.source!=="RIFT_Log.txt")
+        // Historically this gate refused *all* verifiedLiveFormat=true
+        // because no physical format had been proven. RIFT Live Say was
+        // independently established on Nov 21 2026, and can now pass with
+        // its exact narrow shape. This still does not prove that the event
+        // was emitted by the physical process; the separate receipt does.
+        const observedSay=item.verifiedLiveFormat===true &&
+          item.format==="rift-live-2026-say" &&
+          item.kind==="general" && item.channel==="Say";
+        const legacyCandidate=item.verifiedLiveFormat===false ||
+          item.verifiedLiveFormat===undefined;
+        if (item.truncated===true || item.source!=="RIFT_Log.txt" ||
+            (!observedSay && !legacyCandidate))
           throw Error("Invalid or falsely verified exact candidate");
         exactSeen++;
         if (exactSeen>1)throw Error("Multiple matching chat candidates");

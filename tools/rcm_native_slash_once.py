@@ -1,8 +1,9 @@
 """One exact RIFT native chat command through the proven Windows focus backend.
 
-Only /reloadui and /rcm are allowed. Does not modify RIFT files, read game
-memory, or automate arbitrary chat. Dry-run is read-only. Execute explicitly
-requires --ack-native-chat. Game consumption must be verified independently.
+Only fixed /reloadui, /rcm, /log and a bounded /say RCM_* canary are
+allowed. /log toggles an important noncombat-log setting; explicit extra ack
+is required and a separate game/file receipt must establish its result.
+Public /say canaries require their own acknowledgement. Default is read-only.
 """
 from __future__ import annotations
 
@@ -10,6 +11,7 @@ import argparse
 import ctypes
 from ctypes import wintypes
 import json
+import re
 import time
 import socket
 import sys
@@ -18,13 +20,14 @@ from pathlib import Path
 import rcm_focused_screenshot_once as focused
 
 SCHEMA = "RCM_NATIVE_SLASH_V1"
-COMMANDS = {"reload": "/reloadui", "show": "/rcm"}
+COMMANDS = {"reload": "/reloadui", "show": "/rcm",
+            "log-toggle": "/log", "say-canary": "/say"}
 VK_RETURN = 0x0D
 VK_BACKSPACE = 0x08
 UNICODE_FLAG = 0x0004
 KEYUP_FLAG = 0x0002
 SW_MINIMIZE = 6
-MAX_ACTION_KEYS = 12
+MAX_ACTION_KEYS = 85
 
 
 def _modifier_guard():
@@ -38,7 +41,8 @@ def _modifier_guard():
 
 
 def _input_plan(command: str, recover_two_stars: bool = False):
-    if command not in COMMANDS.values():
+    if command not in COMMANDS.values() and not re.fullmatch(
+            r"/say RCM_[A-Z0-9_]{8,64}", command):
         raise ValueError("command_not_allowlisted")
     if recover_two_stars and command != "/reloadui":
         raise ValueError("recovery_only_allowed_for_reloadui")
@@ -76,6 +80,9 @@ def run(argv=None, *, inspection=None, backend=None, keyscan=None,
     p.add_argument("--pid", type=int)
     p.add_argument("--action", choices=tuple(COMMANDS), required=True)
     p.add_argument("--ack-native-chat", action="store_true")
+    p.add_argument("--ack-log-toggle", action="store_true")
+    p.add_argument("--ack-public-say", action="store_true")
+    p.add_argument("--chat-canary", type=str, default=None)
     p.add_argument("--recover-two-stars", action="store_true")
     p.add_argument("--ack-current-chat-open", action="store_true")
     args = p.parse_args(argv)
@@ -89,9 +96,29 @@ def run(argv=None, *, inspection=None, backend=None, keyscan=None,
         (args.recover_two_stars and (args.action != "reload" or not args.execute))):
         return 1, {"schema": SCHEMA, "status": "recovery_requires_exact_ack_and_reload",
                    "gameInputSent": False}
+    if args.execute and args.action=="log-toggle" and not args.ack_log_toggle:
+        return 1, {"schema": SCHEMA, "status": "log_toggle_requires_explicit_ack",
+                   "gameInputSent": False}
+    if args.ack_log_toggle and args.action!="log-toggle":
+        return 1, {"schema": SCHEMA, "status": "unexpected_log_toggle_ack",
+                   "gameInputSent": False}
+    if args.execute and args.action=="say-canary" and not args.ack_public_say:
+        return 1, {"schema": SCHEMA, "status": "public_canary_requires_explicit_ack",
+                   "gameInputSent": False}
+    if args.ack_public_say and args.action!="say-canary":
+        return 1, {"schema": SCHEMA, "status": "unexpected_public_chat_ack",
+                   "gameInputSent": False}
+    token=args.chat_canary
+    if args.action=="say-canary":
+        if not isinstance(token,str) or not re.fullmatch(r"RCM_[A-Z0-9_]{8,64}",token):
+            return 1, {"schema": SCHEMA, "status": "invalid_public_chat_canary",
+                       "gameInputSent": False}
+    elif token is not None:
+        return 1, {"schema": SCHEMA, "status": "unexpected_canary_argument",
+                   "gameInputSent": False}
     if args.pid is not None and args.pid < 1:
         return 1, {"schema": SCHEMA, "status": "invalid_pid", "gameInputSent": False}
-    command = COMMANDS[args.action]
+    command = "/say "+token if args.action=="say-canary" else COMMANDS[args.action]
     try:
         ident = (inspection or focused._inspect)(args.pid)
         focused.screenshot._pin_from_inspection(ident, host)

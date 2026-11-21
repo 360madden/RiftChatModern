@@ -1,7 +1,8 @@
 "use strict";
 
-// RCM Windows-side candidate chat reader. RIFT Live chat format is not yet
-// physically verified. Reuses LuaPadModern's bounded LogTailProbe file decoder.
+// RCM Windows-side chat reader. A narrow Say format was physically verified
+// against RIFT Live on 2026-11-21. Other chat formats remain historical candidates.
+// Reuses LuaPadModern's bounded LogTailProbe file decoder.
 // No game injection, no saved-variable edits, no live socket, no background service.
 const fs = require("node:fs");
 const path = require("node:path");
@@ -64,6 +65,22 @@ function parseCandidateLine(line) {
   if(typeof line!=="string" || Buffer.byteLength(line,"utf8")>MAX_LINE ||
      line.includes("\0"))return null;
   const trimmed=line.replace(/\r$/,"").replace(/^\uFEFF/,"");
+  // Exact physical RIFT Live evidence, Nov 21 2026. In the game-created
+  // Log.txt, the bracket is the speaker, *not* the channel, and "says"
+  // supplies the Say channel. One deliberately sent unique Say token
+  // matched this format at source-file level. Do not infer Guild/Tell/Party.
+  // A synthetic match to this shape alone does NOT prove RIFT origin.
+  const live=/^((?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d): \[([^\]\r\n]{1,40})\] says: (.+)$/u.exec(trimmed);
+  if(live) {
+    const [,time,sender,body]=live;
+    if(!cleanField(sender,40)||!cleanField(body,MAX_LINE))return null;
+    const bounded=safePrefix(body,MAX_TEXT_BYTES);
+    return {event:"candidate_chat",format:"rift-live-2026-say",
+      source:"RIFT_Log.txt",verifiedLiveFormat:true,
+      kind:"general",channel:"Say",sender,
+      gameTimestamp:time,text:bounded.text,
+      textBytes:Buffer.byteLength(body,"utf8"),truncated:bounded.truncated};
+  }
   let match=/^\[([^\]\r\n]{1,36})\]\[([^\]\r\n]{1,72})\]\[([^\]\r\n]{1,40})\]: +(.+)$/u.exec(trimmed);
   let time=null,rawChannel,sender,body;
   if(match && isTimestamp(match[1])) {
@@ -249,7 +266,7 @@ function start(argv=process.argv.slice(2)) {
       "[--require-chat-after-marker] [--require-chat-text TEST_TOKEN]\n"+
       "Read-only candidate RIFT chat observer. Defaults to metadata-only. "+
       "Two-phase mode arms a new file tail after the marker before counting social candidates. "+
-      "Output format historical/unverified. --sample-raw-lines emits bounded decoded log text (explicit opt-in).\n"+
+      "Physical RIFT Live Say format verified on 2026-11-21; other social formats remain historical candidates. --sample-raw-lines emits bounded decoded log text (explicit opt-in).\n"+
       "--prepare-import outputs manual native /rcm or RCM editor :import commands. Never sends game input.\n");
     return;
   }
@@ -347,7 +364,7 @@ function start(argv=process.argv.slice(2)) {
     expectedChatTextRequired:cfg.requireChatText!==null,
     automaticGameInput:false,
     mode:cfg.requireChatAfterMarker ? "marker_then_candidate_chat"
-      : "historical-bracket-candidate",timeoutMs:cfg.timeoutMs});
+      : "bounded_live_say_and_historical_candidates",timeoutMs:cfg.timeoutMs});
   function finish(reason,code=0){
     if(completed)return;
     completed=true;if(timer)clearInterval(timer);

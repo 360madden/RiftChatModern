@@ -64,7 +64,7 @@ class ReadmePresentationTests(unittest.TestCase):
         self.assertIn('src="assets/screenshots/rcm-v0.2.22-native-console-live-cropped.jpg"', body)
         self.assertIn("v0.2.22", body)
         self.assertIn("exclude the player name and private HUD", body)
-        self.assertIn("Real RIFT Live screenshot", body)
+        self.assertIn("Historical real RIFT Live screenshot", body)
 
     def test_social_preview_png_is_valid_size(self):
         preview = ROOT / "assets" / "rcm-social-preview.png"

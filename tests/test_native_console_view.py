@@ -43,7 +43,7 @@ Inspect.Console={
         for name in FILES:
             src=(ADDON/name).read_text(encoding="utf-8")
             lua.execute("assert(loadstring("+_lua_quote(src)
-                        +"))({identifier='RiftChatModern',version='0.2.22'}, {})")
+                        +"))({identifier='RiftChatModern',version='0.2.23'}, {})")
         lua.execute(script)
 
     def test_ui_matches_native_game_loot_player_channel_groups(self):

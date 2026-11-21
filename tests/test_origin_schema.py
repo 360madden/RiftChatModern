@@ -32,7 +32,7 @@ class ProvenanceSchemaTests(unittest.TestCase):
         for module in MODULES:
             source=(ADDON/module).read_text(encoding="utf-8")
             lua.execute("assert(loadstring("+_lua_quote(source)+
-                        "))({identifier='RiftChatModern',version='0.2.22'}, {})")
+                        "))({identifier='RiftChatModern',version='0.2.23'}, {})")
         lua.execute(script)
 
     def test_migrate_35_legacy_records_preserves_ids_times_and_real_category(self):
@@ -76,6 +76,27 @@ assert(not output:find("[HOST? Guild]",1,true))
 local again=assert(RiftChatModernCore.new(saved))
 assert(again:getHistory("imports","",20,0)[1].id==35)
 assert(saved.schemaVersion==2 and #saved.history==35)
+''')
+
+    def test_real_rift_say_import_uses_specific_host_say_label(self):
+        self.core(r'''
+local m=assert(RiftChatModernCore.new({schemaVersion=2,history={}}))
+local say=assert(m:publish("import","RCM_CHAT_TEST_20261121","TestSpeaker",1700,
+    {origin="host_manual",channelKind="general",channelName="Say",
+     importToken="71CA8D77702F"}))
+assert(say.nativePlayerChatVerified==false)
+assert(RiftChatModernCore.rowLabel(say)=="HOST IMPORT / Say")
+assert(RiftChatModernCore.rowShortLabel(say)=="HOST/SAY")
+local legacy=assert(m:publish("import","Old source","TestSpeaker",1701,
+    {origin="host_manual",channelKind="general",channelName="General"}))
+assert(RiftChatModernCore.rowShortLabel(legacy)=="HOST/GENERAL")
+local yelled=assert(m:publish("import","Hello!","TestSpeaker",1702,
+    {origin="host_manual",channelKind="general",channelName="Yell"}))
+assert(RiftChatModernCore.rowShortLabel(yelled)=="HOST/YELL")
+local guild=assert(m:publish("import","group","TestSpeaker",1703,
+    {origin="host_manual",channelKind="guild",channelName="Guild"}))
+assert(RiftChatModernCore.rowShortLabel(guild)=="HOST/GUILD")
+assert(#m.saved.history==4 and m.saved.schemaVersion==2)
 ''')
 
     def test_invalid_migration_is_atomic_and_keeps_old_bytes_unmodified(self):

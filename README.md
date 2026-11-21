@@ -6,7 +6,7 @@
 
 **A modern, draggable chat-style console and developer diagnostics hub for RIFT Live.**
 
-[![Version](https://img.shields.io/badge/version-0.2.22-14b8a6?style=for-the-badge)](addon/RiftChatModern/RiftAddon.toc)
+[![Version](https://img.shields.io/badge/version-0.2.23-14b8a6?style=for-the-badge)](addon/RiftChatModern/RiftAddon.toc)
 [![RIFT Live](https://img.shields.io/badge/game-RIFT%20Live-0ea5e9?style=for-the-badge)](https://www.trionworlds.com/rift/)
 [![Lua 5.1](https://img.shields.io/badge/runtime-Lua%205.1-334155?style=for-the-badge)](addon/RiftChatModern/)
 [![Status](https://img.shields.io/badge/status-active%20development-f59e0b?style=for-the-badge)](#project-status)
@@ -24,14 +24,14 @@
 RCM is built to support other RIFT addons as a shared diagnostics surface—not just to look like a chat window. It provides a published addon API for messages, local commands, history inspection, and development tools.
 
 > [!IMPORTANT]
-> **RCM is not yet a complete replacement for RIFT's original player chat.** Ordinary Say, Guild, Party, and Tell reception/transmission are **not verified** through the available addon APIs. The original RIFT chat window remains the fallback. Host-imported records are explicitly labeled as imports, never passed off as native social messages.
+> **RCM is not yet a complete replacement for RIFT's original player chat.** One **real Say → Log.txt → Windows import → RCM history → character save** experiment has been physically verified. This is a bounded host-mediated import, **not automatic continuous reception or native addon-API interception**. Guild, Party, Tell, other public-channel formats and direct native social sending remain unverified. The original RIFT chat stays available, and host-imported records remain explicitly labeled.
 
 ## In-game preview
 
 <div align="center">
 <img src="assets/screenshots/rcm-v0.2.22-native-console-live-cropped.jpg" alt="Actual RiftChatModern v0.2.22 native RIFT Console subscription inspector running in RIFT Live" width="900"/>
 
-<sub>Real RIFT Live screenshot of **RCM v0.2.22** (November 21, 2026), showing read-only public-channel subscriptions returned by the game. Cropped to exclude the player name and private HUD. No simulated transcript. [Previous v0.2.21 UI](assets/screenshots/rcm-v0.2.21-live-ui-cropped.jpg) and [redacted v0.2.2 image](assets/screenshots/rcm-v0.2.2-physical-names-redacted.png) remain available.</sub>
+<sub>Historical real RIFT Live screenshot of **RCM v0.2.22** (November 21, 2026), showing read-only public-channel subscriptions returned by the game. **Current addon: v0.2.23.** Cropped to exclude the player name and private HUD. No simulated transcript. [Previous v0.2.21 UI](assets/screenshots/rcm-v0.2.21-live-ui-cropped.jpg) and [redacted v0.2.2 image](assets/screenshots/rcm-v0.2.2-physical-names-redacted.png) remain available.</sub>
 </div>
 
 ## What RCM can do
@@ -45,7 +45,7 @@ RCM is built to support other RIFT addons as a shared diagnostics surface—not 
 | ⌨️ | **Local command editor** | Dedicated input, focus feedback, local `:` commands, session-only command recall |
 | 🧩 | **Addon integration** | Publish diagnostics, register commands, subscribe to messages, inspect history |
 | 🛠️ | **Native CONSOLE inspector (v0.2.22)** | Read-only Game, Loot, Player, public Channel and Combat subscriptions; actual ON/OFF states, console selector and refresh |
-| 📥 | **Host import prototype** | Bounded manual/editor import with transfer receipts, deduplication, and provenance |
+| 📥 | **Physically proven Say import (v0.2.23)** | Exactly one controlled live Say record traveled through RIFT Log.txt, Node observer, guarded editor import, in-game history, and disk SavedVariables |
 | 💾 | **Persistence** | Character-scoped SavedVariables with schema migration and save-status diagnostics |
 
 <sub>Feature support varies between offline Lua 5.1 regression tests and physical in-game acceptance. See [verified status and limitations](#project-status).</sub>
@@ -140,13 +140,13 @@ The API also provides history retrieval, subscriptions, UI controls, copy helper
 
 | Area | Current evidence |
 |---|---|
-| **Addon release** | **v0.2.22** physically loaded and its native console inspector tested in RIFT Live; installed files hash-verified on AMD-DESKTOP |
+| **Addon release** | **v0.2.23**, physically loaded in RIFT Live; the retained real Say import displays as **`[HOST/SAY]`** without a duplicate |
 | **Physical RIFT evidence** | v0.2.22 General, Loot and named public-channel subscriptions confirmed in native screenshots; v0.2.21 drag/resize, focus, details, message columns previously accepted |
 | **Offline regression suite** | **312 Python/Lua and 58 Node tests passed** (November 21, 2026), including physical UI regressions, responsive columns, foreground restoration, privacy-safe GitHub screenshots, and SavedVariables geometry audit |
 | **Persistence** | Window position and size survived `/reloadui`; exact UI geometry and local DEV test entry independently found in the on-disk SavedVariables file |
 | **Windows host tooling** | Existing .NET 10 editor batch validator, exact-candidate gate; temporary RIFT foreground capture/return physically verified |
-| **Native player social chat** | **Not verified**; current noncombat `Log.txt` capture still needs a physical trial |
-| **Automatic in-game import** | **Not verified**; guarded sender is an opt-in prototype |
+| **Native player social chat** | One controlled **Say** message physically verified in a game-created Log.txt and subsequently in RCM Imports; Guild/Party/Tell/public capture remains unverified |
+| **Continuous in-game import** | **Not yet implemented**; one explicit, guarded Windows-to-RCM editor transfer is independently verified, with persistent disk receipt |
 
 RCM is under active development. The main engineering priority is proving a reliable real-game social chat source, without mislabeling host-imported records or RIFT console configuration as a native chat transcript.
 
@@ -162,6 +162,7 @@ The homepage is intentionally concise. The complete development history—includ
 | 📷 [v0.2.21 Physical UI acceptance](docs/V0_2_21_PHYSICAL_ACCEPTANCE_20261121.md) | Native screenshot receipts, real tab tests, modal root-cause fix, failed experiments and verified recovery |
 | 🖱️ [v0.2.21 Drag, resize, editor and persistence](docs/V0_2_21_UI_INTERACTION_ACCEPTANCE_20261121.md) | Physical mouse and keyboard acceptance, reload and on-disk state, focus-restoration hardening |
 | 🎛️ [v0.2.22 Native RIFT console categories](docs/V0_2_22_NATIVE_RIFT_CONSOLE_CATEGORIES_20261121.md) | Exact game categories, API research, physical ON/OFF evidence and unsupported native social chat boundary |
+| 📥 [v0.2.23 Real Say → RCM import](docs/V0_2_23_PHYSICAL_RIFT_SAY_LOG_IMPORT_20261121.md) | Physical game-created log record, qualified parser, exact single editor import and on-disk SavedVariables proof |
 | 📚 [Complete engineering archive](docs/ENGINEERING_ARCHIVE_README_THROUGH_20261121.md) | Previous detailed README, preserved in full |
 | 🧭 [Development history](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md) | Original concept, initial build, fixes, and live findings |
 | 🧱 [Addon transport](docs/ADDON_TRANSPORT.md) | RIFT addon-data messaging and API constraints |

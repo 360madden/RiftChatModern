@@ -49,6 +49,32 @@ test("exact after-marker candidate selects only the actual Node editor batch",()
   assert.deepEqual(JSON.parse(r.stdout),expected);
   assert.equal(JSON.parse(r.stdout).automaticGameInput,false);
 });
+test("physically observed Say shape is eligible but never claims whole-game proof",()=>{
+  const items=fixture("RCM_CHAT_TEST_20261121");
+  items[3]={event:"candidate_chat",source:"RIFT_Log.txt",
+    format:"rift-live-2026-say",kind:"general",channel:"Say",
+    verifiedLiveFormat:true,chatTextMatched:true,afterMarker:true,truncated:false};
+  items[4]=encodeRecord({kind:"general",sender:"ExampleCharacter",
+    channel:"Say",text:"RCM_CHAT_TEST_20261121"},"A1B2C3D4E5F6","editor");
+  const result=run(items);
+  assert.equal(result.status,0,result.stderr);
+  const payload=JSON.parse(result.stdout);
+  assert.equal(payload.kind,"general");
+  assert.equal(payload.liveGameDeliveryVerified,false);
+  assert.equal(payload.automaticGameInput,false);
+  for(const wrong of [
+    {format:"invented-format"},
+    {kind:"guild"},
+    {channel:"Guild"},
+    {verifiedLiveFormat:true,format:"historical-bracket"},
+    {verifiedLiveFormat:"true"}
+  ]){
+    const invalid=fixture("RCM_CHAT_TEST_20261121");
+    invalid[3]={...items[3],...wrong};
+    invalid[4]=items[4];
+    refused(invalid);
+  }
+});
 test("valid source may appear only after configured log is created",()=>{
   const items=fixture();
   items.splice(1,0,{event:"log_path_selected",path:"C:\\RIFT\\Log.txt"});

@@ -140,6 +140,62 @@ class NativeSlashTests(unittest.TestCase):
         self.assertEqual((f.events[-1].u.ki.wVk, f.events[-1].u.ki.dwFlags),
                          (slash.VK_RETURN, slash.KEYUP_FLAG))
 
+    def test_log_toggle_requires_explicit_ack_and_never_claims_live_state(self):
+        f=FakeBackend()
+        baseline=["--execute","--ack-native-chat","--action","log-toggle"]
+        # invoke() already supplies --action reload: command-line parsing should
+        # reject duplicates; use the underlying action directly.
+        code,receipt=slash.run([
+            "--expect-host",HOST,"--action","log-toggle",
+            "--execute","--ack-native-chat"],
+            inspection=lambda pid:IDENTITY,backend=f,
+            modifiers=lambda:None,hostname=HOST)
+        self.assertEqual(code,1)
+        self.assertEqual(receipt["status"],"log_toggle_requires_explicit_ack")
+        self.assertEqual(f.events,[])
+        code,receipt=slash.run([
+            "--expect-host",HOST,"--action","log-toggle",
+            "--execute","--ack-native-chat","--ack-log-toggle"],
+            inspection=lambda pid:IDENTITY,backend=f,
+            modifiers=lambda:None,hostname=HOST)
+        self.assertEqual(code,0)
+        self.assertEqual(receipt["keyEventsInserted"],2*(len("/log")+2))
+        self.assertFalse(receipt["inGameCommandVerified"])
+        self.assertTrue(receipt["restoredPreviousForeground"])
+        self.assertEqual(f.current,f.previous)
+
+    def test_exact_public_canary_only_with_separate_ack(self):
+        f=FakeBackend()
+        token="RCM_CHAT_TEST_20261121"
+        def attempt(extra):
+            return slash.run([
+                "--expect-host",HOST,"--action","say-canary",
+                "--chat-canary",token,"--execute","--ack-native-chat",
+                *extra],
+                inspection=lambda pid:IDENTITY,backend=f,
+                modifiers=lambda:None,hostname=HOST)
+        code,receipt=attempt([])
+        self.assertEqual(code,1)
+        self.assertEqual(receipt["status"],"public_canary_requires_explicit_ack")
+        self.assertEqual(f.events,[])
+        code,receipt=attempt(["--ack-public-say"])
+        self.assertEqual(code,0)
+        self.assertEqual(receipt["keyEventsInserted"],2*(len("/say "+token)+2))
+        self.assertTrue(receipt["gameInputSent"])
+        self.assertFalse(receipt["inGameCommandVerified"])
+        self.assertEqual(f.current,f.previous)
+        # Restrict the path to an ASCII test token, not arbitrary social text.
+        for invalid in ("hello there","RCM_BAD:TEXT","RCM_BAD\nOTHER",
+                        "RCM_"+"A"*81):
+            code,receipt=slash.run([
+                "--expect-host",HOST,"--action","say-canary",
+                "--chat-canary",invalid,"--execute","--ack-native-chat",
+                "--ack-public-say"],
+                inspection=lambda pid:IDENTITY,backend=FakeBackend(),
+                modifiers=lambda:None,hostname=HOST)
+            self.assertEqual(code,1)
+            self.assertFalse(receipt["gameInputSent"])
+
     def test_exact_open_native_chat_recovery_requires_separate_ack(self):
         f = FakeBackend()
         code, report = self.invoke(

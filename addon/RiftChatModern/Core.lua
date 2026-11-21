@@ -46,7 +46,16 @@ local function rowShortLabel(row)
     if row.kind=="import" then
         local origin=row.origin=="host_manual" and "HOST"
             or row.origin=="legacy_unknown" and "LEGACY" or "EXTERNAL"
-        return origin.."/"..(row.channelKind or "UNKNOWN"):upper()
+        -- The transport family "general" contains actual Say, Yell,
+        -- Emote and Local variants. Preserve that family in SavedVariables
+        -- but prefer the validated subtype in the compact chat label.
+        -- This was exposed by the physical Say->Log.txt->RCM import proof.
+        local title=(row.channelKind or "UNKNOWN"):upper()
+        if row.channelKind=="general" then
+            local specific={Say="SAY",Yell="YELL",Emote="EMOTE",Local="LOCAL"}
+            title=specific[row.channelName] or title
+        end
+        return origin.."/"..title
     end
     if row.kind=="system" and row.origin=="game_event" then return "NOTIFY" end
     if row.kind=="npc" and row.origin=="game_event" then return "NPC SAY" end
@@ -394,7 +403,7 @@ function Model:commandCount()
     return count
 end
 function Model:status()
-    return {version="0.2.22",schemaVersion=2,
+    return {version="0.2.23",schemaVersion=2,
         provenanceRequired=true,historyCount=#self.saved.history,
         filter=self.filter,search=self.search,revision=self.revision,
         commandCount=self:commandCount(),nativeSocialSendAvailable=false,

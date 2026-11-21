@@ -1,4 +1,4 @@
-"""RCM v0.2.22 — independent timestamp, channel, sender and body columns.
+"""RCM v0.2.23 — independent timestamp, channel, sender and body columns.
 
 Executed with actual Lua 5.1 and the RIFT API mock. These checks validate
 layout and interaction contracts, not physical RIFT screenshot acceptance.
@@ -27,7 +27,7 @@ class MessageColumnsTests(unittest.TestCase):
                          "ConsoleMirror.lua", "HostIngress.lua", "Main.lua"):
             code = (ADDON / filename).read_text(encoding="utf-8")
             lua.execute("assert(loadstring(" + _lua_quote(code) +
-                        "))({identifier='RiftChatModern',version='0.2.22'}, {})")
+                        "))({identifier='RiftChatModern',version='0.2.23'}, {})")
         lua.execute(script)
 
     def test_time_channel_sender_body_are_independent_and_second_accurate(self):

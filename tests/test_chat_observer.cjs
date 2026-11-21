@@ -10,6 +10,59 @@ const {
 }=require("../tools/rcm-chat-observer.cjs");
 const {LogTailProbe}=require("../../LuaPadModern/tools/rift-log-probe.cjs");
 
+test("November 21 physical RIFT Live Say record: timestamp, bracketed speaker, 'says'",()=>{
+  // Reconstructed non-private fixture from independently verified game-made
+  // Log.txt: HH:MM:SS: [CHARACTER] says: RCM_CHAT_TEST_20261121.
+  // The physical file itself is deliberately not added to this repository.
+  const record=parseCandidateLine("17:17:23: [ExampleCharacter] says: RCM_CHAT_TEST_20261121");
+  assert.ok(record);
+  assert.equal(record.event,"candidate_chat");
+  assert.equal(record.format,"rift-live-2026-say");
+  assert.equal(record.verifiedLiveFormat,true);
+  assert.equal(record.source,"RIFT_Log.txt");
+  assert.equal(record.kind,"general");
+  assert.equal(record.channel,"Say");
+  assert.equal(record.sender,"ExampleCharacter");
+  assert.equal(record.gameTimestamp,"17:17:23");
+  assert.equal(record.text,"RCM_CHAT_TEST_20261121");
+  assert.equal(record.truncated,false);
+  assert.equal(record.textBytes,22);
+});
+test("physically observed Say format is narrow: no forged combat or server lines",()=>{
+  for(const line of [
+    "17:17:23: [ExampleCharacter] shouts: RCM_CHAT_TEST_20261121",
+    "17:17:23: [ExampleCharacter] says RCM_CHAT_TEST_20261121",
+    "17:17:23: [ExampleCharacter] says: ",
+    "17:17:23: [ExampleCharacter] says: hi\nignored",
+    "17:17:23: [ExampleCharacter] tells: private text",
+    "17:17:23: [ExampleCharacter] says: hi\u0000evil",
+    "28:17:23: [ExampleCharacter] says: hi",
+    "17:61:23: [ExampleCharacter] says: hi",
+    "17:17:23: [\n] says: hi",
+    "Noncombat logging enabled"
+  ])assert.equal(parseCandidateLine(line),null,line);
+});
+test("real RIFT line format is recognized by the actual bounded file tailer",()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),"rcm-say-real-format-"));
+  const file=path.join(dir,"Log.txt");
+  try{
+    fs.writeFileSync(file,"Noncombat logging enabled\n");
+    const tail=new LogTailProbe({filePath:file,nonce:"RCM_REAL_SAY_20261121"});
+    const seen=[];
+    attachChatObserver(tail,(ev,original)=>seen.push({ev,original}),false);
+    tail.poll();
+    fs.appendFileSync(file,"17:17:23: [ExampleCharacter] says: RCM_CHAT_TEST_20261121\n");
+    tail.poll();
+    assert.equal(seen.length,1);
+    assert.equal(seen[0].ev.format,"rift-live-2026-say");
+    assert.equal(seen[0].ev.verifiedLiveFormat,true);
+    assert.equal(seen[0].ev.channel,"Say");
+    assert.equal(seen[0].ev.textBytes,22);
+    assert.equal("text" in seen[0].ev,false); // privacy by default
+    assert.equal(seen[0].original.text,"RCM_CHAT_TEST_20261121");
+    tail.close();
+  }finally{fs.rmSync(dir,{recursive:true,force:true})}
+});
 test("historical 3-field bracket chat, preserving sender, channel, time and text",()=>{
   const result=parseCandidateLine("[10:04:05][Guild][Atank]: hello from guild");
   assert.equal(result.event,"candidate_chat");

@@ -1,4 +1,4 @@
-"""RiftChatModern v0.2.22 glass theme and RIFT texture API contracts.
+"""RiftChatModern v0.2.23 glass theme and RIFT texture API contracts.
 
 Real Lua 5.1 with a modeled RIFT UI, never a physical in-game claim.
 """
@@ -34,7 +34,7 @@ class GlassThemeTests(unittest.TestCase):
                      "ConsoleMirror.lua", "HostIngress.lua", "Main.lua"):
             source = (ADDON / name).read_text(encoding="utf-8")
             lua.execute("assert(loadstring(" + _lua_quote(source)
-                        + "))({identifier='RiftChatModern',version='0.2.22'}, {})")
+                        + "))({identifier='RiftChatModern',version='0.2.23'}, {})")
         lua.execute(script)
 
     def test_all_theme_assets_are_real_rgba_pngs(self):

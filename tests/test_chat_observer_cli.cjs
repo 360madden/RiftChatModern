@@ -50,6 +50,31 @@ function launchFixture(lines,includeText,prepareImport=false,rawSampleLines=0,in
   });
 }
 
+test("CLI recognizes verified 2026 RIFT Say text without printing speaker message",async()=>{
+  // Uses a synthetic log with *actual observed RIFT syntax*, not the
+  // customer's game-made Log.txt, which remains local/private.
+  const r=await launchFixture(
+    "17:17:23: [ExampleCharacter] says: RCM_CHAT_TEST_20261121\n"+
+    "LPB_PROBE|RCM_CLI_20261120|1795280000.000\n",false,true);
+  assert.equal(r.code,0);
+  assert.ok(r.records.some(x=>x.event==="matched"));
+  const messages=r.records.filter(x=>x.event==="candidate_chat");
+  assert.equal(messages.length,1);
+  assert.equal(messages[0].format,"rift-live-2026-say");
+  assert.equal(messages[0].verifiedLiveFormat,true);
+  assert.equal(messages[0].channel,"Say");
+  assert.equal(messages[0].kind,"general");
+  assert.equal(messages[0].textBytes,22);
+  assert.equal("text" in messages[0],false);
+  const manual=r.records.filter(x=>x.event==="rcm_manual_import");
+  assert.equal(manual.length,1);
+  const wire=Buffer.from(manual[0].commands[0].split(" ").at(-1),"base64url")
+    .toString("utf8");
+  assert.equal(wire,"S\0ExampleCharacter\0Say\0RCM_CHAT_TEST_20261121");
+  assert.equal(manual[0].automaticGameInput,false);
+  assert.equal(manual[0].liveGameDeliveryVerified,false);
+  assert.equal(r.records[0].includeText,false);
+});
 test("CLI tails only new candidate chat and returns a marker receipt",async()=>{
   const r=await launchFixture(
     "[Guild][NewPlayer]: secret sample\n"+

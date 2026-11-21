@@ -87,7 +87,7 @@ class EditorSenderRoundtripTests(unittest.TestCase):
         for name in MODULES:
             source = (ADDON / name).read_text(encoding="utf-8")
             lua.execute("local f=assert(loadstring(" + _lua_quote(source) +
-                        "));assert(f({identifier='RiftChatModern',version='0.2.22'}, {})==nil)")
+                        "));assert(f({identifier='RiftChatModern',version='0.2.23'}, {})==nil)")
         lua.execute('fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")')
         lua.execute('fire(Event.Addon.Load.End,"RiftChatModern")')
         lua.execute("assert(RiftChatModernAPI.Show())")

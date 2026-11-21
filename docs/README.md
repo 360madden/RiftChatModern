@@ -34,6 +34,7 @@ as [the complete engineering archive](ENGINEERING_ARCHIVE_README_THROUGH_2026112
 | v0.2.20 | [Glass UI / reference-inspired skin](V0_2_20_GLASS_UI_20261121.md) |
 | v0.2.21 | [Independent timestamp/channel/sender/body columns](V0_2_21_MESSAGE_COLUMNS_20261121.md) |
 | v0.2.22 | [Native console subscription categories and provenance fixes](V0_2_22_NATIVE_RIFT_CONSOLE_CATEGORIES_20261121.md) |
+| v0.2.23 | [Physical RIFT Say → Log.txt → RCM Imports → SavedVariables](V0_2_23_PHYSICAL_RIFT_SAY_LOG_IMPORT_20261121.md) |
 
 All intermediate milestone reports remain in this directory. See the
 [complete engineering archive](ENGINEERING_ARCHIVE_README_THROUGH_20261121.md)
@@ -41,6 +42,7 @@ for the historical timeline and cross-links.
 
 ## Windows companion and host import
 
+- [Physically verified real Say message and disk persistence](V0_2_23_PHYSICAL_RIFT_SAY_LOG_IMPORT_20261121.md)
 - [Guarded editor sender prototype](EDITOR_SENDER_PROTOTYPE_20261120.md)
 - [Complete multipart .NET 10 batch validation](RCM_MULTIPART_EDITOR_BATCH_20261121.md)
 - [Exact-chat observer → batch gate](RCM_LOG_OBSERVER_BATCH_GATE_20261121.md)
@@ -58,9 +60,11 @@ for the historical timeline and cross-links.
 - [RIFT November 17 logging implementation](RIFT_NOV17_LOGGING_IMPLEMENTATION_20261120.md)
 - [Exact-build noncombat line writer](RIFT_NOV17_NONCOMBAT_LINE_WRITER_20261120.md)
 
-**Evidence boundary:** the noncombat file-writing path is statically verified
-for one executable build; ordinary native player chat capture is not yet
-physically verified. Host-imported chat remains labeled as host-origin data.
+**Evidence boundary:** one controlled Say message is now physically verified
+in the game-created noncombat Log.txt, in RCM's own Imports UI, and in the
+character's persisted SavedVariables. **Guild/Party/Tell/public capture,
+continuous delivery and native social sending are not yet verified.**
+Host-imported chat remains labeled as host-origin data.
 
 ## Screenshot and physical acceptance
 
