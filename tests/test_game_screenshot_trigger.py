@@ -50,7 +50,7 @@ class RcmScreenshotKeyTests(unittest.TestCase):
         code, report = self.run_key("--self-test")
         self.assertEqual(code, 0)
         self.assertEqual(report["status"], "self_tests_passed")
-        self.assertGreaterEqual(report["assertions"], 13)
+        self.assertGreaterEqual(report["assertions"], 19)
         self.assert_no_key(report)
 
     def test_capture_requires_explicit_ack_and_six_identifiers(self):
@@ -91,6 +91,28 @@ class RcmScreenshotKeyTests(unittest.TestCase):
         self.assertIn(report["status"], ("refused", "refused_before_keypress"))
         self.assert_no_key(report)
 
+    def test_bounded_foreground_arm_is_capture_only_and_never_steals_focus(self):
+        pin = ("--expect-host", "WRONG-COMPUTER", "--pid", "1",
+               "--hwnd", "0x1", "--start-ticks", "639308249563595623",
+               "--exe-path", r"C:\Windows\System32\notepad.exe",
+               "--exe-sha256", "A" * 64)
+        rc, supported = self.run_key("--capture", "--ack-single-screenshot",
+                                     "--arm-seconds", "1", *pin)
+        self.assertEqual(rc, 1)
+        self.assertIn("Wrong expected computer", supported.get("detail", ""))
+        self.assert_no_key(supported)
+        for seconds in ("0", "16", "-1", "abc"):
+            with self.subTest(seconds=seconds):
+                rc, invalid = self.run_key("--capture", "--ack-single-screenshot",
+                                           "--arm-seconds", seconds, *pin)
+                self.assertEqual(rc, 1)
+                self.assertIn("arm", invalid.get("detail", "").lower())
+                self.assert_no_key(invalid)
+        rc, forbidden = self.run_key("--dry-run", "--arm-seconds", "1", *pin)
+        self.assertEqual(rc, 1)
+        self.assertIn("capture", forbidden.get("detail", "").lower())
+        self.assert_no_key(forbidden)
+
     def test_readonly_inspection_with_nonexistent_pid(self):
         code, report = self.run_key("--inspect", "--pid", "2147483647")
         self.assertEqual(code, 2)
@@ -116,6 +138,8 @@ class RcmScreenshotKeyTests(unittest.TestCase):
         self.assertIn(dry["status"], ("ready_no_input",
                                      "game_not_foreground_no_input",
                                      "refused_before_keypress"))
+        if dry["status"] == "ready_no_input":
+            self.assertEqual(dry["virtualKey"], "VK_MULTIPLY")
         self.assert_no_key(dry)
 
     def test_only_multiply_key_is_permitted_in_source(self):
@@ -126,7 +150,9 @@ class RcmScreenshotKeyTests(unittest.TestCase):
         self.assertNotIn("SetForegroundWindow(", source)
         self.assertNotIn("OpenClipboard(", source)
         self.assertNotIn("WriteProcessMemory(", source)
-        self.assertNotIn("SendInput(1,", source)
+        self.assertIn("SendInput(1, new[] { pair[1] }", source)
+        self.assertIn("CanReleasePartial(inserted, foregroundStillRift, sameOwner)",source)
+        self.assertNotIn("new[] { pair[0] }", source)
 
 
 if __name__ == "__main__":

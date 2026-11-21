@@ -8,6 +8,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 internal static class Program
 {
@@ -37,12 +38,13 @@ internal static class Program
                 Console.WriteLine("RCM RIFT in-game screenshot trigger; default is read-only.");
                 Console.WriteLine("--inspect [--pid PID]           inspect exact RIFT window identity without input");
                 Console.WriteLine("--dry-run TARGET_FLAGS         verify pinned RIFT target, send NO input");
-                Console.WriteLine("--capture --ack-single-screenshot TARGET_FLAGS");
+                Console.WriteLine("--capture --ack-single-screenshot [--arm-seconds 1..15] TARGET_FLAGS");
                 Console.WriteLine("TARGET_FLAGS:");
                 Console.WriteLine("  --expect-host HOST --pid PID --hwnd 0xHANDLE --start-ticks UTC_TICKS");
                 Console.WriteLine("  --exe-path PATH --exe-sha256 SHA256");
                 Console.WriteLine("The capture mode sends ONLY one VK_MULTIPLY down/up pair to an already");
-                Console.WriteLine("foreground RIFT HWND. It never focuses a window or checks the game's JPG.");
+                Console.WriteLine("foreground RIFT HWND. Optional arming waits briefly without changing focus.");
+                Console.WriteLine("It never focuses a window or checks the game's JPG.");
                 return 0;
             }
             if (options.ContainsKey("inspect"))
@@ -58,7 +60,16 @@ internal static class Program
                 throw new ArgumentException("Cannot request both capture and dry-run.");
             if (capture != options.ContainsKey("ack-single-screenshot"))
                 throw new ArgumentException("Capture requires --ack-single-screenshot; it is forbidden for dry-run.");
-            int wantedCount = capture ? 8 : 7; // six pin values plus capture+ack or dry-run
+            int armSeconds = 0;
+            if (options.TryGetValue("arm-seconds", out string? armText))
+            {
+                if (!capture)
+                    throw new ArgumentException("--arm-seconds requires --capture and explicit acknowledgment.");
+                if (!int.TryParse(armText, NumberStyles.None, CultureInfo.InvariantCulture,
+                        out armSeconds) || armSeconds < 1 || armSeconds > 15)
+                    throw new ArgumentException("--arm-seconds must be an integer from 1 to 15.");
+            }
+            int wantedCount = (capture ? 8 : 7) + (armSeconds > 0 ? 1 : 0);
             if (options.Count != wantedCount)
                 throw new ArgumentException("Exactly six target identity arguments are required.");
             Target target = TargetFromOptions(options);
@@ -76,12 +87,31 @@ internal static class Program
                 });
                 return Inconclusive;
             }
+            if (!state.Foreground && capture && armSeconds > 0)
+            {
+                // Bounded, operator-initiated arm: never steal focus, keep
+                // waiting only while the exact target remains nominated.
+                var wait = Stopwatch.StartNew();
+                while (wait.Elapsed.TotalSeconds < armSeconds &&
+                       GetForegroundWindow() != target.Hwnd)
+                    Thread.Sleep(100);
+                state = InspectTarget(target, mustBeForeground: false);
+                if (state.Status != "exact_target_matched")
+                {
+                    Emit(new { schema = "RCM_GAME_SCREENSHOT_TRIGGER_V1",
+                        status = "target_changed_while_arming_no_input", reason = state.Status,
+                        gameInputSent = false, screenshotFileVerified = false });
+                    return Inconclusive;
+                }
+            }
             if (!state.Foreground)
             {
                 Emit(new
                 {
                     schema = "RCM_GAME_SCREENSHOT_TRIGGER_V1",
-                    status = "game_not_foreground_no_input",
+                    status = capture && armSeconds > 0
+                        ? "foreground_timeout_no_input" : "game_not_foreground_no_input",
+                    armSecondsRequested = armSeconds,
                     pid = target.Pid,
                     hwnd = $"0x{target.Hwnd.ToInt64():X}",
                     gameInputSent = false,
@@ -99,7 +129,7 @@ internal static class Program
                     machine = Environment.MachineName,
                     pid = target.Pid,
                     hwnd = $"0x{target.Hwnd.ToInt64():X}",
-                    scanCode = "VK_MULTIPLY",
+                    virtualKey = "VK_MULTIPLY",
                     screenshotFileVerified = false,
                     gameInputSent = false,
                     gameFocusChanged = false
@@ -117,8 +147,23 @@ internal static class Program
             WinInput[] pair = MakeMultiplyPair();
             keyCallAttempted = true;
             uint inserted = SendInput(2, pair, Marshal.SizeOf<WinInput>());
-            // The two events are inserted as a single atomic SendInput batch.
-            // Never automatically retry a partial batch (double-capture risk).
+            // The original down/up pair is one atomic insertion request.
+            // If only the down event was inserted, release that same key once
+            // ONLY if the exact target is still foreground and owns its HWND.
+            // Never retry a screenshot key-down (double-capture risk).
+            uint released = 0;
+            bool releaseRecoveryAttempted = false;
+            if (inserted == 1)
+            {
+                bool foregroundStillRift = GetForegroundWindow() == target.Hwnd;
+                bool sameOwner = GetWindowThreadProcessId(target.Hwnd, out uint owner) != 0
+                    && owner == (uint)target.Pid;
+                if (CanReleasePartial(inserted, foregroundStillRift, sameOwner))
+                {
+                    releaseRecoveryAttempted = true;
+                    released = SendInput(1, new[] { pair[1] }, Marshal.SizeOf<WinInput>());
+                }
+            }
             Emit(new
             {
                 schema = "RCM_GAME_SCREENSHOT_TRIGGER_V1",
@@ -127,10 +172,14 @@ internal static class Program
                 pid = target.Pid,
                 hwnd = $"0x{target.Hwnd.ToInt64():X}",
                 baselineEpochNs = before,
+                armSecondsRequested = armSeconds,
                 key = "VK_MULTIPLY",
                 keyEventsRequested = 2,
-                keyEventsInserted = inserted,
-                gameInputSent = inserted > 0,
+                keyEventsInserted = inserted + released,
+                releaseRecoveryAttempted,
+                releaseEventsInserted = released,
+                partialKeyReleaseUnverified = inserted == 1 && released != 1,
+                gameInputSent = inserted + released > 0,
                 gameFocusChanged = false,
                 screenshotFileVerified = false,
                 screenshotKeyHandledByGameVerified = false,
@@ -298,6 +347,9 @@ internal static class Program
                 throw new InvalidOperationException("Modifier key currently held; no screenshot key sent.");
     }
 
+    private static bool CanReleasePartial(uint inserted, bool sameForeground, bool sameOwner)
+        => inserted == 1 && sameForeground && sameOwner;
+
     private static WinInput[] MakeMultiplyPair()
     {
         var down = new WinInput
@@ -318,7 +370,8 @@ internal static class Program
         var flags = new HashSet<string>(StringComparer.Ordinal)
             { "inspect", "dry-run", "capture", "ack-single-screenshot", "self-test", "help" };
         var values = new HashSet<string>(StringComparer.Ordinal)
-            { "expect-host", "pid", "hwnd", "start-ticks", "exe-path", "exe-sha256" };
+            { "expect-host", "pid", "hwnd", "start-ticks", "exe-path", "exe-sha256",
+              "arm-seconds" };
         var o = new Dictionary<string, string>(StringComparer.Ordinal);
         for (int i = 0; i < args.Length; ++i)
         {
@@ -368,6 +421,7 @@ internal static class Program
         Check(Parse(["--inspect"]).ContainsKey("inspect"));
         Check(Parse(["--dry-run"]).ContainsKey("dry-run"));
         Check(Parse(["--capture", "--ack-single-screenshot"]).Count == 2);
+        Check(Parse(["--capture", "--ack-single-screenshot", "--arm-seconds", "5"]).Count == 3);
         foreach (var broken in new[]
         {
             new[] { "--capture", "--capture" },
@@ -380,6 +434,11 @@ internal static class Program
             try { _ = Parse(broken); } catch (ArgumentException) { refused = true; }
             Check(refused);
         }
+        Check(CanReleasePartial(1, true, true));
+        Check(!CanReleasePartial(0, true, true));
+        Check(!CanReleasePartial(2, true, true));
+        Check(!CanReleasePartial(1, false, true));
+        Check(!CanReleasePartial(1, true, false));
         Check(UnixEpochTicks == 621355968000000000L);
         Emit(new
         {
