@@ -120,6 +120,8 @@ def payload(source: Path) -> list[Path]:
 
 def preflight(source: Path, target: Path) -> dict:
     expected = manifest(source)
+    if not target.is_absolute():
+        raise ValueError("Target must be an absolute path")
     if target.is_symlink() or not target.is_dir() or target.name != ADDON:
         raise ValueError("Target must be an existing non-symlinked RiftChatModern folder")
     existing = target / "RiftAddon.toc"
@@ -133,12 +135,18 @@ def preflight(source: Path, target: Path) -> dict:
     changes = []
     for rel in all_files:
         installed = target / rel
-        if installed.is_symlink() or installed.parent.is_symlink():
+        if installed.is_symlink():
             raise ValueError("Refusing installed path link")
+        # New releases may introduce texture subdirectories. Missing parent
+        # directories are allowed, but existing links/files in their place
+        # must fail closed before any asset is copied.
+        parent = installed.parent
+        while parent != target:
+            if parent.is_symlink() or (parent.exists() and not parent.is_dir()):
+                raise ValueError(f"Unsafe installed parent: {parent}")
+            parent = parent.parent
         if installed.exists() and not installed.is_file():
             raise ValueError(f"Installed item is not a file: {rel}")
-        if not installed.parent.is_dir():
-            raise ValueError(f"Missing target folder: {installed.parent}")
         if not installed.is_file() or sha256(installed) != sha256(source / rel):
             changes.append(rel)
     return {"version": expected["version"], "files": all_files, "changed": changes}
@@ -146,6 +154,8 @@ def preflight(source: Path, target: Path) -> dict:
 
 def apply_copy(source: Path, target: Path, plan: dict, project: Path) -> dict:
     """Copy after full preflight, preserve originals, roll back on failure."""
+    if not target.is_absolute():
+        raise ValueError("Target must be an absolute path")
     pending = plan["changed"]
     if not pending:
         return {"changed": [], "backups": None, "rollback": False}
@@ -155,6 +165,7 @@ def apply_copy(source: Path, target: Path, plan: dict, project: Path) -> dict:
     backup_dir = Path(tempfile.mkdtemp(prefix=f"{now}-", dir=backup_root))
     originals = {}
     written = []
+    created_dirs = []
     try:
         for rel in pending:
             destination = target / rel
@@ -169,6 +180,19 @@ def apply_copy(source: Path, target: Path, plan: dict, project: Path) -> dict:
                 originals[rel] = None
         for rel in pending:
             destination = target / rel
+            # Preflight allows absent asset folders. Create only directories
+            # directly under the verified addon folder, after backups exist.
+            missing = []
+            parent = destination.parent
+            while parent != target:
+                if parent.is_symlink() or (parent.exists() and not parent.is_dir()):
+                    raise RuntimeError(f"Unsafe destination parent: {parent}")
+                if not parent.exists():
+                    missing.append(parent)
+                parent = parent.parent
+            for folder in reversed(missing):
+                folder.mkdir()
+                created_dirs.append(folder)
             fd, staging = tempfile.mkstemp(prefix=".rcm-deploy-", suffix=".tmp", dir=destination.parent)
             try:
                 with os.fdopen(fd, "wb") as out, (source / rel).open("rb") as inp:
@@ -192,6 +216,13 @@ def apply_copy(source: Path, target: Path, plan: dict, project: Path) -> dict:
                 destination.unlink(missing_ok=True)
             else:
                 shutil.copyfile(original, destination)
+        # Remove only directories created by this specific deployment, and
+        # only if empty after file rollback. Never remove pre-existing data.
+        for folder in reversed(created_dirs):
+            try:
+                folder.rmdir()
+            except OSError:
+                pass
         raise
     return {"changed": [str(rel) for rel in pending],
             "backups": str(backup_dir), "rollback": False}

@@ -2,7 +2,7 @@
 -- Native player say/tell/guild transmit and full native chat interception are NOT
 -- exposed by the verified addon APIs. This UI never pretends to send those.
 local info = ...
-local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.19"
+local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.20"
 local Core = _G.RiftChatModernCore
 local MessageBridge = _G.RiftChatModernAddonMessages
 local NativeProbe = _G.RiftChatModernNativeProbe
@@ -14,13 +14,16 @@ local ROW_H,MAX_ROWS=24,80
 local TAB_ORDER={"all","chat","imports","system","npc","addons","dev"}
 local ACTION_ORDER={"Copy","Clear","Focus","Mirror"}
 local ACTION_WEIGHTS={170/587,98/587,145/587,174/587}
+-- Version 0.2.20: image-backed glass chrome. Colors below remain the safe
+-- fallback when the RIFT client cannot load packaged texture resources.
 local C = {
-    bg={0.065,0.080,0.11,0.98}, header={0.090,0.111,0.15,1},
-    card={0.092,0.117,0.15,1}, alt={0.081,0.102,0.13,1},
-    border={0.16,0.21,0.27,1}, control={0.14,0.19,0.25,1},
-    hover={0.19,0.27,0.34,1}, accent={0.12,0.67,0.75,1},
-    text={0.90,0.94,0.97,1}, muted={0.61,0.72,0.79,1},
-    warning={1.0,0.73,0.43,1}, good={0.40,0.91,0.70,1}
+    bg={0.025,0.075,0.10,0.94}, header={0.036,0.106,0.14,0.93},
+    card={0.030,0.080,0.11,0.49}, alt={0.022,0.061,0.087,0.48},
+    border={0.16,0.37,0.43,0.82}, control={0.07,0.16,0.20,0.86},
+    hover={0.10,0.24,0.29,0.91}, accent={0.12,0.82,0.83,1},
+    text={0.94,0.98,0.99,1}, muted={0.66,0.78,0.82,1},
+    warning={1.0,0.75,0.46,1}, good={0.40,0.94,0.72,1},
+    clear={0,0,0,0}, input={0.035,0.105,0.13,0.38}
 }
 local model,panel,editor,searchField,statusField,focusIndicator,rows,tabLabels,drag
 local resize, resizeGrip, header, handle, titleFrame, versionFrame, divider
@@ -123,6 +126,7 @@ end
 -- Reuse the existing controls upvalue in makeUi: Lua 5.1 limits a function
 -- to 60 distinct upvalues. Extra direct state captures break addon loading.
 controls=controls or {}
+controls._skin={}
 controls._commandActions={
     recall=recallCommand,
     changed=function(current)
@@ -199,26 +203,73 @@ local function text(name,parent,value,x,y,w,h,size,color,bold)
     ink(f,color or C.text)
     return f
 end
+-- RIFT's Texture:SetTexture(addon, filename) supports local PNG resources.
+-- A missing/unsupported texture leaves a readable solid-color fallback.
+local function skinTexture(name,parent,asset,layer)
+    local t=UI.CreateFrame("Texture","RCM"..name,parent)
+    t:SetPoint("TOPLEFT",parent,"TOPLEFT",0,0)
+    t:SetWidth(parent:GetWidth());t:SetHeight(parent:GetHeight())
+    if type(t.SetLayer)=="function" then t:SetLayer(layer or -8) end
+    if type(t.SetMouseMasking)=="function" then t:SetMouseMasking("limited") end
+    if type(t.SetTexture)~="function"
+        or not pcall(t.SetTexture,t,ADDON,"textures/"..asset..".png") then
+        t:SetVisible(false)
+        return nil
+    end
+    return t
+end
+controls._skinTexture=skinTexture
+local function repaintControl(name,hovered)
+    local item=controls and controls[name]
+    if not item then return end
+    if type(hovered)=="boolean" then item.hovered=hovered end
+    local asset
+    if item.tab then
+        asset=item.active and "glass_tab_active"
+            or item.hovered and "glass_tab_hover" or "glass_tab_idle"
+    elseif item.strong then
+        asset=item.hovered and "glass_primary_hover" or "glass_primary"
+    else
+        asset=item.hovered and "glass_button_hover" or "glass_button"
+    end
+    if item.skin and item.asset~=asset then
+        if pcall(item.skin.SetTexture,item.skin,ADDON,"textures/"..asset..".png") then
+            item.asset=asset
+        else
+            item.skin:SetVisible(false)
+            item.skin=nil
+        end
+    end
+    rgba(item.frame,item.skin and C.clear
+        or item.strong and C.accent
+        or item.hovered and C.hover or C.control)
+end
 local function button(name,value,parent,x,y,w,h,fn,strong)
     local control=frame(name,parent,x,y,w,h,strong and C.accent or C.control)
     control:SetMouseMasking("full")
+    local tab=name:sub(1,3)=="Tab"
+    local initial=tab and "glass_tab_idle"
+        or strong and "glass_primary" or "glass_button"
+    local plate=skinTexture(name.."Plate",control,initial)
     local caption=text(name.."Label",control,value,8,math.max(1,(h-21)/2),w-16,22,15,
         strong and C.bg or C.text,true)
+    controls=controls or {}
+    controls[name]={frame=control,label=caption,skin=plate,asset=plate and initial,
+        tab=tab,strong=strong,active=false,hovered=false}
+    repaintControl(name)
     control:EventAttach(Event.UI.Input.Mouse.Left.Click,function()
         if type(fn)=="function" then fn() end
     end,ADDON.." "..name.." clicked")
     if Event.UI.Input.Mouse.Cursor and Event.UI.Input.Mouse.Cursor.In then
         control:EventAttach(Event.UI.Input.Mouse.Cursor.In,function()
-            rgba(control,strong and C.accent or C.hover)
+            repaintControl(name,true)
         end,ADDON.." "..name.." hover")
     end
     if Event.UI.Input.Mouse.Cursor and Event.UI.Input.Mouse.Cursor.Out then
         control:EventAttach(Event.UI.Input.Mouse.Cursor.Out,function()
-            rgba(control,strong and C.accent or C.control)
+            repaintControl(name,false)
         end,ADDON.." "..name.." leave")
     end
-    controls=controls or {}
-    controls[name]={frame=control,label=caption}
     return control,caption
 end
 local function place(obj,parent,x,y,w,h)
@@ -232,6 +283,7 @@ local function placeButton(name,parent,x,y,w,h)
     local b=controls and controls[name]
     if not b then return end
     place(b.frame,parent,x,y,w,h)
+    if b.skin then place(b.skin,b.frame,0,0,w,h) end
     place(b.label,b.frame,8,math.max(1,(h-21)/2),w-16,22)
 end
 local function focusState()
@@ -414,9 +466,16 @@ render=function()
                 cutUtf8(Core.rowShortLabel(r),18),cutUtf8(r.source,14),r.text)
             -- Wider windows expose more of each message, without changing saved text.
             rows[i].entry:SetText(cutUtf8(msg,capacity))
-            ink(rows[i].entry,(r.kind=="dev" or r.kind=="import") and C.accent or
-                r.kind=="system" and C.warning or C.text)
-        else rows[i].entry:SetText("") end
+            local color=(r.kind=="dev" or r.kind=="import") and C.accent or
+                r.kind=="system" and C.warning or
+                r.kind=="npc" and C.good or C.text
+            ink(rows[i].entry,color)
+            rgba(rows[i].marker,color)
+            rows[i].marker:SetVisible(true)
+        else
+            rows[i].entry:SetText("")
+            rows[i].marker:SetVisible(false)
+        end
     end
     local count=math.max(0,total-visibleOffset)
     local first=#selection>0 and (count-#selection+1) or 0
@@ -427,7 +486,13 @@ render=function()
     notifyUi(string.format("%d messages  •  showing %d–%d  •  %s  •  native chat separate",
         total,first,count,model.filter))
     for key,label in pairs(tabLabels or {}) do
-        ink(label,key==model.filter and C.accent or C.muted)
+        local selected=key==model.filter
+        ink(label,selected and C.accent or C.muted)
+        local item=controls and controls["Tab"..key]
+        if item and item.active~=selected then
+            item.active=selected
+            repaintControl("Tab"..key)
+        end
     end
 end
 local function copyHistory()
@@ -558,8 +623,9 @@ local function makeRow(i)
     local row=frame("Line"..i,list,5,6+(i-1)*ROW_H,656,ROW_H,
         i%2==0 and C.card or C.alt)
     row:SetMouseMasking("full")
+    local marker=frame("LineMarker"..i,row,2,3,3,ROW_H-6,C.accent)
     rows[i]={entry=text("LineText"..i,row,"",9,2,634,22,16,C.text),
-        frame=row,messageId=nil}
+        frame=row,marker=marker,messageId=nil}
     row:EventAttach(Event.UI.Input.Mouse.Left.Click,function()
         local id=rows[i].messageId
         if id then openMessage(id) end
@@ -568,7 +634,9 @@ end
 layoutWindow=function()
     if not panel or not list or not rows or not controls then return end
     local w,h=W,H
+    if controls._skin.panel then place(controls._skin.panel,panel,0,0,w,h) end
     place(header,panel,0,0,w,58)
+    if controls._skin.header then place(controls._skin.header,header,0,0,w,58) end
     place(handle,header,0,0,w-380,58)
     place(titleFrame,handle,18,15,math.min(320,w-407),28)
     place(focusIndicator,header,w-377,20,188,24)
@@ -580,18 +648,21 @@ layoutWindow=function()
         placeButton("Tab"..name,panel,16+(i-1)*(tabWidth+8),69,tabWidth,34)
     end
     place(findLabel,panel,17,118,60,25)
+    if controls._skin.search then place(controls._skin.search,panel,84,111,w-254,33) end
     place(searchField,panel,84,111,w-254,33)
     placeButton("FindReset",panel,w-155,111,75,33)
     placeButton("PageUp",panel,w-74,160,64,34)
     placeButton("PageDown",panel,w-74,205,64,34)
     local cardW,cardH=w-94,h-292
     place(list,panel,14,154,cardW,cardH)
+    if controls._skin.history then place(controls._skin.history,list,0,0,cardW,cardH) end
     local count=math.min(MAX_ROWS,math.max(1,math.floor((cardH-10)/ROW_H)))
     for i=#rows+1,count do makeRow(i) end
     LINES=count
     for i,row in ipairs(rows) do
         if i<=count then
             place(row.frame,list,5,6+(i-1)*ROW_H,cardW-10,ROW_H)
+            place(row.marker,row.frame,2,3,3,ROW_H-6)
             place(row.entry,row.frame,9,2,cardW-32,22)
             row.frame:SetVisible(true)
         else
@@ -603,6 +674,7 @@ layoutWindow=function()
     end
     local overlayW,overlayH=cardW-8,cardH-8
     place(detailOverlay,list,4,4,overlayW,overlayH)
+    if controls._skin.detail then place(controls._skin.detail,detailOverlay,0,0,overlayW,overlayH) end
     place(detailTitle,detailOverlay,14,13,overlayW-138,25)
     place(detailBody,detailOverlay,14,51,overlayW-28,math.max(24,overlayH-124))
     placeButton("DetailCopy",detailOverlay,14,overlayH-51,162,36)
@@ -619,6 +691,7 @@ layoutWindow=function()
         placeButton(name,panel,x,h-128,width,35)
         x=x+width+10
     end
+    if controls._skin.input then place(controls._skin.input,panel,14,h-83,w-128,40) end
     place(editor,panel,14,h-83,w-128,40)
     placeButton("Send",panel,w-105,h-83,90,40)
     place(statusField,panel,16,h-31,w-65,24)
@@ -685,7 +758,11 @@ local function makeUi()
     shift(ui and finite(ui.x) and ui.x or math.max(0,math.floor((vw-W)/2)),
         ui and finite(ui.y) and ui.y or math.max(0,math.floor((vh-H)/3)),false)
     lastViewportW,lastViewportH=vw,vh
+    controls._skin.panel=controls._skinTexture("PanelPlate",panel,"glass_panel",-100)
+    if controls._skin.panel then rgba(panel,C.clear) end
     header=frame("Header",panel,0,0,W,58,C.header)
+    controls._skin.header=controls._skinTexture("HeaderPlate",header,"glass_header")
+    if controls._skin.header then rgba(header,C.clear) end
     -- The drag surface is only over the title. The close button remains clickable.
     handle=frame("DragHandle",header,0,0,370,58)
     handle:SetMouseMasking("full")
@@ -708,7 +785,7 @@ local function makeUi()
         panel:SetVisible(false)
         updateFocusIndicator(true)
     end)
-    divider=frame("Divider",panel,0,58,W,1,C.border)
+    divider=frame("Divider",panel,0,58,W,1,C.accent)
     tabLabels={}
     local tabs={{"all","ALL"},{"chat","CHAT"},{"imports","IMPORTS"},
         {"system","SYSTEM"},{"npc","NPC"},{"addons","ADDONS"},{"dev","DEV"}}
@@ -719,11 +796,12 @@ local function makeUi()
         tabLabels[name]=label
     end
     findLabel=text("FindLabel",panel,"SEARCH",17,118,60,25,15,C.muted,true)
+    controls._skin.search=controls._skinTexture("SearchPlate",panel,"glass_input",-20)
     searchField=UI.CreateFrame("RiftTextfield","RCMSearchField",panel)
     searchField:SetPoint("TOPLEFT",panel,"TOPLEFT",84,111)
     searchField:SetWidth(506);searchField:SetHeight(33)
     pcall(function() searchField:SetFontSize(16) end)
-    rgba(searchField,C.control)
+    rgba(searchField,controls._skin.search and C.input or C.control)
     searchField:SetText(model.search)
     if Event.UI.Textfield and Event.UI.Textfield.Change then
         searchField:EventAttach(Event.UI.Textfield.Change,function()
@@ -745,10 +823,14 @@ local function makeUi()
     end)
     rows={}
     list=frame("MessageCard",panel,14,154,666,326,C.card)
+    controls._skin.history=controls._skinTexture("HistoryPlate",list,"glass_history")
+    if controls._skin.history then rgba(list,C.clear) end
     -- Actual message rows are created lazily by layoutWindow().
     -- Complete-message reader overlays only the message list, not the controls.
     -- The regular rows remain available immediately after CLOSE.
     detailOverlay=frame("DetailOverlay",list,4,4,658,318,C.header)
+    controls._skin.detail=controls._skinTexture("DetailPlate",detailOverlay,"glass_detail")
+    if controls._skin.detail then rgba(detailOverlay,C.clear) end
     detailOverlay:SetMouseMasking("full")
     detailTitle=text("DetailTitle",detailOverlay,"MESSAGE DETAILS",
         14,13,520,25,18,C.accent,true)
@@ -774,12 +856,13 @@ local function makeUi()
         function() setMirror(not mirrorStatus().enabled) end)
     mirrorButtonLabel=caption
     mirrorButtonLabel:SetText(mirrorStatus().enabled and "MIRROR ON" or "MIRROR OFF")
+    controls._skin.input=controls._skinTexture("InputPlate",panel,"glass_input",-20)
     editor=UI.CreateFrame("RiftTextfield","RCMInput",panel)
     editor:SetPoint("TOPLEFT",panel,"TOPLEFT",14,535)
     editor:SetWidth(632);editor:SetHeight(40)
     pcall(function() editor:SetFontSize(18) end)
     editor:SetText("")
-    rgba(editor,C.control)
+    rgba(editor,controls._skin.input and C.input or C.control)
     if editor.Event then
         -- RIFT Textfield's native KeyDown is the proven input path (LuaPadModern).
         function editor.Event:KeyDown(key)

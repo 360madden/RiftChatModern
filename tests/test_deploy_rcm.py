@@ -38,7 +38,8 @@ class DeploymentTests(unittest.TestCase):
                         data["modules"].index("Main.lua"))
         plan = deploy_rcm.preflight(self.source, self.target)
         self.assertEqual(plan["changed"], [])
-        self.assertEqual(len(plan["files"]), 10)
+        self.assertEqual(len(plan["files"]), len(deploy_rcm.payload(self.source)))
+        self.assertGreaterEqual(len(plan["files"]), 10)
 
     def test_copy_creates_verified_backups_and_is_idempotent(self):
         target_main = self.target / "Main.lua"
@@ -60,6 +61,49 @@ class DeploymentTests(unittest.TestCase):
             deploy_rcm.preflight(self.source,self.target),self.root/"project")
         self.assertEqual(again["changed"], [])
         self.assertIsNone(again["backups"])
+
+    def test_new_texture_directory_is_created_and_verified(self):
+        # Simulate an existing pre-v0.2.20 RIFT installation with no textures.
+        shutil.rmtree(self.target / "textures")
+        plan = deploy_rcm.preflight(self.source, self.target)
+        textures = {p for p in plan["changed"] if p.parts[0] == "textures"}
+        self.assertEqual(len(textures), 12)
+        outcome = deploy_rcm.apply_copy(self.source, self.target, plan,
+                                        self.root / "project")
+        self.assertEqual(set(outcome["changed"]), {str(p) for p in textures})
+        self.assertEqual(deploy_rcm.preflight(self.source, self.target)["changed"], [])
+
+    def test_rollback_removes_new_texture_dir_after_failed_copy(self):
+        shutil.rmtree(self.target / "textures")
+        (self.target / "Main.lua").write_bytes(b"older version")
+        plan = deploy_rcm.preflight(self.source, self.target)
+        original = (self.target / "Main.lua").read_bytes()
+        real_replace = deploy_rcm.os.replace
+        calls = []
+        def fail_in_texture_folder(src, dst):
+            calls.append(dst)
+            if "textures" in str(dst):
+                raise OSError("injected failure inside new textures folder")
+            return real_replace(src, dst)
+        with mock.patch.object(deploy_rcm.os, "replace", side_effect=fail_in_texture_folder):
+            with self.assertRaisesRegex(OSError, "injected failure"):
+                deploy_rcm.apply_copy(self.source, self.target, plan,
+                                      self.root / "project")
+        self.assertEqual((self.target / "Main.lua").read_bytes(), original)
+        self.assertFalse((self.target / "textures").exists())
+
+    def test_relative_target_refused_before_parent_walk(self):
+        with self.assertRaisesRegex(ValueError, "absolute path"):
+            deploy_rcm.preflight(self.source, Path("RiftChatModern"))
+        with self.assertRaisesRegex(ValueError, "absolute path"):
+            deploy_rcm.apply_copy(self.source, Path("RiftChatModern"),
+                                  {"changed": []}, self.root / "project")
+
+    def test_refuse_existing_file_in_place_of_texture_directory(self):
+        shutil.rmtree(self.target / "textures")
+        (self.target / "textures").write_bytes(b"not a directory")
+        with self.assertRaisesRegex(ValueError, "Unsafe installed parent"):
+            deploy_rcm.preflight(self.source, self.target)
 
     def test_missing_new_module_is_added_without_removing_other_files(self):
         (self.target / "HostIngress.lua").unlink()

@@ -27,7 +27,7 @@ class SaveLifecycleTests(unittest.TestCase):
         for name in FILES:
             src=(ADDON/name).read_text(encoding="utf-8")
             lua.execute("assert(loadstring("+_lua_quote(src)+
-                        "))({identifier='RiftChatModern',version='0.2.19'}, {})")
+                        "))({identifier='RiftChatModern',version='0.2.20'}, {})")
         if setup:lua.execute(setup)
         lua.execute(body)
 

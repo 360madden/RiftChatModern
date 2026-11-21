@@ -6,7 +6,7 @@
 
 **A modern, draggable chat-style console and developer diagnostics hub for RIFT Live.**
 
-[![Version](https://img.shields.io/badge/version-0.2.19-14b8a6?style=for-the-badge)](addon/RiftChatModern/RiftAddon.toc)
+[![Version](https://img.shields.io/badge/version-0.2.20-14b8a6?style=for-the-badge)](addon/RiftChatModern/RiftAddon.toc)
 [![RIFT Live](https://img.shields.io/badge/game-RIFT%20Live-0ea5e9?style=for-the-badge)](https://www.trionworlds.com/rift/)
 [![Lua 5.1](https://img.shields.io/badge/runtime-Lua%205.1-334155?style=for-the-badge)](addon/RiftChatModern/)
 [![Status](https://img.shields.io/badge/status-active%20development-f59e0b?style=for-the-badge)](#project-status)
@@ -31,14 +31,14 @@ RCM is built to support other RIFT addons as a shared diagnostics surface—not 
 <div align="center">
 <img src="assets/screenshots/rcm-v0.2.2-physical-names-redacted.png" alt="Actual RIFT Live client showing an early RiftChatModern window after a drag test" width="900"/>
 
-<sub>Real in-game development screenshot from **v0.2.2** (November 20, 2026). The current addon is v0.2.19; this older capture is shown as historical UI evidence, not as a current-version screenshot. The two small player-name labels are blurred for privacy.</sub>
+<sub>Real in-game development screenshot from **v0.2.2** (November 20, 2026). The current addon is v0.2.20; this older capture is shown as historical UI evidence, not as a current-version screenshot. The two small player-name labels are blurred for privacy.</sub>
 </div>
 
 ## What RCM can do
 
 | | Feature | Details |
 |:--:|---|---|
-| 🖥️ | **Modern dark interface** | Draggable, resizable window; readable fonts; saved placement and dimensions |
+| 🖥️ | **Glass UI (v0.2.20)** | Translucent charcoal PNG surfaces, cyan outlines, responsive hover tabs, readable fonts, saved placement and dimensions |
 | 💬 | **Message workspace** | Tabs for All, Chat, Imports, System, NPC, Addons, and Dev |
 | 🔎 | **Find and inspect** | Search, paginated history, expandable message details, copy/export |
 | ⌨️ | **Local command editor** | Dedicated input, focus feedback, local `:` commands, session-only command recall |
@@ -72,7 +72,8 @@ RIFT/
             ├── ConsoleMirror.lua
             ├── HostIngress.lua
             ├── Main.lua
-            └── fonts/
+            ├── fonts/
+            └── textures/       # 12 original glass UI assets
 ```
 
 > [!TIP]
@@ -138,9 +139,9 @@ The API also provides history retrieval, subscriptions, UI controls, copy helper
 
 | Area | Current evidence |
 |---|---|
-| **Addon release** | v0.2.19; installed files hash-verified on AMD-DESKTOP |
+| **Addon release** | v0.2.20; installed 22-file package hash-verified on AMD-DESKTOP; in-game `/reloadui` acceptance pending |
 | **Physical RIFT evidence** | Earlier v0.2.2 UI load/drag; v0.2.11 manual import displayed in the game |
-| **Offline regression suite** | 253 Python/Lua and 58 Node tests passed at the November 21 checkpoint |
+| **Offline regression suite** | **267 Python/Lua and 58 Node tests passed** (November 21, 2026), including PNG assets, visual-state fallback, and safe texture-folder deployment |
 | **Windows host tooling** | .NET 10 editor batch preflight, exact-candidate gate, and simulated end-to-end import tested |
 | **Native player social chat** | **Not verified**; current noncombat `Log.txt` capture still needs a physical trial |
 | **Automatic in-game import** | **Not verified**; guarded sender is an opt-in prototype |
@@ -153,11 +154,12 @@ The homepage is intentionally concise. The complete development history—includ
 
 | Start here | Purpose |
 |---|---|
+| 🎨 [v0.2.20 Glass UI](docs/V0_2_20_GLASS_UI_20261121.md) | Original PNG skin, interactive Lua styling, compatibility tests, and physical acceptance checklist |
 | 📚 [Complete engineering archive](docs/ENGINEERING_ARCHIVE_README_THROUGH_20261121.md) | Previous detailed README, preserved in full |
 | 🧭 [Development history](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md) | Original concept, initial build, fixes, and live findings |
 | 🧱 [Addon transport](docs/ADDON_TRANSPORT.md) | RIFT addon-data messaging and API constraints |
 | 🔧 [Deployment and `/reloadui`](docs/LIVE_DEPLOYMENT_RELOADUI_POLICY_20261120.md) | Installation and hot-update rules |
-| 📥 [Multipart import fix](docs/V0_2_19_MULTIPART_IDLE_TIMEOUT_20261120.md) | Latest Lua-side receiver reliability change |
+| 📥 [Multipart import fix](docs/V0_2_19_MULTIPART_IDLE_TIMEOUT_20261120.md) | Previous Lua-side receiver reliability change |
 | 🖥️ [Windows batch sender](docs/RCM_MULTIPART_EDITOR_BATCH_20261121.md) | Guarded .NET host transfer prototype |
 | 🔍 [Exact-chat observer gate](docs/RCM_LOG_OBSERVER_BATCH_GATE_20261121.md) | Candidate selection and evidence boundaries |
 | 🧪 [Native log investigation](docs/RIFT_NOV17_NONCOMBAT_LINE_WRITER_20261120.md) | Exact-build reverse-engineering evidence |

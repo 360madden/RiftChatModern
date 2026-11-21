@@ -31,6 +31,7 @@ as [the complete engineering archive](ENGINEERING_ARCHIVE_README_THROUGH_2026112
 | v0.2.17 | [RCM-owned editor import](V0_2_17_RCM_EDITOR_IMPORT_20261120.md) |
 | v0.2.18 | [Focus and game screenshots](V0_2_18_FOCUS_AND_GAME_SCREENSHOTS_20261120.md) |
 | v0.2.19 | [Progress-based multipart idle deadline](V0_2_19_MULTIPART_IDLE_TIMEOUT_20261120.md) |
+| v0.2.20 | [Glass UI / reference-inspired skin](V0_2_20_GLASS_UI_20261121.md) |
 
 All intermediate milestone reports remain in this directory. See the
 [complete engineering archive](ENGINEERING_ARCHIVE_README_THROUGH_20261121.md)
@@ -67,4 +68,4 @@ physically verified. Host-imported chat remains labeled as host-origin data.
 
 The public homepage includes a genuine historical v0.2.2 game screenshot
 with an explicit version caption; it does not claim that screenshot represents
-the current v0.2.19 UI.
+the current v0.2.20 UI.
