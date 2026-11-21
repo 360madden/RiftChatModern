@@ -140,6 +140,40 @@ local rows,n=RiftChatModernAPI.GetHistory("imports","FINAL_MARKER",10,0)
 assert(n==1 and RiftChatModernAPI.GetHostIngressStatus().imported==1)
 """)
 
+    def test_complete_node_json_batch_preflight_then_lua_editor(self):
+        # A single bounded batch preflight is the missing link between the
+        # existing Node encoder and RCM's real Lua editor importer. Only the
+        # *mock* receives editor commands; no Windows input is requested.
+        message = ("Batch preflight UTF8 café✓ " * 11) + " COMPLETE_20261121"
+        record = self.encode(message, token="0A0B0C0D0E0F", kind="guild")
+        self.assertGreaterEqual(record["parts"], 3)
+        batch_json = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
+        proc = subprocess.run(
+            [DOTNET, str(SENDER_DLL), "--stdin-batch"],
+            input=batch_json, cwd=ROOT, capture_output=True,
+            text=True, encoding="utf-8", timeout=20, check=False)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        reply = json.loads(proc.stdout)
+        self.assertEqual(reply["status"], "batch_validated_no_input")
+        self.assertEqual(reply["sha256"],
+                         hashlib.sha256(batch_json.encode("utf-8")).hexdigest().upper())
+        self.assertEqual((reply["parts"], reply["token"]),
+                         (record["parts"], "0A0B0C0D0E0F"))
+        self.assertIs(reply["gameInputSent"], False)
+        self.assertIs(reply["addonAcceptedVerified"], False)
+        self.assertNotIn(message, proc.stdout)
+        lua = self.mock_game()
+        for command in record["commands"]:
+            self.submit_to_mock_editor(lua, command)
+        lua.execute("""
+local rows,n=RiftChatModernAPI.GetHistory("imports","COMPLETE_20261121",10,0)
+assert(n==1 and rows[1].text==""" + _lua_quote(message) + """)
+assert(rows[1].importToken=="0A0B0C0D0E0F")
+assert(rows[1].kind=="import" and rows[1].origin=="host_manual")
+assert(RiftChatModernAPI.GetStatus().commandHistoryCount==0)
+assert(RiftChatModernAPI.GetSaveCheckpointStatus().onDiskVerified==false)
+""")
+
 
 if __name__ == "__main__":
     unittest.main()

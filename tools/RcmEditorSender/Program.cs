@@ -3,6 +3,7 @@
 // Uses the shared pure validator from the READ-ONLY RcmEditorInput project.
 using System.Diagnostics;
 using System.Globalization;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -22,10 +23,13 @@ internal static class Program
     private static int insertedChars;
     private static int insertedEvents;
     private static bool submitAttempted;
+    private static int submittedPartsAttempted;
+    private static int completedParts;
 
     private static int Main(string[] args)
     {
         RcmImport? transfer = null;
+        RcmImportBatch? batch = null;
         try
         {
             var o = Parse(args);
@@ -38,35 +42,58 @@ internal static class Program
             {
                 if (o.Count != 1) throw new ArgumentException("--help takes no extra options.");
                 Console.WriteLine("RCM editor transfer sender. Default: validate only, NO input.");
-                Console.WriteLine("--command TEXT OR --stdin-command (exactly one :import line)");
+                Console.WriteLine("--command TEXT or --stdin-command (one :import line)");
+                Console.WriteLine("--stdin-batch (one complete Node editor-mode JSON record; 1-12 parts)");
                 Console.WriteLine("To type: --send --ack-editor-focused plus all six pinned target options:");
                 Console.WriteLine("  --expect-host HOST --pid PID --hwnd 0xHEX --start-ticks UTC_TICKS");
                 Console.WriteLine("  --exe-path PATH --exe-sha256 SHA256");
-                Console.WriteLine("Optional submission: --submit --ack-submit");
+                Console.WriteLine("Single-part optional submission: --submit --ack-submit");
+                Console.WriteLine("Batch send requires --submit --ack-submit --ack-batch (no in-game part receipts)");
                 Console.WriteLine("Never activates RIFT, never touches clipboard or game memory.");
                 Console.WriteLine("Windows key insertion != verified game receipt or disk persistence.");
                 return 0;
             }
             bool fromStdin = o.ContainsKey("stdin-command");
             bool fromArgv = o.ContainsKey("command");
-            if (fromStdin == fromArgv)
-                throw new ArgumentException("Supply exactly one --command or --stdin-command.");
-            string command = fromStdin
-                ? RcmImportContract.ReadOne(Console.In)
-                : Required(o, "command");
-            transfer = RcmImportContract.Parse(command);
+            bool fromBatch = o.ContainsKey("stdin-batch");
+            if ((fromStdin ? 1 : 0) + (fromArgv ? 1 : 0) + (fromBatch ? 1 : 0) != 1)
+                throw new ArgumentException("Select exactly one command or complete batch input.");
+            string? command = null;
+            if (fromBatch)
+                batch = RcmImportBatchContract.ReadOne(Console.In);
+            else
+            {
+                command = fromStdin
+                    ? RcmImportContract.ReadOne(Console.In)
+                    : Required(o, "command");
+                transfer = RcmImportContract.Parse(command);
+            }
             bool send = o.ContainsKey("send");
             bool ackFocus = o.ContainsKey("ack-editor-focused");
             bool submit = o.ContainsKey("submit");
             bool ackSubmit = o.ContainsKey("ack-submit");
+            bool ackBatch = o.ContainsKey("ack-batch");
             if (!send)
             {
-                if (o.Count != 1 || ackFocus || submit || ackSubmit)
-                    throw new ArgumentException("Read-only plan accepts only a command; --send is explicit.");
+                if (o.Count != 1 || ackFocus || submit || ackSubmit || ackBatch)
+                    throw new ArgumentException("Read-only plan accepts only one input; --send is explicit.");
+                if (batch is not null)
+                {
+                    Emit(new {
+                        schema = "RCM_EDITOR_SEND_V1", status = "batch_validated_no_input",
+                        machine = Environment.MachineName,
+                        token = batch.Token, kind = batch.Kind,
+                        parts = batch.Parts, chars = batch.Chars, sha256 = batch.Sha256,
+                        gameInputSent = false, editorFocusMachineVerified = false,
+                        addonAcceptedVerified = false, diskSavedVerified = false,
+                        clipboardChanged = false, gameFocusChanged = false
+                    });
+                    return 0;
+                }
                 Emit(new {
                     schema = "RCM_EDITOR_SEND_V1", status = "validated_no_input",
                     machine = Environment.MachineName,
-                    chars = transfer.Chars, sha256 = transfer.Sha256,
+                    chars = transfer!.Chars, sha256 = transfer.Sha256,
                     part = transfer.Part, total = transfer.Total,
                     gameInputSent = false, editorFocusMachineVerified = false,
                     addonAcceptedVerified = false, diskSavedVerified = false,
@@ -79,46 +106,67 @@ internal static class Program
                 throw new ArgumentException("--send requires --ack-editor-focused (manual assertion).");
             if (submit != ackSubmit)
                 throw new ArgumentException("--submit and --ack-submit must be requested together.");
-            if (o.Count != 9 + (submit ? 2 : 0))
-                throw new ArgumentException("Send requires exact six game identity pins, one input, --send and --ack-editor-focused.");
+            if (batch is not null && (!submit || !ackBatch))
+                throw new ArgumentException("Batch send requires --submit --ack-submit --ack-batch.");
+            if (batch is null && ackBatch)
+                throw new ArgumentException("--ack-batch is only valid with --stdin-batch.");
+            if (o.Count != 9 + (submit ? 2 : 0) + (batch is not null ? 1 : 0))
+                throw new ArgumentException("Send requires six exact pins, one input, and required acknowledgments.");
             Pin target = ParsePin(o);
-            // One initial full executable hash, then cheap epoch/foreground
-            // checks before each key pair. No focus changes or clipboard.
+            // Prevalidate the entire batch before any input, then pin the
+            // executable once. Each key pair still checks HWND/PID/epoch/focus.
+            // An Enter insertion is NOT a verified in-game import receipt.
+            string[] commands = batch is null
+                ? [command!]
+                : batch.Commands.Select(item => item.Line).ToArray();
             RequireTarget(target, hashExecutable: true);
-            for (int i = 0; i < command.Length; i++)
+            foreach (string line in commands)
             {
-                RequireTarget(target, hashExecutable: false);
-                RequireNoModifiers();
-                WinInput[] pair = UnicodePair(command[i]);
-                InsertPair(pair, target);
-                insertedChars++;
-                // Allow RIFT's RiftTextfield time to process WM_CHAR/VK_PACKET.
-                Thread.Sleep(3);
-            }
-
-            if (submit)
-            {
-                RequireTarget(target, hashExecutable: false);
-                RequireNoModifiers();
-                submitAttempted = true;
-                InsertPair(VirtualKeyPair(VkReturn), target);
+                for (int i = 0; i < line.Length; i++)
+                {
+                    RequireTarget(target, hashExecutable: false);
+                    RequireNoModifiers();
+                    InsertPair(UnicodePair(line[i]), target);
+                    insertedChars++;
+                    // Give RIFT's RiftTextfield time to process WM_CHAR/VK_PACKET.
+                    Thread.Sleep(3);
+                }
+                if (submit)
+                {
+                    RequireTarget(target, hashExecutable: false);
+                    RequireNoModifiers();
+                    submitAttempted = true;
+                    submittedPartsAttempted++;
+                    InsertPair(VirtualKeyPair(VkReturn), target);
+                }
+                completedParts++;
+                // Batch editor submissions have no synchronous receipt API.
+                // Allow one UI frame before inserting the next fragment.
+                if (batch is not null && completedParts < commands.Length)
+                    Thread.Sleep(100);
             }
             Emit(new {
                 schema = "RCM_EDITOR_SEND_V1",
-                status = submit
-                    ? "windows_text_and_enter_inserted_game_receipt_unverified"
-                    : "windows_text_inserted_draft_unverified",
+                status = batch is not null
+                    ? "windows_batch_and_enter_inserted_game_receipts_unverified"
+                    : submit
+                        ? "windows_text_and_enter_inserted_game_receipt_unverified"
+                        : "windows_text_inserted_draft_unverified",
                 machine = Environment.MachineName, pid = target.Pid,
                 hwnd = $"0x{target.Hwnd.ToInt64():X}",
-                sha256 = transfer.Sha256, part = transfer.Part, total = transfer.Total,
-                charsRequested = command.Length, charsInserted = insertedChars,
-                keyEventsInserted = insertedEvents, enterAttempted = submitAttempted,
+                sha256 = batch?.Sha256 ?? transfer!.Sha256,
+                part = transfer?.Part, total = transfer?.Total ?? batch?.Parts,
+                token = batch?.Token, batchParts = batch?.Parts,
+                charsRequested = batch?.Chars ?? command!.Length,
+                charsInserted = insertedChars, completedParts,
+                submittedPartsAttempted, keyEventsInserted = insertedEvents,
+                enterAttempted = submitAttempted,
                 operatorAttestedEditorFocus = ackFocus,
                 editorFocusMachineVerified = false, addonAcceptedVerified = false,
                 diskSavedVerified = false, nativePlayerChatVerified = false,
                 gameInputSent = insertedEvents > 0,
                 gameFocusChanged = false, clipboardChanged = false,
-                nextStep = "Check RCM in-game import receipt/history #ID, then save and independently audit disk."
+                nextStep = "Check exact RCM import token/history #ID in-game, then save and audit disk."
             });
             return 0;
         }
@@ -128,7 +176,9 @@ internal static class Program
                 schema = "RCM_EDITOR_SEND_V1",
                 status = keyCallAttempted ? "partial_or_unknown_input_no_retry" : "refused_before_input",
                 error = e.GetType().Name, detail = e.Message,
-                sha256 = transfer?.Sha256, charsInserted = insertedChars,
+                sha256 = batch?.Sha256 ?? transfer?.Sha256,
+                batchParts = batch?.Parts, completedParts, submittedPartsAttempted,
+                charsInserted = insertedChars,
                 keyEventsInserted = insertedEvents, enterAttempted = submitAttempted,
                 gameInputSent = keyCallAttempted ? (bool?)null : false,
                 editorFocusMachineVerified = false, addonAcceptedVerified = false,
@@ -145,8 +195,8 @@ internal static class Program
     private static Dictionary<string, string> Parse(string[] args)
     {
         var switches = new HashSet<string>(StringComparer.Ordinal) {
-            "self-test", "help", "stdin-command", "send", "ack-editor-focused",
-            "submit", "ack-submit" };
+            "self-test", "help", "stdin-command", "stdin-batch",
+            "send", "ack-editor-focused", "submit", "ack-submit", "ack-batch" };
         var valued = new HashSet<string>(StringComparer.Ordinal) {
             "command", "expect-host", "pid", "hwnd", "start-ticks",
             "exe-path", "exe-sha256" };
