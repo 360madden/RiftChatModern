@@ -52,6 +52,57 @@ class DiskCheckpointTests(unittest.TestCase):
         self.file.write_text(contents,encoding="utf-8")
         return self.file
 
+    def test_ui_geometry_receipt_and_exact_cli_match(self):
+        saved=SAVED.replace("  nextId = 3,",
+            "  ui = { x = 1547, y = 364, w = 952, h = 775 },\n  nextId = 3,")
+        parsed=inspect_saved_data(saved)
+        self.assertTrue(parsed["uiGeometryComplete"])
+        self.assertEqual(parsed["uiGeometryOnDisk"],
+                         {"x":1547,"y":364,"w":952,"h":775})
+        self.assertNotIn("RCMTest", json.dumps(parsed))
+        self.write(saved)
+        for expectation,exitcode,matched in [
+            ("1547,364,952,775",0,True),
+            ("1547,364,760,618",2,False),
+        ]:
+            with self.subTest(expectation=expectation):
+                output=io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    code=run(["--file",str(self.file),
+                              "--require-ui-geometry",expectation])
+                self.assertEqual(code,exitcode)
+                result=json.loads(output.getvalue())
+                self.assertEqual(result["requiredUiGeometryMatched"],matched)
+                self.assertFalse(result["savedVariablesModified"])
+
+    def test_ui_geometry_ignores_forged_text_and_requires_complete_table(self):
+        text=SAVED.replace('text = "The tag saveCheckpoint = { sequence = 99 } is not code"',
+            'text = "ui = { x=999, y=999, w=999, h=999 } not code"')
+        result=inspect_saved_data(text)
+        self.assertFalse(result["uiGeometryComplete"])
+        self.assertIsNone(result["uiGeometryOnDisk"])
+        self.assertNotIn("999", json.dumps(result))
+        half=text.replace("  nextId = 3,", "  ui = { x=10, y=11 },\n  nextId = 3,")
+        partial=inspect_saved_data(half)
+        self.assertFalse(partial["uiGeometryComplete"])
+        self.assertIsNone(partial["uiGeometryOnDisk"])
+        duplicate=half.replace("  nextId = 3,",
+                               "  ui = { x=20, y=21, w=680, h=480 },\n  nextId = 3,")
+        with self.assertRaisesRegex(DiskAuditError,"ambiguous_ui_tables"):
+            inspect_saved_data(duplicate)
+
+    def test_geometry_requirement_rejects_bad_cli_input(self):
+        self.write()
+        for argument in ("1,2,3", "1,2,3,notanumber", "1,2,0,480",
+                         "1,2,99999,700", "1,-1,760,618"):
+            with self.subTest(argument=argument):
+                output=io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    code=run(["--file",str(self.file),
+                              "--require-ui-geometry",argument])
+                self.assertEqual(code,1)
+                self.assertFalse(json.loads(output.getvalue())["savedVariablesModified"])
+
     def test_read_receipt_and_import_id_without_emitting_message_bodies(self):
         self.write()
         result=inspect_saved_data(self.file.read_text(encoding="utf-8"))

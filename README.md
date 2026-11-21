@@ -29,9 +29,9 @@ RCM is built to support other RIFT addons as a shared diagnostics surface—not 
 ## In-game preview
 
 <div align="center">
-<img src="assets/screenshots/rcm-v0.2.2-physical-names-redacted.png" alt="Actual RIFT Live client showing an early RiftChatModern window after a drag test" width="900"/>
+<img src="assets/screenshots/rcm-v0.2.21-live-ui-cropped.jpg" alt="Actual RiftChatModern v0.2.21 glass chat interface, running in RIFT Live" width="900"/>
 
-<sub>Real in-game development screenshot from **v0.2.2** (November 20, 2026). The current addon is v0.2.21; this older capture is shown as historical UI evidence, not as a current-version screenshot. The two small player-name labels are blurred for privacy.</sub>
+<sub>Genuine RIFT Live screenshot of **RCM v0.2.21** (November 21, 2026), cropped to the addon window to exclude the character name and private HUD. No simulated chat transcript. [Earlier redacted v0.2.2 screenshot](assets/screenshots/rcm-v0.2.2-physical-names-redacted.png) is preserved for historical comparison.</sub>
 </div>
 
 ## What RCM can do
@@ -141,9 +141,10 @@ The API also provides history retrieval, subscriptions, UI controls, copy helper
 | Area | Current evidence |
 |---|---|
 | **Addon release** | **v0.2.21** physically loaded and tested in RIFT Live; installed package hash-verified on AMD-DESKTOP |
-| **Physical RIFT evidence** | v0.2.21 four-column history, real DEV/ALL tab switching, modal detail opening/closing independently verified using native game screenshots; other interactions still need acceptance |
-| **Offline regression suite** | **297 Python/Lua and 58 Node tests passed** (November 21, 2026), including physical-issue modal isolation tests, responsive columns, guarded Windows input and deployment |
-| **Windows host tooling** | .NET 10 editor batch preflight, exact-candidate gate, and simulated end-to-end import tested |
+| **Physical RIFT evidence** | Native screenshot-confirmed v0.2.21 columns, tabs, details, title dragging, bottom-right resizing, editor focus and local `:echo` submission |
+| **Offline regression suite** | **303 Python/Lua and 58 Node tests passed** (November 21, 2026), including physical UI regressions, responsive columns, foreground restoration, privacy-safe GitHub screenshots, and SavedVariables geometry audit |
+| **Persistence** | Window position and size survived `/reloadui`; exact UI geometry and local DEV test entry independently found in the on-disk SavedVariables file |
+| **Windows host tooling** | Existing .NET 10 editor batch validator, exact-candidate gate; temporary RIFT foreground capture/return physically verified |
 | **Native player social chat** | **Not verified**; current noncombat `Log.txt` capture still needs a physical trial |
 | **Automatic in-game import** | **Not verified**; guarded sender is an opt-in prototype |
 
@@ -159,6 +160,7 @@ The homepage is intentionally concise. The complete development history—includ
 | 📸 [Real v0.2.20 RIFT screenshot evidence](docs/V0_2_20_NATIVE_SCREENSHOT_ACCEPTANCE_20261121.md) | Verified in-game screen capture and managed temporary foreground; private image not published |
 | 💬 [v0.2.21 Message columns](docs/V0_2_21_MESSAGE_COLUMNS_20261121.md) | Local seconds, distinct source/channel/message fields, responsive layout and test evidence |
 | 📷 [v0.2.21 Physical UI acceptance](docs/V0_2_21_PHYSICAL_ACCEPTANCE_20261121.md) | Native screenshot receipts, real tab tests, modal root-cause fix, failed experiments and verified recovery |
+| 🖱️ [v0.2.21 Drag, resize, editor and persistence](docs/V0_2_21_UI_INTERACTION_ACCEPTANCE_20261121.md) | Physical mouse and keyboard acceptance, reload and on-disk state, focus-restoration hardening |
 | 📚 [Complete engineering archive](docs/ENGINEERING_ARCHIVE_README_THROUGH_20261121.md) | Previous detailed README, preserved in full |
 | 🧭 [Development history](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md) | Original concept, initial build, fixes, and live findings |
 | 🧱 [Addon transport](docs/ADDON_TRANSPORT.md) | RIFT addon-data messaging and API constraints |

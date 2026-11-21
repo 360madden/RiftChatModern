@@ -166,15 +166,25 @@ def run(argv=None, *, inspection=None, backend=None, keyscan=None,
                     receipt["restoredPreviousForeground"] = current == hwnd
                 elif previous and current == hwnd and focus.is_window(previous):
                     focus._restore(previous, hwnd)
-                    if int(focus.get_foreground() or 0) != previous:
+                    restored, observed, reason = focused._observe_foreground_restore(
+                        focus.get_foreground, previous, hwnd)
+                    if not restored and observed == hwnd:
                         tid, owner = focus._owner(previous)
                         if tid and owner:
-                            focus._focus(previous, owner, 250)
-                    receipt["restoredPreviousForeground"] = (
-                        int(focus.get_foreground() or 0) == previous)
+                            try:
+                                focus._focus(previous, owner, 250)
+                            except RuntimeError:
+                                pass
+                            restored, observed, reason = focused._observe_foreground_restore(
+                                focus.get_foreground, previous, hwnd)
+                    receipt["restoredPreviousForeground"] = restored
+                    receipt["restoreObservation"] = reason
                 elif previous and current != hwnd:
-                    receipt["restoredPreviousForeground"] = current == previous
-                    receipt["externalFocusChangePreserved"] = True
+                    restored, observed, reason = focused._observe_foreground_restore(
+                        focus.get_foreground, previous, hwnd)
+                    receipt["restoredPreviousForeground"] = restored
+                    receipt["restoreObservation"] = reason
+                    receipt["externalFocusChangePreserved"] = reason == "external"
                 # Restore the original minimized state only after focus has
                 # left RIFT; avoid minimizing an active user-owned window.
                 if (before_iconic and previous != hwnd and

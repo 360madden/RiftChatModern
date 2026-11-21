@@ -169,6 +169,29 @@ class NativeSlashTests(unittest.TestCase):
         self.assertEqual(f.current, f.previous)
         self.assertTrue(report["restoredPreviousForeground"])
 
+    def test_transient_zero_foreground_during_restore_is_not_false_failure(self):
+        class SettlingBackend(FakeBackend):
+            def __init__(self):
+                super().__init__()
+                self.waiting = False
+                self.polls = 0
+            def _restore(self, previous, hwnd):
+                self.current = 0
+                self.waiting = True
+            def get_foreground(self):
+                if self.waiting:
+                    self.polls += 1
+                    if self.polls >= 3:
+                        self.waiting = False
+                        self.current = self.previous
+                return self.current
+        f = SettlingBackend()
+        code, report = self.invoke(["--execute", "--ack-native-chat"], fake=f)
+        self.assertEqual(code, 0)
+        self.assertTrue(report["restoredPreviousForeground"])
+        self.assertEqual(f.current, f.previous)
+        self.assertGreaterEqual(f.polls, 3)
+
     def test_unknown_modifier_refuses_before_focus(self):
         f=FakeBackend()
         code, report=self.invoke(["--execute","--ack-native-chat"],fake=f,

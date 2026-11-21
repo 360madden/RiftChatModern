@@ -227,6 +227,13 @@ def inspect_saved_data(source: str, required_import_id: int | None = None,
     saved_next_id = scalar(masked, depths, root, "nextId", 1)
     hist = find_child_table(masked, depths, root, "history", 1)
     checkpoint = find_child_table(masked, depths, root, "saveCheckpoint", 1)
+    ui = find_child_table(masked, depths, root, "ui", 1)
+    geometry = ({name: scalar(masked,depths,ui,name,2)
+                 for name in ("x","y","w","h")} if ui else None)
+    geometry_complete = (geometry is not None and
+        all(value is not None for value in geometry.values()) and
+        geometry["x"] <= 65535 and geometry["y"] <= 65535 and
+        1 <= geometry["w"] <= 16384 and 1 <= geometry["h"] <= 16384)
     rows = saved_history_rows(source, masked, depths, hist)
     last_import = max((x["id"] for x in rows if x["kind"] == "import"), default=0)
     last_id = rows[-1]["id"] if rows else 0
@@ -247,6 +254,8 @@ def inspect_saved_data(source: str, required_import_id: int | None = None,
         record["nextId"] > last_id and
         saved_next_id == record["nextId"])
     result = {"schemaVersionOnDisk": schema,
+               "uiGeometryOnDisk": geometry if geometry_complete else None,
+               "uiGeometryComplete": bool(geometry_complete),
               "historyRowsOnDisk": len(rows),
               "historyKindsOnDisk": dict(sorted(Counter(row["kind"] for row in rows).items())),
               "importRowsOnDisk": sum(x["kind"] == "import" for x in rows),
@@ -299,6 +308,8 @@ def run(args: list[str] | None = None) -> int:
                         help="Exact character-scoped RiftChatModern.lua SavedVariables file")
     parser.add_argument("--expect-host", default=None)
     parser.add_argument("--require-checkpoint", action="store_true")
+    parser.add_argument("--require-ui-geometry", default=None,
+                        help="Require exact saved X,Y,W,H; no chat content emitted")
     parser.add_argument("--require-import-id", type=int, default=None,
                         help="Require a retained import row with this exact ID and a consistent checkpoint")
     parser.add_argument("--require-import-token", default=None,
@@ -310,6 +321,15 @@ def run(args: list[str] | None = None) -> int:
             raise DiskAuditError("wrong_machine")
         if options.require_import_id is not None and not (1 <= options.require_import_id <= 10**12):
             raise DiskAuditError("invalid_required_import_id")
+        expected_geometry = None
+        if options.require_ui_geometry is not None:
+            raw = options.require_ui_geometry
+            if not re.fullmatch(r"[0-9]{1,5},[0-9]{1,5},[0-9]{1,5},[0-9]{1,5}", raw):
+                raise DiskAuditError("invalid_required_ui_geometry")
+            x,y,w,h = map(int,raw.split(","))
+            if not (x <= 65535 and y <= 65535 and 1 <= w <= 16384 and 1 <= h <= 16384):
+                raise DiskAuditError("invalid_required_ui_geometry")
+            expected_geometry = {"x":x,"y":y,"w":w,"h":h}
         path = options.file
         if path.name.casefold() != "riftchatmodern.lua" or path.is_symlink():
             raise DiskAuditError("incorrect_saved_filename")
@@ -340,6 +360,11 @@ def run(args: list[str] | None = None) -> int:
                   parsed["checkpointMetadataConsistent"],
                   "savedVariablesModified": False}
         result.update(parsed)
+        if expected_geometry is not None:
+            result["requiredUiGeometry"]=expected_geometry
+            result["requiredUiGeometryMatched"]=(
+                parsed["uiGeometryComplete"] and
+                parsed["uiGeometryOnDisk"]==expected_geometry)
         result["peerSaveMetadata"] = peer_file_metadata(path)
         print(json.dumps(result, indent=2, ensure_ascii=False))
         require_identity = (options.require_import_id is not None
@@ -347,8 +372,11 @@ def run(args: list[str] | None = None) -> int:
         require_proof = options.require_checkpoint or require_identity
         identity_missing = (require_identity
                             and not result["requiredImportIdentityMatched"])
-        return 2 if require_proof and (not result["diskReceiptVerified"]
-                                      or identity_missing) else 0
+        geometry_missing = (expected_geometry is not None
+                            and not result["requiredUiGeometryMatched"])
+        return 2 if geometry_missing or (
+            require_proof and (not result["diskReceiptVerified"]
+                              or identity_missing)) else 0
     except (DiskAuditError, OSError, UnicodeError) as exc:
         print(json.dumps({"schema": "RCM_DISK_RECEIPT_V1",
                           "machine": host, "error": str(exc),

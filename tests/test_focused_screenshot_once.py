@@ -119,6 +119,36 @@ class ManagedScreenshotTests(unittest.TestCase):
         self.assertIn(("minimize", f.target), f.calls)
         self.assertTrue(any(c[0]=="focus" and c[3]>=1200 for c in f.calls))
 
+    def test_restore_waits_for_transient_zero_foreground(self):
+        class SettlingFocus(FakeFocus):
+            def __init__(self):
+                super().__init__()
+                self.pending = False
+                self.polls = 0
+            def _restore(self, previous, target):
+                self.calls.append(("restore", previous))
+                self.current = 0
+                self.pending = True
+            def get_foreground(self):
+                if self.pending:
+                    self.polls += 1
+                    if self.polls >= 3:
+                        self.current = self.previous
+                        self.pending = False
+                return self.current
+        f = SettlingFocus()
+        code, report, _ = self.call(
+            ["--capture", "--ack-temporary-focus", "--ack-single-screenshot"],
+            backend=f, shot=lambda args:(0, {
+                "status": "new_post_key_image_verified",
+                "gameInputSent": True, "screenshotFileVerified": True}))
+        self.assertEqual(code, 0)
+        self.assertTrue(report["restoredPreviousForeground"])
+        self.assertEqual(report["restoreStatus"], "restored")
+        self.assertGreaterEqual(f.polls, 3)
+        self.assertEqual(f.current, f.previous)
+        self.assertEqual(len([c for c in f.calls if c[0] == "focus"]), 1)
+
     def test_dryrun_never_constructs_focus_or_triggers_input(self):
         def shot(args):
             self.fail("dry run needs only verified identity, no child action")
@@ -209,7 +239,7 @@ class ManagedScreenshotTests(unittest.TestCase):
                 "gameInputSent":True, "screenshotFileVerified":True}))
         self.assertEqual(code, 0)
         self.assertEqual(f.current, 0x999999)
-        self.assertEqual(report["restoreStatus"], "restore_unverified")
+        self.assertEqual(report["restoreStatus"], "external_focus_change_preserved")
         self.assertFalse(report["restoredPreviousForeground"])
         self.assertEqual(len([c for c in f.calls if c[0]=="focus"]), 1)
 

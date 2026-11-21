@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 from xml.etree import ElementTree
 import unittest
+from PIL import Image
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +14,7 @@ DOCS = ROOT / "docs" / "README.md"
 BANNER = ROOT / "assets" / "rcm-banner.svg"
 LOGO = ROOT / "assets" / "rcm-logo.svg"
 SCREENSHOT = ROOT / "assets" / "screenshots" / "rcm-v0.2.2-physical-names-redacted.png"
+CURRENT_SCREENSHOT = ROOT / "assets" / "screenshots" / "rcm-v0.2.21-live-ui-cropped.jpg"
 ARCHIVE = ROOT / "docs" / "ENGINEERING_ARCHIVE_README_THROUGH_20261121.md"
 
 
@@ -42,16 +44,27 @@ class ReadmePresentationTests(unittest.TestCase):
                 self.assertTrue(root.attrib.get("role") or root.attrib.get("aria-label"))
                 self.assertLess(file.stat().st_size, 20000)
 
-    def test_historical_screenshot_is_actual_png_and_labeled(self):
+    def test_historical_screenshot_is_retained_but_not_homepage_image(self):
         self.assertTrue(SCREENSHOT.is_file())
         with SCREENSHOT.open("rb") as image:
-            self.assertEqual(image.read(8), b"\x89PNG\r\n\x1a\n")
+            self.assertEqual(image.read(8), bytes([137, 80, 78, 71, 13, 10, 26, 10]))
         body = README.read_text(encoding="utf-8")
-        self.assertIn("v0.2.2", body)
-        self.assertIn("older capture", body)
+        self.assertIn("Earlier redacted v0.2.2 screenshot", body)
         self.assertIn("rcm-v0.2.2-physical-names-redacted.png", body)
+        self.assertNotIn('src="assets/screenshots/rcm-v0.2.2-physical-names-redacted.png"', body)
         self.assertNotIn('src="assets/screenshots/rcm-v0.2.2-physical.png"', body)
-        self.assertIn("blurred for privacy", body)
+
+    def test_current_homepage_is_real_privacy_cropped_v021_jpeg(self):
+        self.assertTrue(CURRENT_SCREENSHOT.is_file())
+        with Image.open(CURRENT_SCREENSHOT) as image:
+            self.assertEqual(image.format, "JPEG")
+            self.assertEqual(image.size, (992, 820))
+            image.verify()
+        body = README.read_text(encoding="utf-8")
+        self.assertIn('src="assets/screenshots/rcm-v0.2.21-live-ui-cropped.jpg"', body)
+        self.assertIn("v0.2.21", body)
+        self.assertIn("exclude the character name and private HUD", body)
+        self.assertIn("Genuine RIFT Live screenshot", body)
 
     def test_social_preview_png_is_valid_size(self):
         preview = ROOT / "assets" / "rcm-social-preview.png"

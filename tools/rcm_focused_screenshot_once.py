@@ -50,6 +50,30 @@ def _inspect(pid: int | None):
     return identity
 
 
+def _observe_foreground_restore(read_foreground, previous: int,
+                                target: int, *, timeout: float = 0.5,
+                                clock=None, sleep=None):
+    """Wait for transient NULL foreground during Windows activation.
+
+    Read-only: never activate or steal a third-party window. Returns
+    (restored, observed_hwnd, reason). The wait is tightly bounded.
+    """
+    import time
+    tick=clock or time.monotonic
+    snooze=sleep or time.sleep
+    deadline=tick()+timeout
+    while True:
+        current=int(read_foreground() or 0)
+        if current==previous:
+            return True,current,"settled_to_previous"
+        if current not in (0,target):
+            return False,current,"external"
+        remaining=deadline-tick()
+        if remaining<=0:
+            return False,current,"timeout"
+        snooze(min(.04,remaining))
+
+
 def execute(argv: list[str] | None = None, *,
             inspector=None, backend=None, shot=None,
             hostname=None) -> tuple[int, dict]:
@@ -172,19 +196,24 @@ def execute(argv: list[str] | None = None, *,
                 result["restoredPreviousForeground"] = current == previous
             elif focus.is_window(previous):
                 focus._restore(previous, target_hwnd)
-                after_restore = int(focus.get_foreground() or 0)
-                if after_restore == target_hwnd:
-                    # Retry the proven attached-thread focus only if RIFT
-                    # still owns foreground. Never steal a third application's
-                    # newly acquired focus.
+                restored,observed,reason=_observe_foreground_restore(
+                    focus.get_foreground,previous,target_hwnd)
+                if not restored and observed==target_hwnd:
+                    # Only try attach-first recovery while the verified game
+                    # still owns focus. Never steal a third party's HWND.
                     previous_thread, previous_pid = focus._owner(previous)
                     if previous_thread and previous_pid:
-                        focus._focus(previous, previous_pid, 250)
-                result["restoredPreviousForeground"] = (
-                    int(focus.get_foreground() or 0) == previous
-                )
-                result["restoreStatus"] = ("restored" if result["restoredPreviousForeground"]
-                                           else "restore_unverified")
+                        try:
+                            focus._focus(previous, previous_pid, 250)
+                        except RuntimeError:
+                            pass
+                        restored,observed,reason=_observe_foreground_restore(
+                            focus.get_foreground,previous,target_hwnd)
+                result["restoredPreviousForeground"]=restored
+                result["restoreStatus"]="restored" if restored else (
+                    "external_focus_change_preserved" if reason=="external"
+                    else "restore_unverified")
+                result["restoreObservation"]=reason
             else:
                 result["restoreStatus"] = "previous_window_no_longer_exists"
             # Restore an originally minimized RIFT window only after leaving
