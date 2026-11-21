@@ -85,6 +85,11 @@ test("CLI emits human-pasteable /rcm import commands only when explicitly enable
     .toString("utf8");
   assert.equal(payload,"G\0Atank\0Guild\0Hello from fixture");
   assert.equal(r.records[0].prepareImport,true);
+  assert.equal(r.records[0].includeText,false);
+  const observed=r.records.filter(x=>x.event==="candidate_chat");
+  assert.equal(observed.length,1);
+  assert.equal("text" in observed[0],false);
+  assert.equal(JSON.stringify(observed).includes("Hello from fixture"),false);
   assert.ok(r.records.some(x=>x.event==="matched"));
 });
 test("observer opt-in preparation can target RCM editor without sending input",async()=>{
@@ -103,6 +108,10 @@ test("observer opt-in preparation can target RCM editor without sending input",a
     .toString("utf8"),"G\0RCMProbe\0Guild\0original fixture chat");
   assert.equal(imports[0].automaticGameInput,false);
   assert.equal(imports[0].liveGameDeliveryVerified,false);
+  const observed=result.records.filter(e=>e.event==="candidate_chat");
+  assert.equal(observed.length,1);
+  assert.equal("text" in observed[0],false);
+  assert.equal(JSON.stringify(observed).includes("original fixture chat"),false);
 });
 
 test("prepared slash imports refuse truncated chat but keep complete next record",async()=>{
@@ -118,6 +127,7 @@ test("prepared slash imports refuse truncated chat but keep complete next record
   assert.equal(candidates.length,2);
   assert.equal(candidates[0].truncated,true);
   assert.equal(candidates[0].textBytes,520);
+  assert.ok(candidates.every(e=>!("text" in e)));
   const prepared=result.records.filter(e=>e.event==="rcm_manual_import");
   assert.equal(prepared.length,1);
   const payload=Buffer.from(prepared[0].commands[0].split(" ").at(-1),"base64url")
@@ -127,6 +137,16 @@ test("prepared slash imports refuse truncated chat but keep complete next record
   assert.equal(skipped.length,1);
   assert.equal(skipped[0].reason,"truncated_chat_body");
   assert.equal(result.records.some(e=>e.event==="rcm_manual_import"&&e.kind==="guild"),false);
+});
+
+test("explicit include-text remains independent of command preparation",async()=>{
+  const r=await launchFixture("[Guild][Atank]: clearly visible text\n"+
+    "LPB_PROBE|RCM_CLI_20261120|unknown\n",true,true);
+  assert.equal(r.code,0);
+  const events=r.records.filter(e=>e.event==="candidate_chat");
+  assert.equal(events.length,1);
+  assert.equal(events[0].text,"clearly visible text");
+  assert.equal(r.records.filter(e=>e.event==="rcm_manual_import").length,1);
 });
 
 test("opt-in raw-line discovery sees previously unknown formats but never stale lines",async()=>{
@@ -234,7 +254,8 @@ test("CLI includes bounded message body only after explicit --include-text",asyn
 
 function twoPhaseFixture({beforeMarker="",afterArmed="",rawSampleLines=0,
   truncateAfterArmed=false,replaceWithChatAfterArmed=false,replayMarker=false,
-  expectedChatText=null,maxCandidates=200}={}){
+  expectedChatText=null,maxCandidates=200,prepareImport=false,
+  inputMode="native"}={}){
   return new Promise((resolve,reject)=>{
     const dir=fs.mkdtempSync(path.join(os.tmpdir(),"rcm-observer-two-phase-"));
     const file=path.join(dir,"Log.txt");
@@ -244,6 +265,7 @@ function twoPhaseFixture({beforeMarker="",afterArmed="",rawSampleLines=0,
     if(rawSampleLines)args.push("--sample-raw-lines",String(rawSampleLines));
     if(expectedChatText)args.push("--require-chat-text",expectedChatText);
     if(maxCandidates!==200)args.push("--max-candidates",String(maxCandidates));
+    if(prepareImport)args.push("--prepare-import","--input-mode",inputMode);
     const proc=spawn(process.execPath,args,{windowsHide:true,
       stdio:["ignore","pipe","pipe"]});
     let buffer="",stderr="",events=[],closed=false,armed=false,started=false;
@@ -284,6 +306,42 @@ function twoPhaseFixture({beforeMarker="",afterArmed="",rawSampleLines=0,
     });
   });
 }
+
+test("two-phase editor preparation preserves full candidate internally and rejects pre-marker text",async()=>{
+  const token="RCM_AFTER_MARKER_20261120";
+  const result=await twoPhaseFixture({
+    beforeMarker:"[Guild][BeforeProbe]: pre-marker data must be ignored\n",
+    afterArmed:"[Party][AfterProbe]: "+token+"\n",
+    prepareImport:true,inputMode:"editor",expectedChatText:token
+  });
+  assert.equal(result.code,0);
+  assert.equal(result.events[0].includeText,false);
+  assert.equal(result.events[0].inputMode,"editor");
+  const candidates=result.events.filter(e=>e.event==="candidate_chat");
+  assert.equal(candidates.length,1);
+  assert.equal(candidates[0].sender,"AfterProbe");
+  assert.equal(candidates[0].chatTextMatched,true);
+  assert.equal("text" in candidates[0],false);
+  const imported=result.events.filter(e=>e.event==="rcm_manual_import");
+  assert.equal(imported.length,1);
+  assert.equal(imported[0].inputMode,"editor");
+  assert.match(imported[0].commands[0],/^:import [A-F0-9]{12} 1\/1 /);
+  assert.equal(Buffer.from(imported[0].commands[0].split(" ").at(-1),"base64url")
+    .toString("utf8"),"P\0AfterProbe\0Party\0"+token);
+  assert.equal(imported[0].automaticGameInput,false);
+  assert.equal(imported[0].liveGameDeliveryVerified,false);
+});
+
+test("two-phase file replacement cannot emit an editor-import command",async()=>{
+  const result=await twoPhaseFixture({
+    replaceWithChatAfterArmed:true,
+    prepareImport:true,inputMode:"editor"
+  });
+  assert.equal(result.code,2);
+  assert.equal(result.events.filter(e=>e.event==="rcm_manual_import").length,0);
+  assert.equal(result.events.find(e=>e.event==="finished").reason,
+    "chat_source_changed_after_marker");
+});
 
 test("exact chat proof waits for intended text, not unrelated chat",async()=>{
   const proof="RCM_CHAT_EXACT_20261120";

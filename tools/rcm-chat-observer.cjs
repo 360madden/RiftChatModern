@@ -107,7 +107,9 @@ function attachChatObserver(tailer, onCandidate, includeText=false, onRawLine=nu
         if(requiredChatText!==null)
           event.chatTextMatched=!parsed.truncated && parsed.text===requiredChatText;
         if(!includeText)delete event.text;
-        onCandidate(event);
+        // The second argument carries the validated original candidate only
+        // to the internal encoder; normal JSONL output can remain redacted.
+        onCandidate(event,parsed);
       }
     }
     return original.call(tailer,line,when);
@@ -196,7 +198,7 @@ function options(argv) {
   for(let i=0;i<argv.length;i++) {
     const flag=argv[i];
     if(flag==="--include-text"){out.includeText=true;continue}
-    if(flag==="--prepare-import"){out.prepareImport=true;out.includeText=true;continue}
+    if(flag==="--prepare-import"){out.prepareImport=true;continue}
     if(flag==="--require-chat-after-marker"){
       if(out.requireChatAfterMarker)throw Error("Duplicate two-phase option");
       out.requireChatAfterMarker=true;continue;
@@ -274,7 +276,7 @@ function start(argv=process.argv.slice(2)) {
   let exactChatTextMatched=false;
   let pendingCandidates=[];
   let tailer,stats;
-  function publishCandidate(event){
+  function publishCandidate(event,fullRecord){
     if(count>=cfg.maxCandidates){ignoredCount++;return}
     count++;
     if(cfg.requireChatAfterMarker && chatPhaseArmed){
@@ -290,14 +292,14 @@ function start(argv=process.argv.slice(2)) {
       if(event.truncated){
         emit({event:"import_skipped",reason:"truncated_chat_body"});
       }else{
-        try{emit(encodeRecord(event,undefined,cfg.inputMode))}
+        try{emit(encodeRecord(fullRecord,undefined,cfg.inputMode))}
         catch(e){emit({event:"import_skipped",reason:"unencodable_candidate"})}
       }
     }
   }
   function createTailer(file,fromStart=false){
     const t=new LogTailProbe({filePath:file,nonce:cfg.nonce,fromStart});
-    const s=attachChatObserver(t,event=>{
+    const s=attachChatObserver(t,(event,fullRecord)=>{
       // A chat line observed BEFORE the marker cannot satisfy the second
       // stage, even if it arrived in the same filesystem read as the marker.
       if(cfg.requireChatAfterMarker && !chatPhaseArmed)return;
@@ -305,9 +307,9 @@ function start(argv=process.argv.slice(2)) {
         // File reset/error events are reported AFTER readLine callbacks.
         // Defer publication until the poll's source-identity evidence arrives.
         if(pendingCandidates.length>=cfg.maxCandidates){ignoredCount++;return}
-        pendingCandidates.push(event);return;
+        pendingCandidates.push({event,fullRecord});return;
       }
-      publishCandidate(event);
+      publishCandidate(event,fullRecord);
     },cfg.includeText,(line,observedAt)=>{
       if(cfg.requireChatAfterMarker && !chatPhaseArmed)return;
       if(rawSamples>=cfg.rawSampleLines)return;
@@ -423,7 +425,7 @@ function start(argv=process.argv.slice(2)) {
     }
     if(pendingCandidates.length){
       const ready=pendingCandidates;pendingCandidates=[];
-      for(const candidate of ready)publishCandidate(candidate);
+      for(const candidate of ready)publishCandidate(candidate.event,candidate.fullRecord);
     }
     if(cfg.requireChatAfterMarker && chatCandidatesAfterMarker>0 &&
        (cfg.requireChatText===null || exactChatTextMatched)){
