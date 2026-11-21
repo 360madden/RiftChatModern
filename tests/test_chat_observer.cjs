@@ -63,6 +63,61 @@ test("real RIFT line format is recognized by the actual bounded file tailer",()=
     tail.close();
   }finally{fs.rmSync(dir,{recursive:true,force:true})}
 });
+test("November 21 physical RIFT Live numbered public-channel log syntax",()=>{
+  // Sanitized reconstruction of 20 real current-client Log.txt lines from
+  // [4. Level 1-29][SPEAKER]: BODY. The private log is never committed.
+  const record=parseCandidateLine(
+    "23:37:21: [4. Level 1-29][Example@Greybriar]: fixture public text");
+  assert.ok(record);
+  assert.equal(record.event,"candidate_chat");
+  assert.equal(record.format,"rift-live-2026-numbered-public");
+  assert.equal(record.verifiedLiveFormat,true); // syntax, NOT file provenance
+  assert.equal(record.source,"RIFT_Log.txt");
+  assert.equal(record.kind,"public");
+  assert.equal(record.channel,"Level 1-29");
+  assert.equal(record.channelSlot,4);
+  assert.equal(record.sender,"Example@Greybriar");
+  assert.equal(record.gameTimestamp,"23:37:21");
+  assert.equal(record.text,"fixture public text");
+  assert.equal(record.textBytes,19);
+  assert.equal(record.truncated,false);
+});
+test("numbered-public syntax is strictly bounded and never forges other channels",()=>{
+  for(const value of [
+    "25:37:21: [4. Level 1-29][Example]: hi",
+    "23:61:21: [4. Level 1-29][Example]: hi",
+    "23:37:21: [0. Level 1-29][Example]: hi",
+    "23:37:21: [4. Guild][Example]: hi",
+    "23:37:21: [4. Combat][Example]: hi",
+    "23:37:21: [4. Level 1-29][Example]: ",
+    "23:37:21: [4. Level 1-29][]: hi",
+    "23:37:21: [4. Level 1-29][Example]: hi\ncommand",
+    "23:37:21: [4. Level 1-29][Example]: hi\u0000evil",
+    "23:37:21: [4. Level 1-29][Example] says: hi",
+    "23:37:21: [Level 1-29][Example]: hi",
+  ])assert.equal(parseCandidateLine(value),null,value);
+});
+test("new live public format passes actual tailer but body remains redacted",()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),"rcm-public-current-"));
+  const file=path.join(dir,"Log.txt");
+  try{
+    fs.writeFileSync(file,"Noncombat logging enabled\n");
+    const tailer=new LogTailProbe({filePath:file,nonce:"RCM_PUBLIC_LIVE_20261121"});
+    const rows=[];
+    attachChatObserver(tailer,(event,original)=>rows.push({event,original}),false);
+    tailer.poll();
+    fs.appendFileSync(file,
+      "23:37:21: [4. Level 1-29][Example@Greybriar]: private fixture body\n");
+    tailer.poll();
+    assert.equal(rows.length,1);
+    assert.equal(rows[0].event.kind,"public");
+    assert.equal(rows[0].event.format,"rift-live-2026-numbered-public");
+    assert.equal(rows[0].event.channelSlot,4);
+    assert.equal("text" in rows[0].event,false);
+    assert.equal(rows[0].original.text,"private fixture body");
+    tailer.close();
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
 test("historical 3-field bracket chat, preserving sender, channel, time and text",()=>{
   const result=parseCandidateLine("[10:04:05][Guild][Atank]: hello from guild");
   assert.equal(result.event,"candidate_chat");

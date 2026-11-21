@@ -75,6 +75,17 @@ test("physically observed Say shape is eligible but never claims whole-game proo
     refused(invalid);
   }
 });
+test("physically observed numbered public format is NOT silently accepted by Say-only gate",()=>{
+  const items=fixture("PUBLIC_TEST_MARK_20261121");
+  items[3]={event:"candidate_chat",source:"RIFT_Log.txt",
+    format:"rift-live-2026-numbered-public",kind:"public",channel:"Level 1-29",
+    channelSlot:4,verifiedLiveFormat:true,chatTextMatched:true,
+    afterMarker:true,truncated:false};
+  items[4]=encodeRecord({kind:"public",sender:"Example@Greybriar",
+    channel:"Level 1-29",text:"PUBLIC_TEST_MARK_20261121"},
+    "ABCDEF123456","editor");
+  refused(items);
+});
 test("valid source may appear only after configured log is created",()=>{
   const items=fixture();
   items.splice(1,0,{event:"log_path_selected",path:"C:\\RIFT\\Log.txt"});

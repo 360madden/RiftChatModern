@@ -5,6 +5,8 @@
 **Implementation:** tools/rcm-say-delivery.cjs and tools/rcm-say-delivery-state.cjs  
 **Tests:** tests/test_say_delivery.cjs
 
+> **Later physical update (evening, November 21):** One supervised real Say transfer through this exact coordinator has now passed actual RIFT log capture, pinned .NET sender delivery, visible RCM HOST/SAY receipt, /reloadui and independent matching SavedVariables token verification. Read [the physical acceptance](COORDINATOR_PHYSICAL_ACCEPTANCE_20261121.md). The original notes below document implementation-time uncertainty; unattended delivery remains unverified.
+
 ## Engineering result
 
 The bounded read-only Say follower can now feed a **serialized, durable private import queue**, instead of publishing unrelated import batches to a console without a coordinator. Only one delivery may be claimed or dispatched at a time. Recovery from uncertain Windows input never automatically resubmits the same message.

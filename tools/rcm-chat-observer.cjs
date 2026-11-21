@@ -81,6 +81,25 @@ function parseCandidateLine(line) {
       gameTimestamp:time,text:bounded.text,
       textBytes:Buffer.byteLength(body,"utf8"),truncated:bounded.truncated};
   }
+  // Confirmed in 20 game-created Log.txt records on 2026-11-21:
+  // HH:MM:SS: [4. Level 1-29][Speaker@Shard]: message
+  // Only this numbered PUBLIC-CHANNEL structure is established. The index is
+  // a live client channel slot, not part of the retained readable channel name.
+  // It does NOT establish native Guild/Party/Tell interception or provenance
+  // from matching text in an arbitrary synthetic log.
+  const livePublic=/^((?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d): \[([1-9]\d{0,2})\. ([^\]\r\n]{1,66})\]\[([^\]\r\n]{1,40})\]: (.+)$/u.exec(trimmed);
+  if(livePublic){
+    const [,time,slot,name,sender,body]=livePublic;
+    const c=classifyChannel(slot+". "+name);
+    if(!c || c.kind!=="public" || !cleanField(sender,40) ||
+       !cleanField(body,MAX_LINE))return null;
+    const bounded=safePrefix(body,MAX_TEXT_BYTES);
+    return {event:"candidate_chat",format:"rift-live-2026-numbered-public",
+      source:"RIFT_Log.txt",verifiedLiveFormat:true,
+      kind:"public",channel:c.channel,channelSlot:Number(slot),sender,
+      gameTimestamp:time,text:bounded.text,
+      textBytes:Buffer.byteLength(body,"utf8"),truncated:bounded.truncated};
+  }
   let match=/^\[([^\]\r\n]{1,36})\]\[([^\]\r\n]{1,72})\]\[([^\]\r\n]{1,40})\]: +(.+)$/u.exec(trimmed);
   let time=null,rawChannel,sender,body;
   if(match && isTimestamp(match[1])) {

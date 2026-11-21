@@ -24,7 +24,7 @@
 RCM is built to support other RIFT addons as a shared diagnostics surface—not just to look like a chat window. It provides a published addon API for messages, local commands, history inspection, and development tools.
 
 > [!IMPORTANT]
-> **RCM is not yet a complete replacement for RIFT's original player chat.** One **real Say → Log.txt → Windows import → RCM history → character save** experiment has been physically verified. This is a bounded host-mediated import, **not automatic continuous reception or native addon-API interception**. Guild, Party, Tell, other public-channel formats and direct native social sending remain unverified. The original RIFT chat stays available, and host-imported records remain explicitly labeled.
+> **RCM is not yet a complete replacement for RIFT's original player chat.** Two supervised real Say imports have been physically verified: the original manual route and, later on November 21, the **bounded follower → serialized coordinator → RCM editor → character save** route. The latter has an exact on-disk transfer receipt, but **unattended continuous reception and native addon-API social interception are not established**. The live log also revealed a real numbered public-channel format, now parsed on the Windows side but not yet imported through a physically accepted public-channel route. Guild, Party, Tell and direct native social sending remain unverified. The original RIFT chat stays available; host imports remain explicitly labeled.
 
 ## In-game preview
 
@@ -45,7 +45,7 @@ RCM is built to support other RIFT addons as a shared diagnostics surface—not 
 | ⌨️ | **Local command editor** | Dedicated input, focus feedback, local `:` commands, session-only command recall |
 | 🧩 | **Addon integration** | Publish diagnostics, register commands, subscribe to messages, inspect history |
 | 🛠️ | **Native CONSOLE inspector (v0.2.22)** | Read-only Game, Loot, Player, public Channel and Combat subscriptions; actual ON/OFF states, console selector and refresh |
-| 📥 | **Physically proven Say import (v0.2.23)** | Exactly one controlled live Say record traveled through RIFT Log.txt, Node observer, guarded editor import, in-game history, and disk SavedVariables |
+| 📥 | **Physically proven Say import (v0.2.23)** | Two supervised real Say imports independently verified, including the new serialized coordinator with exact on-disk transfer receipt |
 | ⏱️ | **Bounded Say follower (Windows helper)** | Read-only monitoring of newly appended, physically observed Say syntax; metadata redacted by default; opt-in editor import preparation without in-game submission |
 | 📦 | **Serialized Say delivery coordinator (Windows helper)** | Private durable queue, one in-flight transfer, .NET 10 validation, explicitly pinned send, exact-token disk verification and no automatic retries |
 | 💾 | **Persistence** | Character-scoped SavedVariables with schema migration and save-status diagnostics |
@@ -115,7 +115,7 @@ RIFT/
 
 ### Windows host companion (optional)
 
-Run `node tools/rcm-say-delivery.cjs status` from the repository root to inspect its private Say-transfer queue. An explicitly started capture can collect newly appended real-log Say-shaped messages, and `preflight` validates one queued batch through the real .NET 10 sender without game input. An opt-in `dispatch` requires fresh, fully pinned RIFT process identity and focus acknowledgments; **no coordinator transfer has yet passed live-game acceptance**. Read the [delivery coordinator contract](docs/SAY_DELIVERY_COORDINATOR_20261121.md) before using it. This is a host-side tool, not a new Lua chat API.
+Run `node tools/rcm-say-delivery.cjs status` from the repository root to inspect its private Say-transfer queue. An explicitly started capture can collect newly appended real-log Say-shaped messages, and `preflight` validates one queued batch through the real .NET 10 sender without game input. An opt-in `dispatch` requires fresh, fully pinned RIFT process identity and focus acknowledgments; **one supervised coordinator Say transfer has now passed real-game and disk acceptance**, while unattended continuous delivery remains unverified. Read the [physical coordinator acceptance](docs/COORDINATOR_PHYSICAL_ACCEPTANCE_20261121.md) and [delivery contract](docs/SAY_DELIVERY_COORDINATOR_20261121.md) before using it. This is a host-side tool, not a new Lua chat API.
 
 ## For addon developers
 
@@ -148,13 +148,13 @@ The API also provides history retrieval, subscriptions, UI controls, copy helper
 |---|---|
 | **Addon release** | **v0.2.23**, physically loaded in RIFT Live; the retained real Say import displays as **`[HOST/SAY]`** without a duplicate |
 | **Physical RIFT evidence** | v0.2.22 General, Loot and named public-channel subscriptions confirmed in native screenshots; v0.2.21 drag/resize, focus, details, message columns previously accepted |
-| **Offline regression suite** | **315 Python/Lua and 94 Node tests passed** (November 21, 2026), including serialized Say queue, .NET sender dry-run/refusal, exact-token disk auditing, physical UI regressions and SavedVariables geometry audit |
+| **Offline regression suite** | **315 Python/Lua and 99 Node tests passed** (November 21, 2026), including serialized Say queue, .NET sender dry-run/refusal, exact-token disk auditing, physical UI regressions and SavedVariables geometry audit |
 | **Persistence** | Window position and size survived `/reloadui`; exact UI geometry and local DEV test entry independently found in the on-disk SavedVariables file |
 | **Windows host tooling** | Existing .NET 10 editor batch validator, exact-candidate gate; temporary RIFT foreground capture/return physically verified |
-| **Native player social chat** | One controlled **Say** message physically verified in a game-created Log.txt and subsequently in RCM Imports; Guild/Party/Tell/public capture remains unverified |
-| **Bounded host Say monitoring** | Read-only new-only observer tracks fresh Say lines during finite sessions; session-specific physical live-Say acceptance remains pending |
-| **Serialized host delivery** | Offline-tested journal and exact-token disk acknowledgments; explicitly pinned .NET 10 sender is available but coordinator-to-game physical acceptance remains pending |
-| **Continuous unattended in-game import** | **Not yet implemented**; only the earlier v0.2.23 manual real Say transfer has a verified in-game and disk receipt |
+| **Native player social chat** | Two supervised real **Say** imports accepted; 20 game-created numbered public-channel log lines establish one additional parser format, but public import and Guild/Party/Tell remain unverified |
+| **Bounded host Say monitoring** | New-only follower physically captured one real Say during a bounded, supervised session; not unattended continuous reception |
+| **Serialized host delivery** | **Physical P0 pass:** exactly one real Say transferred through coordinator to RCM and independently verified on disk under matching token |
+| **Continuous unattended in-game import** | **Not yet implemented**; both verified Say transfers required explicit, supervised host actions |
 
 RCM is under active development. The main engineering priority is proving a reliable real-game social chat source, without mislabeling host-imported records or RIFT console configuration as a native chat transcript.
 
@@ -172,7 +172,9 @@ The homepage is intentionally concise. The complete development history—includ
 | 🎛️ [v0.2.22 Native RIFT console categories](docs/V0_2_22_NATIVE_RIFT_CONSOLE_CATEGORIES_20261121.md) | Exact game categories, API research, physical ON/OFF evidence and unsupported native social chat boundary |
 | 📥 [v0.2.23 Real Say → RCM import](docs/V0_2_23_PHYSICAL_RIFT_SAY_LOG_IMPORT_20261121.md) | Physical game-created log record, qualified parser, exact single editor import and on-disk SavedVariables proof |
 | ⏱️ [Bounded Say follow (host-only)](docs/BOUNDED_SAY_FOLLOW_20261121.md) | New-only multi-message log monitoring, redacted by default; opt-in batches but no automatic RIFT delivery |
-| 📦 [Serialized Say delivery coordinator](docs/SAY_DELIVERY_COORDINATOR_20261121.md) | Private durable queue, one claimed import, explicitly pinned .NET sender, exact SavedVariables token audit; physical coordinator acceptance pending |
+| 📦 [Serialized Say delivery coordinator](docs/SAY_DELIVERY_COORDINATOR_20261121.md) | Private durable queue, one claimed import, explicitly pinned .NET sender and exact SavedVariables token audit |
+| ✅ [First physical coordinator acceptance](docs/COORDINATOR_PHYSICAL_ACCEPTANCE_20261121.md) | New live Say → serialized transfer → in-game HOST/SAY row → /reloadui → independently verified disk token |
+| 🌐 [Real numbered public chat log format](docs/LIVE_PUBLIC_CHANNEL_LOG_FORMAT_20261121.md) | Twenty authentic current-client lines; strict Windows parser, with actual public-channel import still pending |
 | 🧭 [Saturday development handoff](docs/HANDOFF_20261121_SATURDAY.md) | Complete November 21 recovery context, verified evidence, tests, known gaps and precise next-cycle acceptance sequence |
 | 📚 [Complete engineering archive](docs/ENGINEERING_ARCHIVE_README_THROUGH_20261121.md) | Previous detailed README, preserved in full |
 | 🧭 [Development history](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md) | Original concept, initial build, fixes, and live findings |

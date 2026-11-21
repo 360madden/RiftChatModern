@@ -7,7 +7,7 @@
 **Branch / remote:** main → origin, https://github.com/360madden/RiftChatModern  
 **Current installed in-game addon:** v0.2.23, unchanged by later Windows-only helper work.
 
-> **START HERE:** Resume by validating ONE new, real, game-created Say message through the new serialized host coordinator. The older single-message manual import is physically proven, but successful new coordinator-to-game delivery and its persisted receipt are **NOT yet physically verified**. Do not claim continuous social-chat interception or full chat replacement.
+> **POST-HANDOFF UPDATE (later November 21):** This document is the historical 16:20 EST handoff. The previously pending coordinator P0 was subsequently **physically accepted** with a real Say import and exact disk token. See [the coordinator acceptance](COORDINATOR_PHYSICAL_ACCEPTANCE_20261121.md) and [new verified public-channel log format](LIVE_PUBLIC_CHANNEL_LOG_FORMAT_20261121.md) before following the older P0 steps below. Unattended continuous social interception and native social sending remain unverified.
 
 ## 1. Goals and current boundaries
 

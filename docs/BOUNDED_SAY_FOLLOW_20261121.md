@@ -41,7 +41,7 @@ The isolated Node test file tests/test_live_say_follow.cjs covers argument bound
 
 **Physical read-only smoke test on AMD-DESKTOP:** The actual configured RIFT Log.txt existed at 85 bytes. The new tool established EOF at byte 85, completed nine polls during a one-second bounded trial, reported zero delivered messages and zero skipped messages, and stopped normally on timeout. No game input, focus change, or SavedVariables edit occurred. This proves startup and stale-record exclusion on the actual file, **not** a new live chat capture.
 
-**A second newly typed live Say during this helper session is still needed** to establish a fresh physical capture via this new tool, apart from the previously physically accepted v0.2.23 one-message flow. The eight temporary-log tests also exercise rolling checkpoints against in-place rewriting of *recently appended* data.
+**Later physical update:** A new real Say was captured by this follower during a separate, bounded supervised session and then delivered end-to-end by the serialized coordinator. Its exact transfer token was verified after the normal game save. See [physical coordinator acceptance](COORDINATOR_PHYSICAL_ACCEPTANCE_20261121.md). The original one-second smoke test above still correctly reported zero new Say at that time. The eight temporary-log tests also exercise rolling checkpoints against in-place rewriting of *recently appended* data.
 
 ## Follow-on implementation
 

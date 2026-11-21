@@ -46,6 +46,8 @@ for the historical timeline and cross-links.
 - [Physically verified real Say message and disk persistence](V0_2_23_PHYSICAL_RIFT_SAY_LOG_IMPORT_20261121.md)
 - [Bounded read-only Say follower (Windows host, not automatic game delivery)](BOUNDED_SAY_FOLLOW_20261121.md)
 - [Serialized Say delivery coordinator, private state and exact-token receipts](SAY_DELIVERY_COORDINATOR_20261121.md)
+- **[First real coordinator Say import and on-disk acceptance](COORDINATOR_PHYSICAL_ACCEPTANCE_20261121.md)** — full supervised game evidence and logging-state restoration
+- **[First real numbered public-channel log syntax](LIVE_PUBLIC_CHANNEL_LOG_FORMAT_20261121.md)** — twenty current-client records, parser tests, and remaining public-import boundary
 - [Guarded editor sender prototype](EDITOR_SENDER_PROTOTYPE_20261120.md)
 - [Complete multipart .NET 10 batch validation](RCM_MULTIPART_EDITOR_BATCH_20261121.md)
 - [Exact-chat observer → batch gate](RCM_LOG_OBSERVER_BATCH_GATE_20261121.md)
@@ -63,11 +65,13 @@ for the historical timeline and cross-links.
 - [RIFT November 17 logging implementation](RIFT_NOV17_LOGGING_IMPLEMENTATION_20261120.md)
 - [Exact-build noncombat line writer](RIFT_NOV17_NONCOMBAT_LINE_WRITER_20261120.md)
 
-**Evidence boundary:** one controlled Say message is now physically verified
-in the game-created noncombat Log.txt, in RCM's own Imports UI, and in the
-character's persisted SavedVariables. **Guild/Party/Tell/public capture,
-continuous delivery and native social sending are not yet verified.**
-Host-imported chat remains labeled as host-origin data.
+**Evidence boundary:** two supervised Say imports now have real game and
+on-disk receipts, including one through the serialized coordinator. The
+current-client log also supplied twenty authentic numbered public-channel
+lines, now recognized by a strict Windows parser, but **public-message
+import into RCM, Guild/Party/Tell capture, unattended continuous delivery,
+and native social sending remain unverified**. Host-imported chat remains
+labeled as host-origin data.
 
 ## Screenshot and physical acceptance
 

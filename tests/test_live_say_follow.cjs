@@ -68,6 +68,14 @@ test("strict bounded flags, path and privacy opt-in",()=>{
     format:"historical-bracket",verifiedLiveFormat:false,kind:"guild",
     channel:"Guild",source:"RIFT_Log.txt"}),false);
 });
+test("real numbered public format never enters the verified Say-only follower",()=>{
+  const {parseCandidateLine}=require("../tools/rcm-chat-observer.cjs");
+  const event=parseCandidateLine(
+    "23:37:21: [4. Level 1-29][Example@Greybriar]: harmless fixture");
+  assert.equal(event.verifiedLiveFormat,true);
+  assert.equal(event.kind,"public");
+  assert.equal(follow.isObservedSay(event),false);
+});
 test("new complete Say is emitted, stale baseline ignored and body redacted",async()=>{
   const r=await session({changes:file=>fs.appendFileSync(file,SAY)});
   assert.equal(r.code,0,r.stderr);
