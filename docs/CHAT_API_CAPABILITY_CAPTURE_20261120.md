@@ -1,8 +1,8 @@
 # RCM chat capability audit — persisted October 2026 RIFT client API documentation
 
-**Report date:** Friday, November 20, 2026 (America/New_York)  
-**Verified machine:** AMD-DESKTOP  
-**Repository:** C:\work\RiftChatModern  
+**Report date:** Friday, November 20, 2026 (America/New_York)
+**Verified machine:** AMD-DESKTOP
+**Repository:** C:\work\RiftChatModern
 **Impact:** Host-side reference research and reusable offline verifier; no RIFT Lua or installed addon changes.
 
 ## Objective
