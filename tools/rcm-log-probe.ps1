@@ -1,12 +1,13 @@
 # RCM / RIFT-to-Windows log feasibility pilot (Windows PowerShell 5.1+ / PS7).
-# Calls LuaPadModern's existing read-only Node watcher; does not duplicate its
-# file-tail implementation or change game input/logging configuration.
+# Calls RCM's configured-path chat observer, which reuses LuaPadModern's
+# read-only file tailer. No game input or logging configuration changes.
 [CmdletBinding()]
 param(
     [string]$Nonce = ("RCM" + [DateTimeOffset]::UtcNow.ToString("yyyyMMddHHmmss")),
     [ValidateRange(1, 300)][int]$TimeoutSeconds = 120,
     [ValidateRange(25, 1000)][int]$PollMs = 100,
     [string]$LogPath,
+    [ValidateRange(0, 30)][int]$SampleRawLines = 0,
     [switch]$Preview
 )
 
@@ -16,9 +17,13 @@ try {
         throw "Nonce must be 8-80 ASCII letters, digits, underscore or hyphen."
     }
     $workspace = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-    $watcher = Join-Path $workspace "LuaPadModern\tools\rift-log-probe.cjs"
+    $watcher = Join-Path $PSScriptRoot "rcm-chat-observer.cjs"
+    $decoder = Join-Path $workspace "LuaPadModern\tools\rift-log-probe.cjs"
     if (-not (Test-Path -LiteralPath $watcher -PathType Leaf)) {
-        throw "LuaPadModern watcher not found at $watcher. Nothing was started."
+        throw "RCM chat observer not found at $watcher. Nothing was started."
+    }
+    if (-not (Test-Path -LiteralPath $decoder -PathType Leaf)) {
+        throw "Required LuaPadModern read-only decoder not found at $decoder. Nothing was started."
     }
     $node = Get-Command node.exe -ErrorAction Stop
     if ($LogPath) {
@@ -32,10 +37,12 @@ try {
     $argsList = @($watcher, '--nonce', $Nonce, '--timeout-ms',
         [string]($TimeoutSeconds * 1000), '--poll-ms', [string]$PollMs)
     if ($LogPath) { $argsList += @('--path', $LogPath) }
+    if ($SampleRawLines -gt 0) { $argsList += @('--sample-raw-lines', [string]$SampleRawLines) }
     [ordered]@{
         event              = $(if ($Preview) { 'preview' } else { 'watcher_starting' })
         host               = $env:COMPUTERNAME
         watcher            = $watcher
+        decoderDependency  = $decoder
         watcherReadOnly    = $true
         gameInputSent      = $false
         loggingChanged     = $false
@@ -44,9 +51,11 @@ try {
         rcmEditorCommand   = ":logprobe $Nonce"
         timeoutSeconds     = $TimeoutSeconds
         pollMs             = $PollMs
-        logPath            = $(if ($LogPath) { $LogPath } else { 'LuaPadModern default candidates' })
-        instruction        = 'After the watcher starts, enter rcmEditorCommand in the loaded RCM editor. Enable /log manually only after confirming its existing state; /log is a toggle.'
-        note               = 'The watcher also prints a LuaPad snippet. For this RCM test use :logprobe, not the LuaPad snippet. A console submission alone is NOT a log receipt.'
+        rawSampleLines     = $SampleRawLines
+        logPath            = $(if ($LogPath) { $LogPath } else { 'resolved at runtime by RCM observer' })
+        pathSelectionPolicy = $(if ($LogPath) { 'explicit LogPath' } else { 'Rift.cfg [Client] DocumentsDirectory first; LuaPad fallback only if missing/invalid' })
+        instruction        = 'After the observer emits started with its selected path, enter rcmEditorCommand in the loaded RCM editor. Enable /log manually only after confirming its existing state; /log is a toggle.'
+        note               = 'RCM observer reuses the LuaPad decoder. Check started.pathSelection. The console marker alone is NOT a verified log receipt or social-chat capture. Raw-line samples can include private chat, so enable explicitly.'
     } | ConvertTo-Json -Compress
     if ($Preview) { exit 0 }
     & $node.Source @argsList
