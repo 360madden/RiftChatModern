@@ -61,3 +61,23 @@ This release does **not** establish normal server-delivered Say, Tell, Guild, Pa
 5. Restart RIFT; use /rcm import status to verify the previously retained history ID, then repeat the same token and ensure it cannot create a second row. Neither mocked Save.Begin nor an installed-file hash is a physical acceptance substitute.
 
 **Development restrictions honored:** No Ollama, OpenCode or Codex CLI; no fabricated internal ChatGPT workers. Source changes and verification used the live, verified AMD-DESKTOP development connection.
+
+## Verified guarded deployment — 8:13 PM EST, Friday November 20
+
+A fresh Windows process check confirmed **RIFT_PIDS []** on the independently verified **AMD-DESKTOP**. The standard installer then ran with the explicit host guard and completed successfully at about **8:13:11 PM EST**.
+
+- It replaced exactly **Core.lua, HostIngress.lua, Main.lua and RiftAddon.toc** in the previously verified physical RIFT OneDrive AddOns/RiftChatModern directory.
+- The prior installed copies were backed up under the ignored local repository folder **artifacts/deploy-backups/20261121T011311Z-9m1vnif7/**. The installer reported **gameProcessCheck: closed**, **hashVerified: true**, **gameInputSent: false**, and **savedVariablesTouched: false**.
+- A separate **post-install dry run** returned **changedFiles: []** and **hashVerified: true**, independently confirming **10 of 10 installed files match source**.
+- The actually installed RiftAddon.toc explicitly reports version **0.2.16**, Environment **4.3**, a required placeholder Email field, all six startup scripts in the established order, and character-scoped SavedVariables.
+- The exact-character disk receipt audit was rerun without editing the file. It still reports the **7:49:09 PM EST** checkpoint snapshot, schema 2, 50 retained system rows, **no imported rows**, and SHA-256 **87c4ad76cbc5cf7e2cb82b7b5cb8fd54c780fb1aa3f6880f7625cfad5ebb617a**. This is expected: the installed v0.2.16 has **not yet run in the physical RIFT client**.
+
+### Prepared controlled import for the next live run
+
+The checked-in Node encoder was executed on AMD-DESKTOP with explicit text **RCM v0.2.16 persistent token test**. It generated a valid one-part manual slash command with transfer token **D5363B06E552**:
+
+    /rcm import D5363B06E552 1/1 RwBSQ01Qcm9iZQBHdWlsZABSQ00gdjAuMi4xNiBwZXJzaXN0ZW50IHRva2VuIHRlc3Q
+
+The command has **not been sent to RIFT**. During the next physical session it must be entered in the original native RIFT chat entry, and the newly displayed **history #ID** must be recorded rather than guessed. Use both the real numeric history ID and this exact token with the independent disk checker **after** a proper game save.
+
+No physical v0.2.16 UI, native social chat, or on-disk imported-row acceptance has yet been proven. Only the deployment files and the previous saved-data snapshot are independently verified.
