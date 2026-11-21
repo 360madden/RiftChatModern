@@ -17,6 +17,48 @@ function decoded(commands) {
   return Buffer.from(commands.map(x=>x.split(" ").at(-1)).join(""),"base64url")
     .toString("utf8");
 }
+test("RCM editor mode emits the same bytes with :import, not native /rcm commands",()=>{
+  const record={kind:"guild",sender:"Atank",channel:"Guild",text:"Go to RCM"};
+  const direct=encodeRecord(record,"ABCDEF123456","editor");
+  const native=encodeRecord(record,"ABCDEF123456");
+  assert.equal(direct.inputMode,"editor");
+  assert.equal(direct.automaticGameInput,false);
+  assert.equal(direct.liveGameDeliveryVerified,false);
+  assert.equal(direct.requiresManualEntry,true);
+  assert.ok(direct.commands.every(cmd=>cmd.startsWith(":import ")));
+  assert.ok(native.commands.every(cmd=>cmd.startsWith("/rcm import ")));
+  assert.equal(decoded(direct.commands),decoded(native.commands));
+  assert.equal(direct.parts,native.parts);
+  const run=call(["--kind","guild","--sender","Atank","--channel","Guild",
+                  "--text","Go to RCM","--id","ABCDEF123456",
+                  "--input-mode","editor"]);
+  assert.equal(run.status,0,run.stderr);
+  const output=JSON.parse(run.stdout.trim());
+  assert.equal(output.commands.length,1);
+  assert.equal(output.commands[0],direct.commands[0]);
+  assert.throws(()=>encodeRecord(record,"ABCDEF123456","unknown"));
+  assert.throws(()=>parseOptions(["--input-mode","unknown"]));
+});
+
+test("stdin-json editor mode keeps typed commands and refuses incomplete chat",()=>{
+  const rows=[
+    {event:"candidate_chat",kind:"party",sender:"Sam",
+      channel:"Party",text:"Hello editor",truncated:false},
+    {event:"candidate_chat",kind:"guild",sender:"Sam",
+      channel:"Guild",text:"shortened",truncated:true}
+  ];
+  const run=call(["--stdin-json","--input-mode","editor"],
+    rows.map(JSON.stringify).join("\n")+"\n");
+  assert.equal(run.status,2);
+  const output=run.stdout.trim().split("\n").map(JSON.parse);
+  assert.equal(output[0].inputMode,"editor");
+  assert.ok(output[0].commands[0].startsWith(":import "));
+  assert.equal(decoded(output[0].commands),"P\0Sam\0Party\0Hello editor");
+  assert.equal(output[1].reason,"truncated_chat_body");
+  assert.equal(output[2].generated,1);
+  assert.equal(output[2].skipped,1);
+});
+
 test("short manual import has bounded slash command and strict metadata",()=>{
   const out=encodeRecord({kind:"guild",sender:"Atank",
     channel:"Guild",text:"Hi from host"},"ABCDEF123456");

@@ -50,7 +50,7 @@ class ManualHostIngressTests(unittest.TestCase):
             source = (ADDON / filename).read_text(encoding="utf-8")
             chunk = ("local f=assert(loadstring(" + _lua_quote(source)
                      + "));assert(f({identifier='RiftChatModern',"
-                     "version='0.2.16'}, {})==nil)")
+                     "version='0.2.17'}, {})==nil)")
             lua.execute(chunk)
         if saved_setup:
             lua.execute(saved_setup)
@@ -72,7 +72,9 @@ assert(stat.ready==true and stat.liveChatVerified==false)
 assert(stat.autoInputAvailable==false)
 assert(stat.imported==0)
 assert(RiftChatModernAPI.GetStatus().hostManualImportReady==true)
+assert(RiftChatModernAPI.GetStatus().hostEditorImportReady==true)
 assert(RiftChatModernAPI.GetStatus().hostAutoImportAvailable==false)
+assert(RiftChatModernAPI.GetHostIngressStatus().mode=="manual_slash_or_editor")
 ''')
         self.send(lua, record["commands"])
         lua.execute('''
@@ -87,6 +89,81 @@ assert(RiftChatModernSaved.schemaVersion==2)
 assert(RiftChatModernCore.rowLabel(rows[1])=="HOST IMPORT / Guild")
 assert(RiftChatModernAPI.interfaceVersion==2)
 assert(RiftChatModernSaved.hostIngress==nil)
+''')
+
+    def test_rcm_editor_accepts_host_import_without_using_native_chat_field(self):
+        record=self.encode("guild","RCMProbe","Guild","editor transport candidate")
+        command=record["commands"][0]
+        self.assertEqual(record["parts"],1)
+        editor_command=":import "+command[len("/rcm import "):]
+        lua=self.lua()
+        lua.execute("assert(RiftChatModernAPI.Show())")
+        lua.execute("assert(RiftChatModernAPI.FocusEditor())")
+        lua.execute(
+            "local field=frames.RCMInput;field:SetText("+
+            _lua_quote(editor_command)+");field.Event:KeyDown('enter')")
+        lua.execute(r'''
+local rows,n=RiftChatModernAPI.GetHistory("imports","editor transport candidate",5,0)
+assert(n==1 and rows[1].kind=="import" and rows[1].origin=="host_manual")
+assert(rows[1].importToken=="ABCDEF123456")
+assert(RiftChatModernAPI.GetHostIngressStatus().lastImportedMessageId==rows[1].id)
+assert(RiftChatModernAPI.GetStatus().commandHistoryCount==0)
+assert(frames.RCMInput:GetText()=="")
+assert(RiftChatModernAPI.GetStatus().hostAutoImportAvailable==false)
+assert(RiftChatModernAPI.GetStatus().hostEditorImportReady==true)
+assert(not RiftChatModernAPI.RegisterCommand("import",function() return true end))
+assert(RiftChatModernAPI.GetSaveCheckpointStatus().onDiskVerified==false)
+''')
+        # Same transfer through the API stays idempotent, not a second row.
+        lua.execute("assert(RiftChatModernAPI.Submit("+_lua_quote(editor_command)+"))")
+        lua.execute(r'''
+local rows,n=RiftChatModernAPI.GetHistory("imports","editor transport candidate",5,0)
+assert(n==1 and RiftChatModernAPI.GetHostIngressStatus().duplicates>=1)
+assert(RiftChatModernAPI.GetStatus().commandHistoryCount==0)
+''')
+        # The editor preserves a rejected command as a draft; no fake import.
+        bad=":import BAD"
+        lua.execute(
+            "local field=frames.RCMInput;field:SetText("+
+            _lua_quote(bad)+");field.Event:KeyDown('enter')")
+        lua.execute(r'''
+assert(frames.RCMInput:GetText()==":import BAD")
+assert(RiftChatModernAPI.GetStatus().commandHistoryCount==0)
+local rows,n=RiftChatModernAPI.GetHistory("imports","editor transport candidate",5,0)
+assert(n==1)
+''')
+
+    def test_editor_import_chunks_and_cancel_use_same_ingress_state(self):
+        record=self.encode("party","RCMProbe","Party","🧭"*90,
+                           token="FEDCBA987654")
+        self.assertGreater(record["parts"],1)
+        lua=self.lua()
+        lua.execute("assert(RiftChatModernAPI.Show())")
+        first=":import "+record["commands"][0][len("/rcm import "):]
+        lua.execute(
+            "local field=frames.RCMInput;field:SetText("+
+            _lua_quote(first)+");field.Event:KeyDown('return')")
+        lua.execute(r'''
+local state=RiftChatModernAPI.GetHostIngressStatus()
+assert(state.pending and state.pendingParts==1)
+assert(RiftChatModernAPI.GetStatus().commandHistoryCount==0)
+assert(frames.RCMInput:GetText()=="")
+''')
+        lua.execute('assert(RiftChatModernAPI.Submit(":import cancel"))')
+        lua.execute(r'''
+assert(not RiftChatModernAPI.GetHostIngressStatus().pending)
+assert(RiftChatModernAPI.GetHostIngressStatus().cancelled==1)
+assert(RiftChatModernAPI.GetStatus().commandHistoryCount==0)
+''')
+        # One fully fresh attempt after cancellation may import all chunks.
+        for command in record["commands"]:
+            rest=":import "+command[len("/rcm import "):]
+            lua.execute("assert(RiftChatModernAPI.Submit("+_lua_quote(rest)+"))")
+        lua.execute(r'''
+local rows,n=RiftChatModernAPI.GetHistory("imports","",10,0)
+assert(n==1 and rows[1].importToken=="FEDCBA987654")
+assert(RiftChatModernAPI.GetHostIngressStatus().imported==1)
+assert(RiftChatModernAPI.GetStatus().commandHistoryCount==0)
 ''')
 
     def test_import_receipt_exposes_exact_saved_history_id_without_disk_claim(self):

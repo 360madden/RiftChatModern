@@ -22,7 +22,9 @@ function incompleteSource(record) {
     Number.isSafeInteger(record.textBytes) &&
     record.textBytes>Buffer.byteLength(record.text,"utf8");
 }
-function encodeRecord(record, id=crypto.randomBytes(6).toString("hex").toUpperCase()) {
+function encodeRecord(record, id=crypto.randomBytes(6).toString("hex").toUpperCase(), inputMode="native") {
+  if(inputMode!=="native" && inputMode!=="editor")
+    throw Error("Input mode must be native or editor");
   // Never convert a shortened observer preview into a full, persistent chat
   // message. Bounded transport does not authorize silent text loss.
   if(incompleteSource(record))throw Error("truncated_chat_body");
@@ -39,11 +41,12 @@ function encodeRecord(record, id=crypto.randomBytes(6).toString("hex").toUpperCa
   const b64=raw.toString("base64url");
   const chunks=b64.match(/.{1,88}/g)||[];
   if(chunks.length<1||chunks.length>MAX_PARTS)throw Error("Too many import chunks");
-  const commands=chunks.map((segment,index)=>"/rcm import "+id+" "+
+  const prefix=inputMode==="editor" ? ":import " : "/rcm import ";
+  const commands=chunks.map((segment,index)=>prefix+id+" "+
     (index+1)+"/"+chunks.length+" "+segment);
-  if(commands.some(cmd=>cmd.length>160))throw Error("RIFT slash argument limit exceeded");
+  if(commands.some(cmd=>cmd.length>160))throw Error("RIFT input command length exceeded");
   return {event:"rcm_manual_import",protocol:"RCM1-B64URL",id,kind:record.kind,
-    parts:chunks.length,source:"Windows_candidate_parser",
+    inputMode,parts:chunks.length,source:"Windows_candidate_parser",
     automaticGameInput:false,liveGameDeliveryVerified:false,
     requiresManualEntry:true,commands};
 }
@@ -56,12 +59,15 @@ function parseOptions(argv){
       if(flag==="--stdin-json")v.stdinJson=true;else v.help=true;
       continue;
     }
-    if(!["--kind","--sender","--channel","--text","--id","--max-records"].includes(flag) ||
+    if(!["--kind","--sender","--channel","--text","--id","--max-records","--input-mode"].includes(flag) ||
       argv[i+1]===undefined)throw Error("Unknown/incomplete option: "+flag);
     const key=flag.slice(2);
     if(Object.hasOwn(v,key))throw Error("Duplicate option: "+flag);
     v[key]=argv[++i];
   }
+  if(v["input-mode"]!==undefined && !["native","editor"].includes(v["input-mode"]))
+    throw Error("Invalid input mode");
+  v.inputMode=v["input-mode"]||"native";
   if(v["max-records"]!==undefined){
     const n=Number(v["max-records"]);
     if(!Number.isSafeInteger(n)||n<1||n>100)throw Error("Invalid max-records");
@@ -81,14 +87,14 @@ function start(argv=process.argv.slice(2)) {
   catch(e){process.stderr.write(e.message+"\n");process.exitCode=1;return}
   if(v.help) {
     process.stdout.write(
-      "node tools/rcm-chat-import.cjs --kind guild --sender Sam --channel Guild --text TEXT\n"+
-      "node tools/rcm-chat-import.cjs --stdin-json < observer-jsonl\n"+
-      "Outputs manual /rcm import commands only. Never sends input to RIFT.\n");
+      "node tools/rcm-chat-import.cjs --kind guild --sender Sam --channel Guild --text TEXT [--input-mode editor]\n"+
+      "node tools/rcm-chat-import.cjs --stdin-json [--input-mode editor] < observer-jsonl\n"+
+      "Outputs manual /rcm import commands (native) or :import commands (RCM editor). Never sends input to RIFT.\n");
     return;
   }
   const write=(out)=>process.stdout.write(JSON.stringify(out)+"\n");
   if(!v.stdinJson){
-    try{write(encodeRecord(v,v.id))}
+    try{write(encodeRecord(v,v.id,v.inputMode))}
     catch(e){process.stderr.write(e.message+"\n");process.exitCode=1}
     return;
   }
@@ -108,7 +114,7 @@ function start(argv=process.argv.slice(2)) {
         errors++;write({event:"import_skipped",reason:"truncated_chat_body"});
         return;
       }
-      write(encodeRecord(event));count++;
+      write(encodeRecord(event,undefined,v.inputMode));count++;
     }catch(e){errors++;write({event:"import_skipped",reason:"malformed_or_unencodable_record"})}
   });
   rl.on("close",()=>{

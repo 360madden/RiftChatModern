@@ -83,7 +83,7 @@ class ImportRoundTripTests(unittest.TestCase):
         for module in MODULES:
             text = (ADDON / module).read_text(encoding="utf-8")
             lua.execute("assert(loadstring(" + _lua_quote(text) +
-                        "))({identifier='RiftChatModern',version='0.2.16'}, {})")
+                        "))({identifier='RiftChatModern',version='0.2.17'}, {})")
         lua.execute('fire(Event.Addon.SavedVariables.Load.End, "RiftChatModern")')
         lua.execute('fire(Event.Addon.Load.End, "RiftChatModern")')
         return lua

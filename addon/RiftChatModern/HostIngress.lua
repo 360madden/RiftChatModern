@@ -202,7 +202,7 @@ end
 function Receiver:status(at)
     self:expirePending(at)
     local p=self.pending
-    return {ready=true,mode="manual_slash_only",liveChatVerified=false,
+    return {ready=true,mode="manual_slash_or_editor",liveChatVerified=false,
         autoInputAvailable=false,imported=self.imported,
         acceptedChunks=self.acceptedChunks,rejected=self.rejected,
         duplicates=self.duplicates,expired=self.expired,

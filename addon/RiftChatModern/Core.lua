@@ -325,7 +325,8 @@ function Model:registerCommand(name,callback)
     if type(name)~="string" or not name:match("^[a-z][a-z0-9_]*$")
         or #name>24 or type(callback)~="function" or self.handlers[name]
         or name=="help" or name=="clear" or name=="filter" or name=="find"
-        or name=="status" or name=="echo" or name=="copy" then
+        or name=="status" or name=="echo" or name=="copy"
+        or name=="import" then
         return nil,"invalid_command"
     end
     if self:commandCount()>=48 then return nil,"command_limit" end
@@ -379,7 +380,7 @@ function Model:commandCount()
     return count
 end
 function Model:status()
-    return {version="0.2.16",schemaVersion=2,
+    return {version="0.2.17",schemaVersion=2,
         provenanceRequired=true,historyCount=#self.saved.history,
         filter=self.filter,search=self.search,revision=self.revision,
         commandCount=self:commandCount(),nativeSocialSendAvailable=false,

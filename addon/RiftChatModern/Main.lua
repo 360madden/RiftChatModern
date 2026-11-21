@@ -2,7 +2,7 @@
 -- Native player say/tell/guild transmit and full native chat interception are NOT
 -- exposed by the verified addon APIs. This UI never pretends to send those.
 local info = ...
-local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.16"
+local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.17"
 local Core = _G.RiftChatModernCore
 local MessageBridge = _G.RiftChatModernAddonMessages
 local NativeProbe = _G.RiftChatModernNativeProbe
@@ -28,7 +28,7 @@ local list, findLabel, controls, layoutWindow, render
 local selectedId,detailOverlay,detailTitle,detailBody,detailPageStatus
 local detailPageIndex,refreshDetail=1,nil
 local mirror,mirrorButtonLabel
-local transport,hostIngress
+local transport,hostIngress,lastEditorImportReceipt
 local context,visibleOffset,lastFocusState= nil,0,nil
 local lastViewportW,lastViewportH
 local initialized=false
@@ -77,6 +77,13 @@ local function notifyUi(text)
 end
 local function rememberExecuted(value)
     if type(value)~="string" or value:sub(1,1)~=":" then return end
+    -- Transfer chunks may contain private chat. Never put the encoded input
+    -- into the editor command recall, even if accepted successfully.
+    local verb=value:match("^%s*:([a-zA-Z][a-zA-Z0-9_]*)")
+    if verb and verb:lower()=="import" then
+        recallIndex,recallDraft,recallWritten=nil,nil,nil
+        return
+    end
     if commandHistory[#commandHistory]~=value then
         commandHistory[#commandHistory+1]=value
         if #commandHistory>HISTORY_CAP then table.remove(commandHistory,1) end
@@ -422,6 +429,47 @@ local function copyHistory()
 end
 local function executeLocal(value)
     if not model then return nil,"not_ready" end
+    lastEditorImportReceipt=nil
+    -- RCM editor has its own import route. Reuse the SAME bounded receiver
+    -- as native /rcm import; no second decoder, persistent queue or file IO.
+    local verb=type(value)=="string" and
+        value:match("^%s*:([a-zA-Z][a-zA-Z0-9_]*)")
+    if verb and verb:lower()=="import" then
+        if #value>160 then return nil,"import_command_too_long" end
+        local rest=value:match("^%s*:[a-zA-Z][a-zA-Z0-9_]*%s+(.-)%s*$")
+        if not rest or rest=="" then return nil,"import_usage" end
+        if not hostIngress then return nil,"host_import_unavailable" end
+        if rest=="help" then
+            lastEditorImportReceipt=":import ID INDEX/TOTAL BASE64URL | status | cancel"
+        elseif rest=="status" then
+            local state=hostIngress:status(clock())
+            lastEditorImportReceipt=state.pending and
+                ("HOST import "..state.pendingParts.."/"..state.pendingTotal
+                 .." parts pending; native chat/disk unverified.") or
+                ("HOST imports="..state.imported.." duplicates="..state.duplicates
+                 .."; native chat/disk unverified.")
+        elseif rest=="cancel" then
+            local ok,why=hostIngress:cancelPending()
+            if not ok then return nil,why end
+            lastEditorImportReceipt="Pending HOST import cancelled; saved chat unchanged."
+        else
+            local ok,why=hostIngress:receiveLine(rest,clock())
+            if not ok then return nil,why end
+            local state=hostIngress:status(clock())
+            if why=="imported_unverified" then
+                lastEditorImportReceipt="HOST import saved in RCM history #"
+                    ..tostring(state.lastImportedMessageId or "unknown")
+                    .."; native player chat and disk persistence NOT verified."
+            elseif why=="already_imported" or why=="already_received" then
+                lastEditorImportReceipt="HOST import duplicate ignored ("..why..")."
+            else
+                lastEditorImportReceipt="HOST import "..state.pendingParts
+                    .."/"..state.pendingTotal.." parts (unverified)."
+            end
+        end
+        notifyUi(lastEditorImportReceipt)
+        return true
+    end
     -- Clipboard is an actual in-game feature, not a placeholder console line.
     if type(value)=="string" and value:match("^%s*:copy%s*$") then
         return copyHistory()
@@ -483,6 +531,9 @@ local function submit()
     visibleOffset=0
     -- Copy writes a useful receipt into the footer; preserve it until changed.
     if not value:match("^%s*:copy%s*$") then render() end
+    -- render updates the standard footer; restore the precise import receipt.
+    if lastEditorImportReceipt then notifyUi(lastEditorImportReceipt) end
+    lastEditorImportReceipt=nil
     return true
 end
 -- Central layout pass; parent-relative anchors are recalculated only on size change.
@@ -929,7 +980,7 @@ local function parseSlash(_,args)
         else visibleOffset=0;render() end
     elseif verb=="help" then
         notice("/rcm [show|hide|focus|status|copy|clear|import ID PART/TOTAL B64|import status|import cancel|size W H|size reset]")
-        notice("Input: :help :status :mirror on/off :native :logprobe TOKEN :rpt ... :addon CHARACTER MESSAGE.")
+        notice("Input: :import ID INDEX/TOTAL BASE64URL | :host status | :mirror | :native | :logprobe | :addon ...")
     else notice("Unknown command. Use /rcm help") end
 end
 
@@ -1242,6 +1293,7 @@ _G.RiftChatModernAPI={
         data.addonTransportReady=transport~=nil and transport.ready or false
         data.consoleMirrorEnabled=mirrorStatus().enabled
         data.hostManualImportReady=hostIngress~=nil
+        data.hostEditorImportReady=hostIngress~=nil
         data.hostAutoImportAvailable=false
         data.hostImportNativeChatVerified=false
         data.logProbeAvailable=Command and Command.Console
