@@ -15,7 +15,17 @@ function validField(v,min,max) {
       Buffer.byteLength(v,"utf8")>max || /[\x00-\x1F\x7F]/.test(v))return false;
   return Buffer.from(v,"utf8").toString("utf8")===v;
 }
+function incompleteSource(record) {
+  if(!record || typeof record!=="object")return false;
+  if(record.truncated===true)return true;
+  return typeof record.text==="string" &&
+    Number.isSafeInteger(record.textBytes) &&
+    record.textBytes>Buffer.byteLength(record.text,"utf8");
+}
 function encodeRecord(record, id=crypto.randomBytes(6).toString("hex").toUpperCase()) {
+  // Never convert a shortened observer preview into a full, persistent chat
+  // message. Bounded transport does not authorize silent text loss.
+  if(incompleteSource(record))throw Error("truncated_chat_body");
   if(!record || !Object.hasOwn(KINDS,record.kind) ||
     !validField(record.sender,1,40) ||
     !validField(record.channel,1,72) ||
@@ -92,6 +102,10 @@ function start(argv=process.argv.slice(2)) {
       if(event.event!=="candidate_chat")return;
       if(event.text===undefined){
         errors++;write({event:"import_skipped",reason:"message_text_not_requested"});
+        return;
+      }
+      if(incompleteSource(event)){
+        errors++;write({event:"import_skipped",reason:"truncated_chat_body"});
         return;
       }
       write(encodeRecord(event));count++;

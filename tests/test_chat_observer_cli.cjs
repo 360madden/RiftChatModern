@@ -86,6 +86,30 @@ test("CLI emits human-pasteable /rcm import commands only when explicitly enable
   assert.equal(r.records[0].prepareImport,true);
   assert.ok(r.records.some(x=>x.event==="matched"));
 });
+test("prepared slash imports refuse truncated chat but keep complete next record",async()=>{
+  const tooLong="🍀".repeat(130);
+  const result=await launchFixture(
+    "[Guild][LongPlayer]: "+tooLong+"\n"+
+    "[Party][Ready]: complete line\n"+
+    "LPB_PROBE|RCM_CLI_20261120|unknown\n",
+    false,true
+  );
+  assert.equal(result.code,0);
+  const candidates=result.records.filter(e=>e.event==="candidate_chat");
+  assert.equal(candidates.length,2);
+  assert.equal(candidates[0].truncated,true);
+  assert.equal(candidates[0].textBytes,520);
+  const prepared=result.records.filter(e=>e.event==="rcm_manual_import");
+  assert.equal(prepared.length,1);
+  const payload=Buffer.from(prepared[0].commands[0].split(" ").at(-1),"base64url")
+    .toString("utf8");
+  assert.equal(payload,"P\0Ready\0Party\0complete line");
+  const skipped=result.records.filter(e=>e.event==="import_skipped");
+  assert.equal(skipped.length,1);
+  assert.equal(skipped[0].reason,"truncated_chat_body");
+  assert.equal(result.records.some(e=>e.event==="rcm_manual_import"&&e.kind==="guild"),false);
+});
+
 test("opt-in raw-line discovery sees previously unknown formats but never stale lines",async()=>{
   const r=await launchFixture(
     "unknown line format from 2026\n" +

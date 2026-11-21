@@ -250,9 +250,13 @@ function start(argv=process.argv.slice(2)) {
     emit(event);
     if(cfg.prepareImport){
       // Opt-in manual preview, NOT automatic injection into RIFT.
-      // Note: emitted text and slash commands contain the message body.
-      try{emit(encodeRecord(event))}
-      catch(e){emit({event:"import_skipped",reason:"unencodable_candidate"})}
+      // Never represent a shortened candidate as an original chat body.
+      if(event.truncated){
+        emit({event:"import_skipped",reason:"truncated_chat_body"});
+      }else{
+        try{emit(encodeRecord(event))}
+        catch(e){emit({event:"import_skipped",reason:"unencodable_candidate"})}
+      }
     }
   }
   function createTailer(file,fromStart=false){

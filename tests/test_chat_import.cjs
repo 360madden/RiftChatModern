@@ -58,6 +58,42 @@ test("oversize, control chars, invalid tokens and unknown category rejected",()=
   assert.throws(()=>parseOptions(["--max-records","0"]));
   assert.throws(()=>parseOptions(["--unknown"]));
 });
+test("never encode a shortened source chat record as a full message",()=>{
+  const full="🍀".repeat(130);
+  const candidate=require("../tools/rcm-chat-observer.cjs")
+    .parseCandidateLine("[Guild][Atank]: "+full);
+  assert.equal(candidate.truncated,true);
+  assert.equal(candidate.textBytes,520);
+  assert.equal(Buffer.byteLength(candidate.text,"utf8"),512);
+  assert.throws(
+    ()=>encodeRecord(candidate,"ABCDEF123456"),
+    /truncated/,
+  );
+  const complete={...candidate,text:full,truncated:false};
+  assert.throws(()=>encodeRecord(complete,"ABCDEF123456"));
+  // Source byte count can expose truncation even when the flag is wrong.
+  assert.throws(()=>encodeRecord({kind:"guild",sender:"Atank",channel:"Guild",
+    text:"short",textBytes:520,truncated:false},"ABCDEF123456"),/truncated/);
+});
+
+test("stdin-json refuses truncated observer records and exposes the reason",()=>{
+  const truncated={event:"candidate_chat",source:"RIFT_Log.txt",kind:"guild",
+    channel:"Guild",sender:"Atank",text:"🍀".repeat(128),
+    truncated:true,textBytes:520};
+  const ok={event:"candidate_chat",source:"RIFT_Log.txt",kind:"guild",
+    channel:"Guild",sender:"Atank",text:"short complete",truncated:false};
+  const run=call(["--stdin-json"],[truncated,ok]
+    .map(JSON.stringify).join("\n")+"\n");
+  assert.equal(run.status,2,run.stderr);
+  const result=run.stdout.trim().split("\n").map(JSON.parse);
+  assert.equal(result[0].event,"import_skipped");
+  assert.equal(result[0].reason,"truncated_chat_body");
+  assert.equal(result[1].parts,1);
+  assert.equal(decoded(result[1].commands),"G\0Atank\0Guild\0short complete");
+  assert.equal(result[2].generated,1);
+  assert.equal(result[2].skipped,1);
+});
+
 test("manual CLI prints exactly one user-pasteable command, not game input",()=>{
   const r=call(["--kind","tell","--sender","Sam","--channel",
     "Tell","--text","Hello","--id","ABCDEF123456"]);
