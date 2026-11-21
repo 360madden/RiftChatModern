@@ -175,5 +175,64 @@ assert(RiftChatModernAPI.GetSaveCheckpointStatus().onDiskVerified==false)
 """)
 
 
+    def test_synthetic_observer_gate_dotnet_batch_then_lua_editor(self):
+        # Complete offline source-to-sink: simulated two-phase observer receipts
+        # -> Node's exact-candidate gate -> .NET batch validator -> Lua mock.
+        # No physical Log.txt, RIFT UI action, or game input is claimed.
+        message = ("GATED_UTF8_é✓ " * 19) + " GATE_COMPLETE"
+        selected = self.encode(message, token="1234ABCD5678", kind="guild")
+        unrelated = self.encode("UNRELATED_CANDIDATE", token="AAAA0000BBBB",
+                                kind="guild")
+        events = [
+            {"event": "started", "requireChatAfterMarker": True,
+             "expectedChatTextRequired": True, "prepareImport": True,
+             "inputMode": "editor", "transportVerified": False,
+             "automaticGameInput": False},
+            {"event": "matched", "nonce": "RCM_GATE_20261121"},
+            {"event": "chat_phase_armed", "mode": "fresh_tail_after_marker"},
+            {"event": "candidate_chat", "source": "RIFT_Log.txt",
+             "chatTextMatched": False, "afterMarker": True, "truncated": False},
+            unrelated,
+            {"event": "candidate_chat", "source": "RIFT_Log.txt",
+             "chatTextMatched": True, "afterMarker": True,
+             "truncated": False, "verifiedLiveFormat": False},
+            selected,
+            {"event": "finished", "reason": "exact_chat_candidate_after_marker",
+             "expectedChatTextRequired": True, "chatTextMatched": True,
+             "probeMatched": True, "chatCandidatesAfterMarker": 2,
+             "transportVerified": False, "physicalRiftOriginVerified": False}
+        ]
+        gate = ROOT / "tools" / "rcm-chat-batch-gate.cjs"
+        payload = "\n".join(json.dumps(event) for event in events) + "\n"
+        picked = subprocess.run(
+            [NODE, str(gate)], input=payload, cwd=ROOT,
+            capture_output=True, text=True, encoding="utf-8",
+            timeout=20, check=False)
+        self.assertEqual(picked.returncode, 0, picked.stderr)
+        prepared = json.loads(picked.stdout)
+        self.assertEqual(prepared["id"], "1234ABCD5678")
+        self.assertEqual(prepared["commands"], selected["commands"])
+        self.assertNotIn("UNRELATED_CANDIDATE", picked.stdout)
+        plan = subprocess.run(
+            [DOTNET, str(SENDER_DLL), "--stdin-batch"], input=picked.stdout,
+            cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
+            timeout=20, check=False)
+        self.assertEqual(plan.returncode, 0, plan.stderr)
+        receipt = json.loads(plan.stdout)
+        self.assertEqual(receipt["status"], "batch_validated_no_input")
+        self.assertEqual(receipt["token"], "1234ABCD5678")
+        self.assertIs(receipt["gameInputSent"], False)
+        self.assertIs(receipt["addonAcceptedVerified"], False)
+        lua = self.mock_game()
+        for command in prepared["commands"]:
+            self.submit_to_mock_editor(lua, command)
+        lua.execute("""
+local rows,n=RiftChatModernAPI.GetHistory("imports","GATE_COMPLETE",10,0)
+assert(n==1 and rows[1].text==""" + _lua_quote(message) + """)
+assert(rows[1].importToken=="1234ABCD5678" and rows[1].origin=="host_manual")
+assert(RiftChatModernAPI.GetHostIngressStatus().imported==1)
+assert(RiftChatModernAPI.GetSaveCheckpointStatus().onDiskVerified==false)
+""")
+
 if __name__ == "__main__":
     unittest.main()
