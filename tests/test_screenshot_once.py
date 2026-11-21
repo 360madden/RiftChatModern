@@ -185,6 +185,61 @@ class ScreenshotOnceTests(unittest.TestCase):
         self.assertFalse(report["screenshotFileVerified"])
         self.assertEqual(len(runner.calls), 2)
 
+    def test_incomplete_new_jpeg_retries_validation_without_second_key(self):
+        fired = {
+            "schema": PIN["schema"], "status": "windows_key_events_inserted",
+            "baselineEpochNs": self.now, "gameInputSent": True,
+            "keyEventsInserted": 2,
+        }
+        complete = {"status": "new_screenshot_file",
+                    "freshnessVerified": True,
+                    "screenshot": {"filename": "2026-11-21_070741.jpg",
+                                   "format": "JPEG", "width": 2560, "height": 1369}}
+        attempts = []
+        def file_checker(folder, after):
+            attempts.append(after)
+            if len(attempts) == 1:
+                raise session.ScreenshotReceiptError("corrupted_or_unreadable_screenshot")
+            return complete
+        code, report, runner = self.call(
+            ["--expect-host", HOST, "--capture", "--ack-single-screenshot",
+             "--wait-ms", "1500"],
+            [(0, PIN), (0, fired)], checker=file_checker
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(report["status"], "new_post_key_image_verified")
+        self.assertTrue(report["screenshotFileVerified"])
+        self.assertEqual(report["imageValidationRetries"], 1)
+        self.assertEqual(attempts, [self.now, self.now])
+        # The screenshot validation may retry; the game key NEVER does.
+        self.assertEqual(len(runner.calls), 2)
+
+    def test_persistently_invalid_new_jpeg_never_reports_success(self):
+        calls = []
+        def fail_every_time(folder, after):
+            calls.append(after)
+            raise session.ScreenshotReceiptError("incomplete_file")
+        tick = [100.0]
+        def monotonically_advance():
+            tick[0] += 0.25
+            return tick[0]
+        with mock.patch.object(session.time, "monotonic", side_effect=monotonically_advance):
+            code, report, runner = self.call(
+                ["--expect-host", HOST, "--capture", "--ack-single-screenshot",
+                 "--wait-ms", "500"],
+                [(0, PIN), (0, {
+                    "schema": PIN["schema"], "status": "windows_key_events_inserted",
+                    "gameInputSent": True, "baselineEpochNs": self.now,
+                    "keyEventsInserted": 2,
+                })],
+                checker=fail_every_time,
+            )
+        self.assertEqual(code, 2)
+        self.assertEqual(report["status"], "new_image_verification_failed")
+        self.assertTrue(report["gameInputSent"])
+        self.assertGreaterEqual(len(calls), 2)
+        self.assertEqual(len(runner.calls), 2)
+
     def test_unavailable_post_key_directory_preserves_true_input_receipt(self):
         def absent_config(file):
             raise session.ScreenshotReceiptError("missing screenshots folder")

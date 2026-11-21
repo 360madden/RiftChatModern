@@ -63,6 +63,7 @@ physically verified. Host-imported chat remains labeled as host-origin data.
 ## Screenshot and physical acceptance
 
 - [Early physical UI acceptance](LIVE_ACCEPTANCE_V0_2_2_20261120.md)
+- [Physical v0.2.20 screenshot and managed foreground acceptance](V0_2_20_NATIVE_SCREENSHOT_ACCEPTANCE_20261121.md)
 - [One-command screenshot workflow](RCM_ONE_COMMAND_SCREENSHOT_20261120.md)
 - [RIFT screenshot trigger](RCM_NUMPAD_SCREENSHOT_TRIGGER_20261120.md)
 

@@ -139,9 +139,9 @@ The API also provides history retrieval, subscriptions, UI controls, copy helper
 
 | Area | Current evidence |
 |---|---|
-| **Addon release** | v0.2.20; installed 22-file package hash-verified on AMD-DESKTOP; in-game `/reloadui` acceptance pending |
-| **Physical RIFT evidence** | Earlier v0.2.2 UI load/drag; v0.2.11 manual import displayed in the game |
-| **Offline regression suite** | **267 Python/Lua and 58 Node tests passed** (November 21, 2026), including PNG assets, visual-state fallback, and safe texture-folder deployment |
+| **Addon release** | v0.2.20; installed package hash-verified and **visibly observed inside RIFT** via native screenshot, November 21, 2026 |
+| **Physical RIFT evidence** | v0.2.20 glass UI/window/version visible in native JPEG; earlier v0.2.11 manual host import. Full live interaction checks still pending |
+| **Offline regression suite** | **278 Python/Lua and 58 Node tests passed** (November 21, 2026), including PNG assets, visual-state fallback, and safe texture-folder deployment |
 | **Windows host tooling** | .NET 10 editor batch preflight, exact-candidate gate, and simulated end-to-end import tested |
 | **Native player social chat** | **Not verified**; current noncombat `Log.txt` capture still needs a physical trial |
 | **Automatic in-game import** | **Not verified**; guarded sender is an opt-in prototype |
@@ -155,6 +155,7 @@ The homepage is intentionally concise. The complete development history—includ
 | Start here | Purpose |
 |---|---|
 | 🎨 [v0.2.20 Glass UI](docs/V0_2_20_GLASS_UI_20261121.md) | Original PNG skin, interactive Lua styling, compatibility tests, and physical acceptance checklist |
+| 📸 [Real v0.2.20 RIFT screenshot evidence](docs/V0_2_20_NATIVE_SCREENSHOT_ACCEPTANCE_20261121.md) | Verified in-game screen capture and managed temporary foreground; private image not published |
 | 📚 [Complete engineering archive](docs/ENGINEERING_ARCHIVE_README_THROUGH_20261121.md) | Previous detailed README, preserved in full |
 | 🧭 [Development history](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md) | Original concept, initial build, fixes, and live findings |
 | 🧱 [Addon transport](docs/ADDON_TRANSPORT.md) | RIFT addon-data messaging and API constraints |

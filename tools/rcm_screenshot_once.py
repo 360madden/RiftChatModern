@@ -146,17 +146,28 @@ def execute(argv: list[str] | None = None, *,
                 "gameInputSent": True, "screenshotFileVerified": False,
                 "physicalRiftOriginVerified": False,
                 "gameFocusChanged": False}
+        image_validation_retries = 0
         deadline = time.monotonic() + opt.wait_ms / 1000
         while True:
             try:
                 receipt = checker(folder, baseline)
             except (OSError, ScreenshotReceiptError):
-                return 2, {"schema": "RCM_SCREENSHOT_SESSION_V1",
-                "status": "new_image_verification_failed",
-                "reason": "screenshot_file_unverifiable",
-                "gameInputSent": True, "screenshotFileVerified": False,
-                "physicalRiftOriginVerified": False,
-                "gameFocusChanged": False}
+                # The game creates a screenshot filename before its JPEG has
+                # finished writing. A complete-file read can temporarily
+                # reject that in-flight file. Retry ONLY the read-only file
+                # validation within the already bounded receipt window.
+                # Never resend the screenshot key.
+                image_validation_retries += 1
+                if time.monotonic() >= deadline:
+                    return 2, {"schema": "RCM_SCREENSHOT_SESSION_V1",
+                        "status": "new_image_verification_failed",
+                        "reason": "screenshot_file_unverifiable_after_bounded_retry",
+                        "imageValidationRetries": image_validation_retries,
+                        "gameInputSent": True, "screenshotFileVerified": False,
+                        "physicalRiftOriginVerified": False,
+                        "gameFocusChanged": False}
+                snooze(0.1)
+                continue
             if receipt.get("status") == "new_screenshot_file":
                 return 0, {
                     "schema": "RCM_SCREENSHOT_SESSION_V1",
@@ -166,6 +177,7 @@ def execute(argv: list[str] | None = None, *,
                     "hwnd": identity["hwnd"],
                     "baselineEpochNs": baseline,
                     "keyEventsInserted": action_report.get("keyEventsInserted"),
+                    "imageValidationRetries": image_validation_retries,
                     "screenshot": receipt["screenshot"],
                     "gameInputSent": True,
                     "screenshotFileVerified": True,
