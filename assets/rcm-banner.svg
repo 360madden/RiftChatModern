@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="360" viewBox="0 0 1400 360" role="img" aria-labelledby="title desc">
+<title id="title">RiftChatModern</title><desc id="desc">Modern chat and addon diagnostics for RIFT Live</desc>
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#091321"/><stop offset=".55" stop-color="#101c2b"/><stop offset="1" stop-color="#082f38"/></linearGradient>
+<linearGradient id="accent" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#5eead4"/><stop offset="1" stop-color="#22d3ee"/></linearGradient>
+<filter id="glow"><feGaussianBlur stdDeviation="34"/></filter>
+<pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse"><path d="M36 0H0V36" fill="none" stroke="#60a5fa" stroke-opacity=".065"/></pattern>
+</defs>
+<rect width="1400" height="360" rx="24" fill="url(#bg)"/>
+<rect width="1400" height="360" rx="24" fill="url(#grid)"/>
+<circle cx="1240" cy="70" r="150" fill="#0d9488" opacity=".17" filter="url(#glow)"/>
+<circle cx="60" cy="350" r="170" fill="#0284c7" opacity=".12" filter="url(#glow)"/>
+<g transform="translate(91 91)">
+<rect x="0" y="0" width="180" height="180" rx="38" fill="#12263a" stroke="#5eead4" stroke-opacity=".6" stroke-width="3"/>
+<path d="M40 48h100a17 17 0 0 1 17 17v54a17 17 0 0 1-17 17H87l-28 23v-23H40a17 17 0 0 1-17-17V65a17 17 0 0 1 17-17z" fill="none" stroke="url(#accent)" stroke-width="9" stroke-linejoin="round"/>
+<path d="M52 78h75M52 99h49" stroke="#d5fff8" stroke-width="8" stroke-linecap="round"/>
+<circle cx="133" cy="99" r="5" fill="#5eead4"/>
+</g>
+<text x="315" y="148" font-family="Segoe UI,Arial,sans-serif" font-weight="750" font-size="71" letter-spacing="-2" fill="#f0fdfa">Rift<tspan fill="#5eead4">Chat</tspan>Modern</text>
+<rect x="320" y="178" width="68" height="4" rx="2" fill="#5eead4"/>
+<text x="315" y="228" font-family="Segoe UI,Arial,sans-serif" font-size="27" fill="#cbd5e1">A modern chat-style console for RIFT Live</text>
+<text x="315" y="274" font-family="Segoe UI,Arial,sans-serif" font-size="19" fill="#7dd3fc" letter-spacing="2">CHAT UI  /  ADDON TOOLS  /  DIAGNOSTICS</text>
+<text x="1322" y="319" text-anchor="end" font-family="Segoe UI,Arial,sans-serif" font-size="15" fill="#94a3b8">COMMUNITY PROJECT • LUA 5.1</text>
+</svg>
