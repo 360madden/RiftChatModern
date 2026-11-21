@@ -43,4 +43,22 @@ Then issue **/reloadui** in the game's original native chat field, and verify RC
 
 **Scope boundaries:** This fix improves an existing import receiver. It does NOT prove that RIFT's ordinary Guild/Say/Tell/Party text is captured into the noncombat Log.txt file, does not send native chat, and does not implement automatic Windows-to-addon delivery. The separate Windows editor-sender prototype remains outside this release and is not a verified live transport.
 
+## Actual installed v0.2.19 receipt
+
+The v0.2.19 source changes were committed locally at **c0fb762922b73465f10292ac73eba62c63c94923**, deliberately excluding the separate unfinished Windows editor-sender prototype.
+
+The verified AMD-DESKTOP installer was run with **RIFT still open**:
+
+    python -B tools/deploy_rcm.py --apply --expect-host AMD-DESKTOP
+
+It completed successfully (exit 0) with gameProcessCheck=running, runningGamePids=[34596], hashVerified=true and reloadUiRequired=true. Exactly **Core.lua, HostIngress.lua, Main.lua, RiftAddon.toc** were replaced, with backups preserved at:
+
+    C:\work\RiftChatModern\artifacts\deploy-backups\20261121T044657Z-5xkotld8
+
+A completely independent second dry run found changedFiles=[] and hashVerified=true for **all 10** installed/source files. Direct reading of the installed RiftAddon.toc confirms Version **0.2.19**, Email placeholder, Environment **4.3**, six startup files in correct order and character-scoped RiftChatModernSaved.
+
+The actual Deepwood/Atank SavedVariables file was separately inspected read-only; it still has SHA-256 **9a11a2c413b5317fb7dfc63ad189df4022514fc0e661fd98305082756511a616**, schema 2, 65 system rows, 0 imported rows and a valid checkpoint sequence 2. The installer did not modify that file.
+
+**Runtime activation is still pending:** the user or a separately verified RIFT input action must issue **/reloadui** in the *native RIFT chat field*. No client restart is needed. The installed package verification is not proof that v0.2.19 has been loaded into the already-running Lua runtime; a fresh in-game title/init message or screenshot must confirm that.
+
 No Ollama, OpenCode, or Codex CLI was used.
