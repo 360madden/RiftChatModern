@@ -55,3 +55,15 @@ The following requires a fresh RIFT startup after a guarded deployment. **No in-
 - A Save.Begin event receipt or retained in-memory row does not prove disk persistence until the independent host audit passes.
 
 This release used direct ChatGPT reasoning with Workbridge's verified project access and local test executables. **No Ollama, OpenCode, or Codex CLI was used.** Workbridge task assignments are not independent AI workers and none are claimed.
+
+## Physical deployment receipt — 8:03 PM EST, November 20
+
+After a separate exact-process check returned **`RUNNING_RIFT_PIDS []`** on **AMD-DESKTOP**, the guarded `tools/deploy_rcm.py --apply --expect-host AMD-DESKTOP` completed successfully at approximately **8:03:20 PM EST**. It replaced exactly four physical addon files: `Core.lua` (synchronized version), `HostIngress.lua` (new ID receipts), `Main.lua` (restart-aware status / completion notice), and `RiftAddon.toc` (version 0.2.15).
+
+The installer independently verified that the game was closed before copying (`gameProcessCheck: closed`), backed up the old files to the ignored local `artifacts/deploy-backups/20261121T010320Z-cpzjx9he/` folder, and reported `hashVerified: true`, `savedVariablesTouched: false`, `gameInputSent: false`, and `physicalGameLoaded: false`.
+
+A **second, independent post-install dry run** found **zero pending changed files among all 10 source/installed files**, and `hashVerified: true`. Direct reading of the installed `RiftAddon.toc` confirmed version **0.2.15**, Environment 4.3, Email placeholder, all six startup modules in exact order, and character-scoped SavedVariables.
+
+The real character file was then independently inspected read-only with `rcm_disk_receipt.py --require-checkpoint`. Its SHA-256 remained **`87c4ad76cbc5cf7e2cb82b7b5cb8fd54c780fb1aa3f6880f7625cfad5ebb617a`**, last modification **7:49:09 PM EST**, 50 retained `system` rows, zero imports and checkpoint sequence 1. This shows **the v0.2.15 installation did not modify character history**; it does not demonstrate that the new addon has loaded or processed its first import.
+
+**Next physical proof remains outstanding:** user starts RIFT, verifies new game PID and actual v0.2.15 window, generates one unique manual test import, records the actual reported history ID, completes a normal engine save, and confirms that ID with `--require-import-id` against the exact saved file. Native social-chat reception still requires an independent transport experiment.
