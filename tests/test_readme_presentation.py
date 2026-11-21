@@ -12,7 +12,7 @@ README = ROOT / "README.md"
 DOCS = ROOT / "docs" / "README.md"
 BANNER = ROOT / "assets" / "rcm-banner.svg"
 LOGO = ROOT / "assets" / "rcm-logo.svg"
-SCREENSHOT = ROOT / "assets" / "screenshots" / "rcm-v0.2.2-physical.png"
+SCREENSHOT = ROOT / "assets" / "screenshots" / "rcm-v0.2.2-physical-names-redacted.png"
 ARCHIVE = ROOT / "docs" / "ENGINEERING_ARCHIVE_README_THROUGH_20261121.md"
 
 
@@ -49,6 +49,9 @@ class ReadmePresentationTests(unittest.TestCase):
         body = README.read_text(encoding="utf-8")
         self.assertIn("v0.2.2", body)
         self.assertIn("older capture", body)
+        self.assertIn("rcm-v0.2.2-physical-names-redacted.png", body)
+        self.assertNotIn('src="assets/screenshots/rcm-v0.2.2-physical.png"', body)
+        self.assertIn("blurred for privacy", body)
 
     def test_social_preview_png_is_valid_size(self):
         preview = ROOT / "assets" / "rcm-social-preview.png"

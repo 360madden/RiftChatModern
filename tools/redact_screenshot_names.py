@@ -11,7 +11,7 @@ from pathlib import Path
 from PIL import Image, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[1]
-SCREENSHOT = ROOT / "assets" / "screenshots" / "rcm-v0.2.2-physical.png"
+SCREENSHOT = ROOT / "assets" / "screenshots" / "rcm-v0.2.2-physical-names-redacted.png"
 BACKUP = ROOT / "artifacts" / "local-private-screenshot-backup.png"
 BOXES = [
     (147, 29, 200, 51),    # player frame name only

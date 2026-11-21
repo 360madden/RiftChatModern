@@ -29,9 +29,9 @@ RCM is built to support other RIFT addons as a shared diagnostics surface—not 
 ## In-game preview
 
 <div align="center">
-<img src="assets/screenshots/rcm-v0.2.2-physical.png" alt="Actual RIFT Live client showing an early RiftChatModern window after a drag test" width="900"/>
+<img src="assets/screenshots/rcm-v0.2.2-physical-names-redacted.png" alt="Actual RIFT Live client showing an early RiftChatModern window after a drag test" width="900"/>
 
-<sub>Real in-game development screenshot from **v0.2.2** (November 20, 2026). The current addon is v0.2.19; this older capture is shown as historical UI evidence, not as a current-version screenshot.</sub>
+<sub>Real in-game development screenshot from **v0.2.2** (November 20, 2026). The current addon is v0.2.19; this older capture is shown as historical UI evidence, not as a current-version screenshot. The two small player-name labels are blurred for privacy.</sub>
 </div>
 
 ## What RCM can do

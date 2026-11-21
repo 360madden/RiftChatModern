@@ -8,7 +8,7 @@
 |---|---|
 | [`assets/rcm-banner.svg`](../assets/rcm-banner.svg) | Wide, editable vector banner at the top of the README |
 | [`assets/rcm-logo.svg`](../assets/rcm-logo.svg) | Reusable square RCM identity mark |
-| [`assets/screenshots/rcm-v0.2.2-physical.png`](../assets/screenshots/rcm-v0.2.2-physical.png) | Genuine historical RIFT Live screenshot; labeled **v0.2.2** |
+| [`assets/screenshots/rcm-v0.2.2-physical-names-redacted.png`](../assets/screenshots/rcm-v0.2.2-physical-names-redacted.png) | Genuine historical RIFT Live screenshot; labeled **v0.2.2** |
 | [`assets/rcm-social-preview.png`](../assets/rcm-social-preview.png) | 1280×640 GitHub social sharing image, ready for upload |
 | [`tools/create_social_preview.py`](../tools/create_social_preview.py) | Reproducible social-preview generator (optional Pillow dependency) |
 
