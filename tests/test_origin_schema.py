@@ -32,7 +32,7 @@ class ProvenanceSchemaTests(unittest.TestCase):
         for module in MODULES:
             source=(ADDON/module).read_text(encoding="utf-8")
             lua.execute("assert(loadstring("+_lua_quote(source)+
-                        "))({identifier='RiftChatModern',version='0.2.15'}, {})")
+                        "))({identifier='RiftChatModern',version='0.2.16'}, {})")
         lua.execute(script)
 
     def test_migrate_35_legacy_records_preserves_ids_times_and_real_category(self):
@@ -162,6 +162,43 @@ for _,row in ipairs(bad) do
 end
 local c=assert(RiftChatModernCore.new({schemaVersion=2,history={baseline}}))
 assert(c:getMessage(1).origin=="host_manual")
+''')
+
+    def test_optional_persisted_import_token_preserves_schema2_and_blocks_replay(self):
+        self.core(r'''
+local saved={schemaVersion=2,history={},nextId=1}
+local c=assert(RiftChatModernCore.new(saved))
+local token="B3A0705FD6AA"
+local m=assert(c:publish("import","same bytes","RCMProbe",1700,{
+    origin="host_manual",channelKind="guild",channelName="Guild",
+    importToken=token}))
+assert(m.importToken==token and saved.history[1].importToken==token)
+assert(c:findImportToken(token)==m.id)
+local rev=c:status().revision
+local replay,why=c:publish("import","same bytes","RCMProbe",1701,{
+    origin="host_manual",channelKind="guild",channelName="Guild",
+    importToken=token})
+assert(replay==nil and why=="duplicate_import_token")
+assert(#saved.history==1 and c:status().revision==rev)
+assert(not c:publish("system","test","System",1702,{importToken=token}))
+assert(not c:publish("import","test","RCMProbe",1702,{
+    origin="host_manual",channelKind="guild",channelName="Guild",
+    importToken="lowerabcdef12"}))
+local restored=assert(RiftChatModernCore.new(saved))
+assert(restored:findImportToken(token)==m.id)
+assert(restored:getMessage(m.id).importToken==token)
+-- Older schema-v2 import rows intentionally have no token; no migration.
+local old=assert(RiftChatModernCore.new({schemaVersion=2,history={{
+    id=1,at=1700,kind="import",origin="host_manual",source="Old",
+    text="older",channelKind="guild",channelName="Guild"}},nextId=2}))
+assert(old:getMessage(1).importToken==nil)
+local bad={schemaVersion=2,nextId=3,history={
+    {id=1,at=1700,kind="import",origin="host_manual",source="A",
+     text="one",channelKind="guild",channelName="Guild",importToken=token},
+    {id=2,at=1701,kind="import",origin="host_manual",source="B",
+     text="two",channelKind="guild",channelName="Guild",importToken=token}}}
+assert(not RiftChatModernCore.new(bad))
+assert(bad.history[1].importToken==token and bad.history[2].importToken==token)
 ''')
 
     def test_ui_detail_copy_filter_and_subscriber_preserve_origin(self):

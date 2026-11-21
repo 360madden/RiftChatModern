@@ -162,6 +162,7 @@ def saved_history_rows(source: str, masked: str, depths: list[int],
     opening, closing = history
     rows = []
     seen_ids = set()
+    seen_tokens = set()
     previous_id = 0
     for i in range(opening + 1, closing):
         if masked[i] != "{" or depths[i] != depths[opening] + 1:
@@ -181,13 +182,36 @@ def saved_history_rows(source: str, masked: str, depths: list[int],
             raise DiskAuditError("non_monotonic_history_id")
         seen_ids.add(ident)
         previous_id = ident
-        rows.append({"id": ident, "kind": kind.group(2)})
+        token_headers = [x for x in re.compile(r"\bimportToken\s*=\s*").finditer(
+            masked, scope[0]+1, scope[1]) if depths[x.start()] == depths[i]+1]
+        if len(token_headers) > 1:
+            raise DiskAuditError("duplicate_import_token_field")
+        token = None
+        if token_headers:
+            parsed = re.match(r"""(["'])([A-F0-9]{12})\1""",
+                              source[token_headers[0].end():])
+            if not parsed or kind.group(2) != "import":
+                raise DiskAuditError("invalid_import_token")
+            token = parsed.group(2)
+            origin_headers = [x for x in re.compile(r"\borigin\s*=\s*").finditer(
+                masked, scope[0]+1, scope[1]) if depths[x.start()] == depths[i]+1]
+            if len(origin_headers) != 1 or not re.match(
+                r"""(["'])host_manual\1""", source[origin_headers[0].end():]):
+                raise DiskAuditError("invalid_import_token_origin")
+            if token in seen_tokens:
+                raise DiskAuditError("duplicate_import_token")
+            seen_tokens.add(token)
+        rows.append({"id": ident, "kind": kind.group(2), "importToken": token})
     if len(rows) > 240:
         raise DiskAuditError("unexpected_history_size")
     return rows
 
 
-def inspect_saved_data(source: str, required_import_id: int | None = None) -> dict:
+def inspect_saved_data(source: str, required_import_id: int | None = None,
+                       required_import_token: str | None = None) -> dict:
+    if required_import_token is not None and not re.fullmatch(
+            r"[A-F0-9]{12}", required_import_token):
+        raise DiskAuditError("invalid_required_import_token")
     if len(source.encode("utf-8")) > MAX_SIZE:
         raise DiskAuditError("saved_file_too_large")
     masked = mask_strings_comments(source)
@@ -226,6 +250,7 @@ def inspect_saved_data(source: str, required_import_id: int | None = None) -> di
               "historyRowsOnDisk": len(rows),
               "historyKindsOnDisk": dict(sorted(Counter(row["kind"] for row in rows).items())),
               "importRowsOnDisk": sum(x["kind"] == "import" for x in rows),
+              "tokenizedImportRowsOnDisk": sum(x["importToken"] is not None for x in rows),
               "lastHistoryIdOnDisk": last_id,
               "lastImportedIdOnDisk": last_import,
               "checkpointOnDisk": bool(record),
@@ -237,6 +262,19 @@ def inspect_saved_data(source: str, required_import_id: int | None = None) -> di
         result["requiredImportId"] = required_import_id
         result["requiredImportIdPresent"] = any(
             row["kind"] == "import" and row["id"] == required_import_id
+            for row in rows)
+    if required_import_token is not None:
+        result["requiredImportToken"] = required_import_token
+        result["requiredImportTokenPresent"] = any(
+            row["kind"] == "import" and row["importToken"] == required_import_token
+            for row in rows)
+    if required_import_id is not None or required_import_token is not None:
+        # Both proofs must identify the SAME stored row, not merely two rows.
+        result["requiredImportIdentityMatched"] = any(
+            row["kind"] == "import"
+            and (required_import_id is None or row["id"] == required_import_id)
+            and (required_import_token is None
+                 or row["importToken"] == required_import_token)
             for row in rows)
     return result
 
@@ -263,6 +301,8 @@ def run(args: list[str] | None = None) -> int:
     parser.add_argument("--require-checkpoint", action="store_true")
     parser.add_argument("--require-import-id", type=int, default=None,
                         help="Require a retained import row with this exact ID and a consistent checkpoint")
+    parser.add_argument("--require-import-token", default=None,
+                        help="Require the exact 12-hex transfer token on the same import row")
     options = parser.parse_args(args)
     host = socket.gethostname()
     try:
@@ -289,7 +329,8 @@ def run(args: list[str] | None = None) -> int:
         if before_identity != after_identity or len(data) != after.st_size:
             raise DiskAuditError("saved_file_changed_during_audit")
         parsed = inspect_saved_data(data.decode("utf-8-sig", "strict"),
-                                    required_import_id=options.require_import_id)
+                                    required_import_id=options.require_import_id,
+                                    required_import_token=options.require_import_token)
         result = {"schema": "RCM_DISK_RECEIPT_V1", "machine": host,
                   "savedFile": str(path), "bytes": len(data),
                   "sha256": hashlib.sha256(data).hexdigest(),
@@ -301,9 +342,13 @@ def run(args: list[str] | None = None) -> int:
         result.update(parsed)
         result["peerSaveMetadata"] = peer_file_metadata(path)
         print(json.dumps(result, indent=2, ensure_ascii=False))
-        require_proof = options.require_checkpoint or options.require_import_id is not None
-        import_missing = options.require_import_id is not None and not result["requiredImportIdPresent"]
-        return 2 if require_proof and (not result["diskReceiptVerified"] or import_missing) else 0
+        require_identity = (options.require_import_id is not None
+                            or options.require_import_token is not None)
+        require_proof = options.require_checkpoint or require_identity
+        identity_missing = (require_identity
+                            and not result["requiredImportIdentityMatched"])
+        return 2 if require_proof and (not result["diskReceiptVerified"]
+                                      or identity_missing) else 0
     except (DiskAuditError, OSError, UnicodeError) as exc:
         print(json.dumps({"schema": "RCM_DISK_RECEIPT_V1",
                           "machine": host, "error": str(exc),

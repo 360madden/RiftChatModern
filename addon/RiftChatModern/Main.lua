@@ -2,7 +2,7 @@
 -- Native player say/tell/guild transmit and full native chat interception are NOT
 -- exposed by the verified addon APIs. This UI never pretends to send those.
 local info = ...
-local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.15"
+local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.16"
 local Core = _G.RiftChatModernCore
 local MessageBridge = _G.RiftChatModernAddonMessages
 local NativeProbe = _G.RiftChatModernNativeProbe
@@ -1083,7 +1083,10 @@ local function onSaveLoad(_,name)
         hostIngress=HostIngress.new(function(row,at)
             return model:publish(row.kind,row.text,row.source,at,{
                 origin=row.origin,channelKind=row.channelKind,
-                channelName=row.channelName})
+                channelName=row.channelName,importToken=row.importToken})
+        end,function(token)
+            -- Durable replay check against actual bounded saved history.
+            return model:findImportToken(token)~=nil
         end)
     end
     -- Optional cross-repository adapter; no hard dependency or input injection.

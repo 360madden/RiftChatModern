@@ -50,7 +50,7 @@ class ManualHostIngressTests(unittest.TestCase):
             source = (ADDON / filename).read_text(encoding="utf-8")
             chunk = ("local f=assert(loadstring(" + _lua_quote(source)
                      + "));assert(f({identifier='RiftChatModern',"
-                     "version='0.2.15'}, {})==nil)")
+                     "version='0.2.16'}, {})==nil)")
             lua.execute(chunk)
         if saved_setup:
             lua.execute(saved_setup)
@@ -114,6 +114,21 @@ assert(total==1)
 assert(RiftChatModernAPI.GetHostIngressStatus().lastImportedMessageId==rows[1].id)
 assert(displays[#displays]:find("duplicate chunk ignored",1,true))
 ''')
+
+    def test_broken_retained_token_lookup_refuses_new_import(self):
+        command=self.encode("guild","RCMProbe","Guild","test lookup")["commands"][0]
+        line=command[len("/rcm import "):]
+        lua=self.lua()
+        lua.execute(r'''
+publishes=0
+recv=assert(RiftChatModernHostIngress.new(
+    function() publishes=publishes+1 return true end,
+    function() error("broken saved-history lookup") end))
+''')
+        lua.execute("local ok,reason=recv:receiveLine(" + _lua_quote(line) + ",1700)\n" +
+                    "assert(ok==nil and reason=='duplicate_lookup_failed')\n" +
+                    "assert(recv:status().imported==0 and recv:status().rejected==1)\n" +
+                    "assert(publishes==0)")
 
     def test_import_history_id_survives_fresh_session_status_lookup(self):
         saved=r'''

@@ -84,6 +84,12 @@ end
 local function singleLine(v)
     return (v:gsub("\r", " "):gsub("\n", " "))
 end
+-- A transport token is an idempotency identity, not a native chat claim.
+-- v2 imports from older releases are valid without this optional field.
+local function validImportToken(value)
+    return type(value)=="string" and #value==12
+        and value:match("^[A-F0-9]+$")~=nil
+end
 local function validRow(row)
     if type(row)~="table" or not kinds[row.kind]
         or not origins[row.origin] or not validString(row.source,1,MAX_SOURCE)
@@ -96,13 +102,17 @@ local function validRow(row)
                 or row.origin=="external_api")
             and channelKinds[row.channelKind]
             and validString(row.channelName,1,72)
+            and (row.importToken==nil or (row.origin=="host_manual"
+                and validImportToken(row.importToken)))
     end
     return row.channelKind==nil and row.channelName==nil
+        and row.importToken==nil
 end
 local function copyRow(row)
     return {id=row.id,at=row.at,kind=row.kind,source=row.source,
         text=row.text,origin=row.origin,channelKind=row.channelKind,
-        channelName=row.channelName,nativePlayerChatVerified=false}
+        channelName=row.channelName,importToken=row.importToken,
+        nativePlayerChatVerified=false}
 end
 local function match(row, filter, search)
     if filter~="all" and not (filter=="chat" and isImport(row))
@@ -122,7 +132,7 @@ function Core.new(saved)
     end
     local migrating=saved.schemaVersion==1
     local size,maximum,maxId=0,0,0
-    local seenIds,converted={},{}
+    local seenIds,seenTokens,converted={},{},{}
     for k,row in pairs(saved.history) do
         if type(k)~="number" or k<1 or k%1~=0
             or type(row)~="table" or seenIds[row.id] then
@@ -133,7 +143,11 @@ function Core.new(saved)
         end
         local candidate=migrating and oldRow(row) or row
         if not validRow(candidate) then return nil,"invalid_saved_history" end
+        if candidate.importToken and seenTokens[candidate.importToken] then
+            return nil,"invalid_saved_history"
+        end
         seenIds[row.id]=true
+        if candidate.importToken then seenTokens[candidate.importToken]=true end
         converted[k]=candidate
         size=size+1
         maximum=math.max(maximum,k)
@@ -166,6 +180,15 @@ function Model:_changed()
     self.revision=self.revision+1
     if type(self.onChange)=="function" then pcall(self.onChange) end
 end
+-- Bounded scan of retained rows: survives logout and a new addon session.
+-- It does not claim that a current in-memory row is already saved on disk.
+function Model:findImportToken(token)
+    if not validImportToken(token) then return nil end
+    for _,row in ipairs(self.saved.history) do
+        if row.kind=="import" and row.importToken==token then return row.id end
+    end
+    return nil
+end
 function Model:publish(kind, text, source, at, metadata)
     -- Native social delivery is not proven, so no caller can mint a normal
     -- "guild", "tell", "party" or "general" record from an external string.
@@ -180,8 +203,12 @@ function Model:publish(kind, text, source, at, metadata)
     if type(metadata)~="table" then return nil,"invalid_metadata" end
     local row={id=self.saved.nextId,at=at,kind=kind,source=source,
         text=singleLine(text),origin=metadata.origin or "external_api",
-        channelKind=metadata.channelKind,channelName=metadata.channelName}
+        channelKind=metadata.channelKind,channelName=metadata.channelName,
+        importToken=metadata.importToken}
     if not validRow(row) then return nil,"invalid_metadata" end
+    if row.importToken and self:findImportToken(row.importToken) then
+        return nil,"duplicate_import_token"
+    end
     local history=self.saved.history
     if #history>=MAX_HISTORY then table.remove(history,1) end
     history[#history+1]=row
@@ -352,7 +379,7 @@ function Model:commandCount()
     return count
 end
 function Model:status()
-    return {version="0.2.15",schemaVersion=2,
+    return {version="0.2.16",schemaVersion=2,
         provenanceRequired=true,historyCount=#self.saved.history,
         filter=self.filter,search=self.search,revision=self.revision,
         commandCount=self:commandCount(),nativeSocialSendAvailable=false,

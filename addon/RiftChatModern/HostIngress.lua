@@ -87,9 +87,13 @@ local function parsePayload(data)
         originalBytes=#body,unverified=true}
 end
 
-function Ingress.new(publish)
+function Ingress.new(publish,hasImportedToken)
     if type(publish)~="function" then return nil,"invalid_publisher" end
-    return setmetatable({publish=publish,pending=nil,recent={},seen={},
+    if hasImportedToken~=nil and type(hasImportedToken)~="function" then
+        return nil,"invalid_duplicate_lookup"
+    end
+    return setmetatable({publish=publish,hasImportedToken=hasImportedToken,
+        pending=nil,recent={},seen={},
         acceptedChunks=0,imported=0,rejected=0,duplicates=0,
         expired=0,cancelled=0,publishFailed=0,
         lastImportToken=nil,lastImportedMessageId=nil},Receiver)
@@ -134,6 +138,18 @@ function Receiver:receiveLine(line,at)
         self.rejected=self.rejected+1;return nil,"invalid_index" end
     if self.seen[id] then
         self.duplicates=self.duplicates+1;return true,"already_imported" end
+    if self.hasImportedToken then
+        local ok,found=pcall(self.hasImportedToken,id)
+        -- A broken retained-history query cannot safely certify newness.
+        if not ok or type(found)~="boolean" then
+            self.rejected=self.rejected+1
+            return nil,"duplicate_lookup_failed"
+        end
+        if found then
+            self.duplicates=self.duplicates+1
+            return true,"already_imported"
+        end
+    end
     self:expirePending(at)
     local pending=self.pending
     if pending and (pending.id~=id or pending.total~=total) then
@@ -161,6 +177,9 @@ function Receiver:receiveLine(line,at)
     local row,parseErr=parsePayload(payload)
     if not row then
         self.rejected=self.rejected+1;return nil,parseErr end
+    -- Retain the exact validated transfer token with the imported row.
+    -- This makes a completed import idempotent across game restarts.
+    row.importToken=id
     local ok,result=pcall(self.publish,row,at)
     if not ok or not result then
         self.publishFailed=self.publishFailed+1

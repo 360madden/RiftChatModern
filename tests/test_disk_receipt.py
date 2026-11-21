@@ -160,6 +160,63 @@ class DiskCheckpointTests(unittest.TestCase):
             self.assertEqual(run(["--file",str(self.file),"--require-import-id","0"]),1)
         self.assertFalse(json.loads(out.getvalue())["diskReceiptVerified"])
 
+    def test_import_token_and_id_require_the_same_retained_row(self):
+        tagged = SAVED.replace('channelKind = "guild",',
+                               'channelKind = "guild",importToken = "B3A0705FD6AA",')
+        good = inspect_saved_data(tagged, required_import_id=2,
+                                  required_import_token="B3A0705FD6AA")
+        self.assertEqual(good["tokenizedImportRowsOnDisk"], 1)
+        self.assertTrue(good["requiredImportIdPresent"])
+        self.assertTrue(good["requiredImportTokenPresent"])
+        self.assertTrue(good["requiredImportIdentityMatched"])
+        self.assertNotIn("RCMTest", json.dumps(good))
+        self.write(tagged)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = run(["--file", str(self.file), "--require-import-id", "2",
+                        "--require-import-token", "B3A0705FD6AA"])
+        self.assertEqual(code, 0)
+        self.assertTrue(json.loads(out.getvalue())["requiredImportIdentityMatched"])
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = run(["--file", str(self.file), "--require-import-token", "ABABABABABAB"])
+        self.assertEqual(code, 2)
+        self.assertFalse(json.loads(out.getvalue())["requiredImportTokenPresent"])
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = run(["--file", str(self.file), "--require-import-token", "lowercase123"])
+        self.assertEqual(code, 1)
+        self.assertFalse(json.loads(out.getvalue())["diskReceiptVerified"])
+
+    def test_token_and_id_cannot_be_satisfied_by_different_rows(self):
+        source = '''RiftChatModernSaved = {
+          schemaVersion=2,nextId=3,
+          history={
+            {id=1,kind="import",origin="host_manual",importToken="B3A0705FD6AA"},
+            {id=2,kind="import",origin="host_manual",importToken="A1A1A1A1A1A1"}
+          },
+          saveCheckpoint={formatVersion=1,schemaVersion=2,sequence=1,
+            historyCount=2,nextId=3,lastHistoryId=2,lastImportId=2,at=1700}
+        }'''
+        combined = inspect_saved_data(source, required_import_id=1,
+                                      required_import_token="A1A1A1A1A1A1")
+        self.assertTrue(combined["requiredImportIdPresent"])
+        self.assertTrue(combined["requiredImportTokenPresent"])
+        self.assertFalse(combined["requiredImportIdentityMatched"])
+        self.write(source)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = run(["--file", str(self.file), "--require-import-id", "1",
+                      "--require-import-token", "A1A1A1A1A1A1"])
+        self.assertEqual(rc, 2)
+
+    def test_duplicate_stored_import_token_is_rejected(self):
+        source='''RiftChatModernSaved={schemaVersion=2,nextId=3,history={
+          {id=1,kind="import",origin="host_manual",importToken="B3A0705FD6AA"},
+          {id=2,kind="import",origin="host_manual",importToken="B3A0705FD6AA"}}}'''
+        with self.assertRaisesRegex(DiskAuditError, "duplicate_import_token"):
+            inspect_saved_data(source)
+
     def test_duplicate_keys_in_checkpoint_are_rejected(self):
         bad=SAVED.replace("sequence = 1","sequence = 1, sequence = 2")
         with self.assertRaisesRegex(DiskAuditError,"duplicate_sequence"):
