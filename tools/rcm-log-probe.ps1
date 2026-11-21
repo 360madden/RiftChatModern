@@ -9,6 +9,7 @@ param(
     [string]$LogPath,
     [ValidateRange(0, 30)][int]$SampleRawLines = 0,
     [switch]$RequireChatAfterMarker,
+    [ValidatePattern('^[A-Za-z0-9_-]{8,80}$')][string]$RequireChatText,
     [switch]$Preview
 )
 
@@ -16,6 +17,9 @@ $ErrorActionPreference = "Stop"
 try {
     if ($Nonce -cnotmatch '^[A-Za-z0-9_-]{8,80}$') {
         throw "Nonce must be 8-80 ASCII letters, digits, underscore or hyphen."
+    }
+    if ($RequireChatText -and -not $RequireChatAfterMarker) {
+        throw "RequireChatText requires RequireChatAfterMarker."
     }
     $workspace = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
     $watcher = Join-Path $PSScriptRoot "rcm-chat-observer.cjs"
@@ -40,6 +44,7 @@ try {
     if ($LogPath) { $argsList += @('--path', $LogPath) }
     if ($SampleRawLines -gt 0) { $argsList += @('--sample-raw-lines', [string]$SampleRawLines) }
     if ($RequireChatAfterMarker) { $argsList += '--require-chat-after-marker' }
+    if ($RequireChatText) { $argsList += @('--require-chat-text', $RequireChatText) }
     [ordered]@{
         event              = $(if ($Preview) { 'preview' } else { 'watcher_starting' })
         host               = $env:COMPUTERNAME
@@ -55,9 +60,10 @@ try {
         pollMs             = $PollMs
         rawSampleLines     = $SampleRawLines
         requireChatAfterMarker = [bool]$RequireChatAfterMarker
+        expectedChatTextRequired = [bool]$RequireChatText
         logPath            = $(if ($LogPath) { $LogPath } else { 'resolved at runtime by RCM observer' })
         pathSelectionPolicy = $(if ($LogPath) { 'explicit LogPath' } else { 'Rift.cfg [Client] DocumentsDirectory first; LuaPad fallback only if missing/invalid' })
-        instruction        = $(if ($RequireChatAfterMarker) { 'Wait for started, then enter rcmEditorCommand in RCM. ONLY after chat_phase_armed appears, send one NEW native player chat line; messages before this receipt do not count. First confirm /log state; it is a toggle.' } else { 'After started, enter rcmEditorCommand in the loaded RCM editor. Enable /log manually only after confirming its existing state; /log is a toggle.' })
+        instruction        = $(if ($RequireChatText) { 'Wait for started, enter rcmEditorCommand in RCM, then wait for chat_phase_armed. Only then send exactly the test text supplied via RequireChatText in original RIFT chat. Other chat lines will not complete this check. Check /log state first; it is a toggle.' } elseif ($RequireChatAfterMarker) { 'Wait for started, then enter rcmEditorCommand in RCM. ONLY after chat_phase_armed appears, send one NEW native player chat line; messages before this receipt do not count. First confirm /log state; it is a toggle.' } else { 'After started, enter rcmEditorCommand in the loaded RCM editor. Enable /log manually only after confirming its existing state; /log is a toggle.' })
         note               = 'RCM observer reuses the LuaPad decoder. Check started.pathSelection. The console marker alone is NOT a verified log receipt or social-chat capture. Raw-line samples can include private chat, so enable explicitly.'
     } | ConvertTo-Json -Compress
     if ($Preview) { exit 0 }

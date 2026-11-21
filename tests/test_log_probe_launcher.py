@@ -29,7 +29,8 @@ class RcmLogProbeLauncherTests(unittest.TestCase):
 
     def test_preview_selects_rcm_observer_and_explicit_raw_sample_only(self):
         result = self.invoke(["-Preview", "-Nonce", "RCM_PROBE_20261120",
-                              "-SampleRawLines", "3", "-RequireChatAfterMarker"])
+                              "-SampleRawLines", "3", "-RequireChatAfterMarker",
+                               "-RequireChatText", "RCM_CHAT_EXACT_20261120"])
         self.assertEqual(result.returncode, 0, result.stderr)
         receipt = json.loads(result.stdout.strip())
         self.assertEqual(receipt["event"], "preview")
@@ -37,7 +38,9 @@ class RcmLogProbeLauncherTests(unittest.TestCase):
         self.assertIn("Rift.cfg", receipt["pathSelectionPolicy"])
         self.assertEqual(receipt["rawSampleLines"], 3)
         self.assertTrue(receipt["requireChatAfterMarker"])
+        self.assertTrue(receipt["expectedChatTextRequired"])
         self.assertIn("chat_phase_armed", receipt["instruction"])
+        self.assertNotIn("RCM_CHAT_EXACT_20261120", result.stdout)
         self.assertFalse(receipt["gameInputSent"])
         self.assertFalse(receipt["loggingChanged"])
         self.assertFalse(receipt["transportVerified"])
@@ -47,7 +50,11 @@ class RcmLogProbeLauncherTests(unittest.TestCase):
     def test_invalid_nonce_and_relative_log_path_refused(self):
         for extra in (["-Nonce", "bad nonce"],
                       ["-Nonce", "RCM_PROBE_20261120",
-                       "-LogPath", "relative\\Log.txt"]):
+                       "-LogPath", "relative\\Log.txt"],
+                      ["-Nonce", "RCM_PROBE_20261120", "-RequireChatText",
+                       "RCM_CHAT_EXACT_20261120"],
+                      ["-Nonce", "RCM_PROBE_20261120", "-RequireChatAfterMarker",
+                       "-RequireChatText", "invalid token"]):
             with self.subTest(extra=extra):
                 result = self.invoke(["-Preview", *extra])
                 self.assertEqual(result.returncode, 1)

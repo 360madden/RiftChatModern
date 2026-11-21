@@ -201,6 +201,12 @@ test("rejects unsafe/relative output paths and unbounded CLI options",()=>{
   assert.throws(()=>options(["--timeout-ms","9999999"]));
   assert.throws(()=>options(["--max-candidates","900000"]));
   assert.throws(()=>options(["--bad-option"]));
+  assert.throws(()=>options(["--require-chat-text","RCM_CHAT_EXACT_20261120"]));
+  assert.throws(()=>options(["--require-chat-after-marker","--require-chat-text","space invalid"]));
+  assert.throws(()=>options(["--require-chat-after-marker","--require-chat-text","lowercase"] .concat(["--require-chat-text","SECOND_TOKEN_20261120"])));
+  const exact=options(["--require-chat-after-marker","--require-chat-text","RCM_CHAT_EXACT_20261120"]);
+  assert.equal(exact.requireChatAfterMarker,true);
+  assert.equal(exact.requireChatText,"RCM_CHAT_EXACT_20261120");
   const opts=options(["--nonce","RCM_TEST_123456","--include-text"]);
   assert.equal(opts.nonce,"RCM_TEST_123456");
   assert.equal(opts.includeText,true);

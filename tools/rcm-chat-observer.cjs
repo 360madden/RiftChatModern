@@ -84,7 +84,8 @@ function parseCandidateLine(line) {
     textBytes:Buffer.byteLength(body,"utf8"),truncated:bounded.truncated
   };
 }
-function attachChatObserver(tailer, onCandidate, includeText=false, onRawLine=null) {
+function attachChatObserver(tailer, onCandidate, includeText=false, onRawLine=null,
+                            requiredChatText=null) {
   if(!tailer || typeof tailer.readLine!=="function" ||
      typeof tailer.poll!=="function" || typeof onCandidate!=="function" ||
      (onRawLine!==null && typeof onRawLine!=="function")) {
@@ -101,6 +102,10 @@ function attachChatObserver(tailer, onCandidate, includeText=false, onRawLine=nu
       if(parsed) {
         candidateCount++;
         const event={...parsed,observedAt:new Date(when).toISOString()};
+        // Compare the *complete* source message before removing the text.
+        // Do not emit a private chat body just to establish exact-match proof.
+        if(requiredChatText!==null)
+          event.chatTextMatched=!parsed.truncated && parsed.text===requiredChatText;
         if(!includeText)delete event.text;
         onCandidate(event);
       }
@@ -174,6 +179,7 @@ function resolveLogSelection(cfg,env=process.env) {
 function options(argv) {
   const out={timeoutMs:120000,pollMs:100,maxCandidates:200,includeText:false,
     prepareImport:false,rawSampleLines:0,requireChatAfterMarker:false,
+    requireChatText:null,
     nonce:"RCM_CHAT_"+crypto.randomBytes(8).toString("hex")};
   for(let i=0;i<argv.length;i++) {
     const flag=argv[i];
@@ -184,11 +190,16 @@ function options(argv) {
       out.requireChatAfterMarker=true;continue;
     }
     if(flag==="--help"){out.help=true;continue}
-    if(!["--path","--nonce","--timeout-ms","--poll-ms","--max-candidates","--sample-raw-lines"].includes(flag) ||
+    if(!["--path","--nonce","--timeout-ms","--poll-ms","--max-candidates","--sample-raw-lines","--require-chat-text"].includes(flag) ||
       !argv[i+1])throw Error("Unsupported or incomplete option: "+flag);
     const val=argv[++i];
     if(flag==="--path")out.filePath=validLogPath(val);
     else if(flag==="--nonce")out.nonce=validateNonce(val);
+    else if(flag==="--require-chat-text"){
+      if(out.requireChatText!==null || !/^[A-Za-z0-9_-]{8,80}$/.test(val))
+        throw Error("Exact chat text must be a unique 8-80 character ASCII test token");
+      out.requireChatText=val;
+    }
     else{
       const n=Number(val);
       if(!Number.isSafeInteger(n))throw Error("Option must be an integer: "+flag);
@@ -203,6 +214,8 @@ function options(argv) {
         "--max-candidates":"maxCandidates","--sample-raw-lines":"rawSampleLines"}[flag]]=n;
     }
   }
+  if(out.requireChatText!==null && !out.requireChatAfterMarker)
+    throw Error("Exact chat text requires --require-chat-after-marker");
   return out;
 }
 function start(argv=process.argv.slice(2)) {
@@ -212,7 +225,7 @@ function start(argv=process.argv.slice(2)) {
     process.stdout.write("node tools/rcm-chat-observer.cjs [--path ABSOLUTE_Log.txt] "+
       "[--timeout-ms 120000] [--poll-ms 100] [--max-candidates 200] "+
       "[--nonce TOKEN] [--include-text] [--prepare-import] [--sample-raw-lines 5] "+
-      "[--require-chat-after-marker]\n"+
+      "[--require-chat-after-marker] [--require-chat-text TEST_TOKEN]\n"+
       "Read-only candidate RIFT chat observer. Defaults to metadata-only. "+
       "Two-phase mode arms a new file tail after the marker before counting social candidates. "+
       "Output format historical/unverified. --sample-raw-lines emits bounded decoded log text (explicit opt-in).\n"+
@@ -238,6 +251,7 @@ function start(argv=process.argv.slice(2)) {
   const startAt=Date.now();
   let count=0,ignoredCount=0,rawSamples=0,completed=false,timer=null;
   let markerMatched=false,chatPhaseArmed=false,chatCandidatesAfterMarker=0;
+  let exactChatTextMatched=false;
   let pendingCandidates=[];
   let tailer,stats;
   function publishCandidate(event){
@@ -246,6 +260,8 @@ function start(argv=process.argv.slice(2)) {
     if(cfg.requireChatAfterMarker && chatPhaseArmed){
       chatCandidatesAfterMarker++;
       event.afterMarker=true;
+      if(cfg.requireChatText!==null && event.chatTextMatched===true)
+        exactChatTextMatched=true;
     }
     emit(event);
     if(cfg.prepareImport){
@@ -282,7 +298,7 @@ function start(argv=process.argv.slice(2)) {
         decodedLine:preview.text,decodedUtf8Bytes:Buffer.byteLength(line,"utf8"),
         lineTruncated:preview.truncated,physicalRiftOriginVerified:false,
         note:"Decoded text, not byte-for-byte disk evidence when source is UTF-16"});
-    });
+    },cfg.requireChatText);
     return {t,s};
   }
   let current=createTailer(filePath);
@@ -296,6 +312,7 @@ function start(argv=process.argv.slice(2)) {
     candidateFormatVerified:false,includeText:cfg.includeText,
     prepareImport:cfg.prepareImport,rawSampleLines:cfg.rawSampleLines,
     requireChatAfterMarker:cfg.requireChatAfterMarker,
+    expectedChatTextRequired:cfg.requireChatText!==null,
     automaticGameInput:false,
     mode:cfg.requireChatAfterMarker ? "marker_then_candidate_chat"
       : "historical-bracket-candidate",timeoutMs:cfg.timeoutMs});
@@ -305,6 +322,8 @@ function start(argv=process.argv.slice(2)) {
     tailer.close();
     emit({event:"finished",reason,candidates:count,ignored:ignoredCount,
       rawSamples,chatCandidatesAfterMarker,chatPhaseArmed,
+      expectedChatTextRequired:cfg.requireChatText!==null,
+      chatTextMatched:exactChatTextMatched,
       probeMatched:markerMatched||Boolean(tailer.match),transportVerified:false,
       candidateFormatVerified:false,physicalRiftOriginVerified:false,
       elapsedMs:Date.now()-startAt});
@@ -349,7 +368,9 @@ function start(argv=process.argv.slice(2)) {
   timer=setInterval(()=>{
     if(Date.now()-startAt>=cfg.timeoutMs){
       finish(cfg.requireChatAfterMarker&&markerMatched
-        ?"timeout_waiting_chat_after_marker":"timeout",2);return;
+        ?(cfg.requireChatText!==null
+          ?"timeout_waiting_exact_chat_after_marker"
+          :"timeout_waiting_chat_after_marker"):"timeout",2);return;
     }
     if(remainingCandidates&&!fs.existsSync(filePath)){
       const discovered=candidates.find(x=>fs.existsSync(x));
@@ -374,8 +395,11 @@ function start(argv=process.argv.slice(2)) {
       const ready=pendingCandidates;pendingCandidates=[];
       for(const candidate of ready)publishCandidate(candidate);
     }
-    if(cfg.requireChatAfterMarker && chatCandidatesAfterMarker>0){
-      finish("chat_candidate_after_marker",0);return;
+    if(cfg.requireChatAfterMarker && chatCandidatesAfterMarker>0 &&
+       (cfg.requireChatText===null || exactChatTextMatched)){
+      finish(cfg.requireChatText!==null
+        ?"exact_chat_candidate_after_marker":"chat_candidate_after_marker",0);
+      return;
     }
     if(tailer.match){
       markerDetected();return;
@@ -385,8 +409,11 @@ function start(argv=process.argv.slice(2)) {
         ?"raw_sample_limit_without_chat_candidate":"raw_sample_limit",
         cfg.requireChatAfterMarker?2:0);
     }else if(count>=cfg.maxCandidates){
-      finish(cfg.requireChatAfterMarker
-        ?"chat_candidate_after_marker":"candidate_limit",0);
+      finish(cfg.requireChatText!==null && !exactChatTextMatched
+        ?"candidate_limit_without_exact_chat"
+        :(cfg.requireChatAfterMarker
+          ?"chat_candidate_after_marker":"candidate_limit"),
+        cfg.requireChatText!==null && !exactChatTextMatched?2:0);
     }
   },cfg.pollMs);
   process.once("SIGINT",()=>finish("interrupted",130));

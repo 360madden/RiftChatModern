@@ -211,7 +211,8 @@ test("CLI includes bounded message body only after explicit --include-text",asyn
 
 
 function twoPhaseFixture({beforeMarker="",afterArmed="",rawSampleLines=0,
-  truncateAfterArmed=false,replaceWithChatAfterArmed=false,replayMarker=false}={}){
+  truncateAfterArmed=false,replaceWithChatAfterArmed=false,replayMarker=false,
+  expectedChatText=null,maxCandidates=200}={}){
   return new Promise((resolve,reject)=>{
     const dir=fs.mkdtempSync(path.join(os.tmpdir(),"rcm-observer-two-phase-"));
     const file=path.join(dir,"Log.txt");
@@ -219,6 +220,8 @@ function twoPhaseFixture({beforeMarker="",afterArmed="",rawSampleLines=0,
     const args=[observer,"--path",file,"--nonce","RCM_PHASE_20261120",
       "--require-chat-after-marker","--timeout-ms","1600","--poll-ms","25"];
     if(rawSampleLines)args.push("--sample-raw-lines",String(rawSampleLines));
+    if(expectedChatText)args.push("--require-chat-text",expectedChatText);
+    if(maxCandidates!==200)args.push("--max-candidates",String(maxCandidates));
     const proc=spawn(process.execPath,args,{windowsHide:true,
       stdio:["ignore","pipe","pipe"]});
     let buffer="",stderr="",events=[],closed=false,armed=false,started=false;
@@ -259,6 +262,57 @@ function twoPhaseFixture({beforeMarker="",afterArmed="",rawSampleLines=0,
     });
   });
 }
+
+test("exact chat proof waits for intended text, not unrelated chat",async()=>{
+  const proof="RCM_CHAT_EXACT_20261120";
+  const result=await twoPhaseFixture({
+    expectedChatText:proof,
+    afterArmed:"[Guild][OtherPlayer]: unrelated chat\n"+
+      "[Say][Atank]: "+proof+"\n"
+  });
+  assert.equal(result.code,0);
+  assert.equal(result.events[0].requireChatAfterMarker,true);
+  assert.equal(result.events[0].expectedChatTextRequired,true);
+  const candidates=result.events.filter(e=>e.event==="candidate_chat");
+  assert.equal(candidates.length,2);
+  assert.equal(candidates[0].chatTextMatched,false);
+  assert.equal(candidates[1].chatTextMatched,true);
+  assert.equal(candidates[1].afterMarker,true);
+  assert.equal("text" in candidates[1],false);
+  assert.equal(JSON.stringify(result.events).includes("unrelated chat"),false);
+  const done=result.events.find(e=>e.event==="finished");
+  assert.equal(done.reason,"exact_chat_candidate_after_marker");
+  assert.equal(done.chatTextMatched,true);
+  assert.equal(done.chatCandidatesAfterMarker,2);
+  assert.equal(done.transportVerified,false);
+});
+
+test("exact chat proof refuses only unrelated chat and times out",async()=>{
+  const result=await twoPhaseFixture({
+    expectedChatText:"RCM_CHAT_EXACT_20261120",
+    afterArmed:"[Guild][OtherPlayer]: not the test message\n"
+  });
+  assert.equal(result.code,2);
+  assert.equal(result.events.filter(e=>e.event==="candidate_chat").length,1);
+  const done=result.events.find(e=>e.event==="finished");
+  assert.equal(done.reason,"timeout_waiting_exact_chat_after_marker");
+  assert.equal(done.chatTextMatched,false);
+  assert.equal(done.chatCandidatesAfterMarker,1);
+});
+
+test("exact chat proof fails rather than falsely succeeding at unrelated candidate limit",async()=>{
+  const result=await twoPhaseFixture({
+    expectedChatText:"RCM_CHAT_EXACT_20261120",
+    maxCandidates:1,
+    afterArmed:"[Guild][OtherPlayer]: unrelated message one\n"+
+      "[Guild][OtherPlayer]: unrelated message two\n"
+  });
+  assert.equal(result.code,2);
+  const finished=result.events.find(e=>e.event==="finished");
+  assert.equal(finished.reason,"candidate_limit_without_exact_chat");
+  assert.equal(finished.chatTextMatched,false);
+  assert.equal(finished.chatCandidatesAfterMarker,1);
+});
 
 test("two-phase mode confirms log marker THEN a freshly submitted chat candidate",async()=>{
   const result=await twoPhaseFixture({
