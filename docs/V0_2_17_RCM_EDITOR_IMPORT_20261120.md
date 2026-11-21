@@ -69,3 +69,23 @@ When RIFT is deliberately launched on AMD-DESKTOP:
 Native player Say/Guild/Tell/Party/public chat capture remains unverified in the current client. The host's Log.txt observer remains blocked by the real persisted RIFT setting LogConsole=False, with no live log file; any enabling of noncombat logging must be deliberate. Automatic Windows-to-RCM input and native social-chat sending are *not* implemented by this release.
 
 No Ollama, OpenCode or Codex CLI was used, and no independent ChatGPT subagent was claimed without an actual worker-spawn tool.
+
+## Guarded physical installation receipt — 9:10 PM EST
+
+After local commit f0bf4f923686284ac8dfa25c2a7eea2e51c2e20c, AMD-DESKTOP was reverified and RIFT_PIDS was []. The standard guarded deploy command ran:
+
+    C:\work\riftreader2\.venv\Scripts\python.exe -B tools\deploy_rcm.py --apply --expect-host AMD-DESKTOP
+
+It completed with exit 0, gameProcessCheck=closed and hashVerified=true. Exactly **Core.lua, HostIngress.lua, Main.lua and RiftAddon.toc** changed in the physical OneDrive RIFT AddOns/RiftChatModern installation. Old files were backed up at:
+
+    C:\work\RiftChatModern\artifacts\deploy-backups\20261121T021022Z-hwku21bt\
+
+A second, separate dry run after deployment found **changedFiles: [] and hashVerified: true for all 10 installed/source files**. Direct reading of the installed RiftAddon.toc verified version **0.2.17**, Environment **4.3**, mandatory Email placeholder, six ordered startup modules and character-scoped RiftChatModernSaved. No other installed addon was changed.
+
+The independent disk auditor was rerun against the exact existing Deepwood/Atank character file. The SHA-256 remains **87c4ad76cbc5cf7e2cb82b7b5cb8fd54c780fb1aa3f6880f7625cfad5ebb617a**, modified **November 20 at 7:49:09 PM EST**. It still contains 50 system rows, zero imported rows, schema v2 and internally consistent checkpoint #1. This **confirms no SavedVariables modification by installation**. It does not prove editor input or imports have been executed in RIFT.
+
+The updated Node encoder was run with --input-mode editor and produced a unique one-part, not-yet-sent acceptance command, transfer token **C0A4F8141CFA**:
+
+    :import C0A4F8141CFA 1/1 RwBSQ01Qcm9iZQBHdWlsZABSQ00gdjAuMi4xNyBlZGl0b3IgaW1wb3J0IGFjY2VwdGFuY2U
+
+This is encoded host candidate text, not an ordinary Guild message received from the game. The next game run must use RCM's own focused text field (not the original native chat input) and separately verify the actual message ID, IMPORTS tab and saved on-disk receipt. RIFT remained closed during the deployment.
