@@ -233,6 +233,11 @@ test("rejects unsafe/relative output paths and unbounded CLI options",()=>{
   assert.throws(()=>options(["--timeout-ms","9999999"]));
   assert.throws(()=>options(["--max-candidates","900000"]));
   assert.throws(()=>options(["--bad-option"]));
+  assert.throws(()=>options(["--input-mode","editor"]));
+  assert.throws(()=>options(["--prepare-import","--input-mode","unknown"]));
+  const mode=options(["--prepare-import","--input-mode","editor"]);
+  assert.equal(mode.prepareImport,true);
+  assert.equal(mode.inputMode,"editor");
   assert.throws(()=>options(["--require-chat-text","RCM_CHAT_EXACT_20261120"]));
   assert.throws(()=>options(["--require-chat-after-marker","--require-chat-text","space invalid"]));
   assert.throws(()=>options(["--require-chat-after-marker","--require-chat-text","lowercase"] .concat(["--require-chat-text","SECOND_TOKEN_20261120"])));

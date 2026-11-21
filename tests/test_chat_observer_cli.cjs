@@ -8,7 +8,7 @@ const {spawn,spawnSync}=require("node:child_process");
 
 const observer=path.resolve(__dirname,"..","tools","rcm-chat-observer.cjs");
 
-function launchFixture(lines,includeText,prepareImport=false,rawSampleLines=0){
+function launchFixture(lines,includeText,prepareImport=false,rawSampleLines=0,inputMode="native"){
   return new Promise((resolve,reject)=>{
     const dir=fs.mkdtempSync(path.join(os.tmpdir(),"rcm-observer-cli-"));
     const file=path.join(dir,"Log.txt");
@@ -18,6 +18,7 @@ function launchFixture(lines,includeText,prepareImport=false,rawSampleLines=0){
       "--timeout-ms","2500","--poll-ms","25","--max-candidates","10"];
     if(includeText)args.push("--include-text");
     if(prepareImport)args.push("--prepare-import");
+    if(inputMode!=="native")args.push("--input-mode",inputMode);
     if(rawSampleLines)args.push("--sample-raw-lines",String(rawSampleLines));
     const proc=spawn(process.execPath,args,{windowsHide:true,stdio:["ignore","pipe","pipe"]});
     let stdout="",stderr="",records=[],started=false,closed=false;
@@ -86,6 +87,24 @@ test("CLI emits human-pasteable /rcm import commands only when explicitly enable
   assert.equal(r.records[0].prepareImport,true);
   assert.ok(r.records.some(x=>x.event==="matched"));
 });
+test("observer opt-in preparation can target RCM editor without sending input",async()=>{
+  const result=await launchFixture(
+    "[Guild][RCMProbe]: original fixture chat\n"+
+    "LPB_PROBE|RCM_CLI_20261120|unknown\n",false,true,0,"editor"
+  );
+  assert.equal(result.code,0);
+  assert.equal(result.records[0].prepareImport,true);
+  assert.equal(result.records[0].inputMode,"editor");
+  const imports=result.records.filter(e=>e.event==="rcm_manual_import");
+  assert.equal(imports.length,1);
+  assert.equal(imports[0].inputMode,"editor");
+  assert.match(imports[0].commands[0],/^:import [A-F0-9]{12} 1\/1 /);
+  assert.equal(Buffer.from(imports[0].commands[0].split(" ").at(-1),"base64url")
+    .toString("utf8"),"G\0RCMProbe\0Guild\0original fixture chat");
+  assert.equal(imports[0].automaticGameInput,false);
+  assert.equal(imports[0].liveGameDeliveryVerified,false);
+});
+
 test("prepared slash imports refuse truncated chat but keep complete next record",async()=>{
   const tooLong="🍀".repeat(130);
   const result=await launchFixture(

@@ -191,7 +191,7 @@ function resolveLogSelection(cfg,env=process.env,clientConfig=null) {
 function options(argv) {
   const out={timeoutMs:120000,pollMs:100,maxCandidates:200,includeText:false,
     prepareImport:false,rawSampleLines:0,requireChatAfterMarker:false,
-    requireChatText:null,
+    requireChatText:null,inputMode:"native",inputModeExplicit:false,
     nonce:"RCM_CHAT_"+crypto.randomBytes(8).toString("hex")};
   for(let i=0;i<argv.length;i++) {
     const flag=argv[i];
@@ -202,11 +202,16 @@ function options(argv) {
       out.requireChatAfterMarker=true;continue;
     }
     if(flag==="--help"){out.help=true;continue}
-    if(!["--path","--nonce","--timeout-ms","--poll-ms","--max-candidates","--sample-raw-lines","--require-chat-text"].includes(flag) ||
+    if(!["--path","--nonce","--timeout-ms","--poll-ms","--max-candidates","--sample-raw-lines","--require-chat-text","--input-mode"].includes(flag) ||
       !argv[i+1])throw Error("Unsupported or incomplete option: "+flag);
     const val=argv[++i];
     if(flag==="--path")out.filePath=validLogPath(val);
     else if(flag==="--nonce")out.nonce=validateNonce(val);
+    else if(flag==="--input-mode"){
+      if(out.inputModeExplicit || !["native","editor"].includes(val))
+        throw Error("Input mode must be native or editor, specified once");
+      out.inputMode=val;out.inputModeExplicit=true;
+    }
     else if(flag==="--require-chat-text"){
       if(out.requireChatText!==null || !/^[A-Za-z0-9_-]{8,80}$/.test(val))
         throw Error("Exact chat text must be a unique 8-80 character ASCII test token");
@@ -228,6 +233,8 @@ function options(argv) {
   }
   if(out.requireChatText!==null && !out.requireChatAfterMarker)
     throw Error("Exact chat text requires --require-chat-after-marker");
+  if(out.inputModeExplicit && !out.prepareImport)
+    throw Error("--input-mode requires explicit --prepare-import");
   return out;
 }
 function start(argv=process.argv.slice(2)) {
@@ -236,12 +243,12 @@ function start(argv=process.argv.slice(2)) {
   if(cfg.help){
     process.stdout.write("node tools/rcm-chat-observer.cjs [--path ABSOLUTE_Log.txt] "+
       "[--timeout-ms 120000] [--poll-ms 100] [--max-candidates 200] "+
-      "[--nonce TOKEN] [--include-text] [--prepare-import] [--sample-raw-lines 5] "+
+      "[--nonce TOKEN] [--include-text] [--prepare-import] [--input-mode editor] [--sample-raw-lines 5] "+
       "[--require-chat-after-marker] [--require-chat-text TEST_TOKEN]\n"+
       "Read-only candidate RIFT chat observer. Defaults to metadata-only. "+
       "Two-phase mode arms a new file tail after the marker before counting social candidates. "+
       "Output format historical/unverified. --sample-raw-lines emits bounded decoded log text (explicit opt-in).\n"+
-      "--prepare-import prints manual /rcm commands. Never sends game input.\n");
+      "--prepare-import outputs manual native /rcm or RCM editor :import commands. Never sends game input.\n");
     return;
   }
   // An initial poll can observe a newly created log and call readLine before
@@ -283,7 +290,7 @@ function start(argv=process.argv.slice(2)) {
       if(event.truncated){
         emit({event:"import_skipped",reason:"truncated_chat_body"});
       }else{
-        try{emit(encodeRecord(event))}
+        try{emit(encodeRecord(event,undefined,cfg.inputMode))}
         catch(e){emit({event:"import_skipped",reason:"unencodable_candidate"})}
       }
     }
@@ -331,7 +338,9 @@ function start(argv=process.argv.slice(2)) {
         : "Rift.cfg LogConsole not verified; runtime logging state unknown",
     gameInputSent:false,gameLoggingChanged:false,transportVerified:false,
     candidateFormatVerified:false,includeText:cfg.includeText,
-    prepareImport:cfg.prepareImport,rawSampleLines:cfg.rawSampleLines,
+    prepareImport:cfg.prepareImport,
+    inputMode:cfg.prepareImport ? cfg.inputMode : null,
+    rawSampleLines:cfg.rawSampleLines,
     requireChatAfterMarker:cfg.requireChatAfterMarker,
     expectedChatTextRequired:cfg.requireChatText!==null,
     automaticGameInput:false,

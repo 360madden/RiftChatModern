@@ -47,6 +47,18 @@ class RcmLogProbeLauncherTests(unittest.TestCase):
         self.assertEqual(receipt["rcmEditorCommand"], ":logprobe RCM_PROBE_20261120")
         self.assertNotIn("LuaPad snippet", result.stdout)
 
+    def test_editor_import_preparation_is_explicit_and_preview_does_not_send(self):
+        result=self.invoke(["-Preview","-Nonce","RCM_PROBE_20261120",
+                            "-PrepareImport","-InputMode","editor"])
+        self.assertEqual(result.returncode,0,result.stderr)
+        preview=json.loads(result.stdout.strip())
+        self.assertTrue(preview["prepareImport"])
+        self.assertEqual(preview["inputMode"],"editor")
+        self.assertFalse(preview["gameInputSent"])
+        self.assertFalse(preview["loggingChanged"])
+        self.assertFalse(preview["transportVerified"])
+        self.assertIn("chat text",preview["note"])
+
     def test_invalid_nonce_and_relative_log_path_refused(self):
         for extra in (["-Nonce", "bad nonce"],
                       ["-Nonce", "RCM_PROBE_20261120",
@@ -54,7 +66,10 @@ class RcmLogProbeLauncherTests(unittest.TestCase):
                       ["-Nonce", "RCM_PROBE_20261120", "-RequireChatText",
                        "RCM_CHAT_EXACT_20261120"],
                       ["-Nonce", "RCM_PROBE_20261120", "-RequireChatAfterMarker",
-                       "-RequireChatText", "invalid token"]):
+                       "-RequireChatText", "invalid token"],
+                       ["-Nonce", "RCM_PROBE_20261120", "-InputMode", "editor"],
+                       ["-Nonce", "RCM_PROBE_20261120", "-PrepareImport",
+                        "-InputMode", "unknown"]):
             with self.subTest(extra=extra):
                 result = self.invoke(["-Preview", *extra])
                 self.assertEqual(result.returncode, 1)
@@ -75,7 +90,8 @@ class RcmLogProbeLauncherTests(unittest.TestCase):
             env["APPDATA"] = str(appdata)
             result = self.invoke(
                 ["-Nonce", "RCM_PROBE_20261120", "-TimeoutSeconds", "1",
-                 "-RequireChatAfterMarker"],
+                 "-RequireChatAfterMarker", "-PrepareImport",
+                 "-InputMode", "editor"],
                 env=env)
             self.assertEqual(result.returncode, 2, result.stderr)
             lines = [json.loads(line) for line in result.stdout.splitlines()
@@ -85,6 +101,8 @@ class RcmLogProbeLauncherTests(unittest.TestCase):
             self.assertEqual(started["pathSelection"],
                              "rift_cfg_documents_directory")
             self.assertTrue(started["requireChatAfterMarker"])
+            self.assertTrue(started["prepareImport"])
+            self.assertEqual(started["inputMode"],"editor")
             self.assertEqual(Path(started["path"]),
                              docs / "Log.txt")
             self.assertFalse(started["transportVerified"])
