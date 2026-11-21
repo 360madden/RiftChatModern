@@ -13,7 +13,8 @@ using System.Text.RegularExpressions;
 // no input APIs, no focus changes, no clipboard, no game launch, no file writes.
 internal static class Program
 {
-    private sealed record ImportCommand(string Token, int Part, int Total, int Chars, string Sha256);
+    // The input-free RcmImportContract is also used by the separately
+    // permissioned editor sender. Keep one validation implementation.
 
     private static int Main(string[] arguments)
     {
@@ -125,45 +126,9 @@ internal static class Program
         options.TryGetValue(name, out var value) ? value :
         throw new ArgumentException($"Missing --{name}.");
 
-    private static string ReadStdinCommand(TextReader reader)
-    {
-        // Never store full chat command bytes in argv, files, or logs.
-        var line = new StringBuilder(160);
-        int ch;
-        while ((ch = reader.Read()) != -1)
-        {
-            if (ch == '\n') break;
-            if (ch == '\r')
-            {
-                if (reader.Peek() == '\n') _ = reader.Read();
-                break;
-            }
-            if (line.Length >= 160)
-                throw new ArgumentException("Piped editor import exceeds 160 characters.");
-            line.Append((char)ch);
-        }
-        if (reader.Peek() != -1)
-            throw new ArgumentException("Only one complete editor import command is accepted.");
-        if (line.Length == 0)
-            throw new ArgumentException("No editor import command was supplied.");
-        return line.ToString();
-    }
+    private static string ReadStdinCommand(TextReader reader) => RcmImportContract.ReadOne(reader);
 
-    private static ImportCommand ValidateCommand(string command)
-    {
-        if (command is null || Encoding.UTF8.GetByteCount(command) > 160)
-            throw new ArgumentException("Editor import command is missing or too long.");
-        var m = Regex.Match(command,
-            @"\A:import ([A-F0-9]{12}) ([1-9]|1[0-2])/([1-9]|1[0-2]) ([A-Za-z0-9_-]{1,88})\z",
-            RegexOptions.CultureInvariant);
-        if (!m.Success) throw new ArgumentException(
-            "Expected one bounded :import TOKEN INDEX/TOTAL BASE64URL command.");
-        int part = int.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture);
-        int total = int.Parse(m.Groups[3].Value, CultureInfo.InvariantCulture);
-        if (part > total) throw new ArgumentException("Part index exceeds total.");
-        return new ImportCommand(m.Groups[1].Value, part, total, command.Length,
-            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(command))));
-    }
+    private static RcmImport ValidateCommand(string command) => RcmImportContract.Parse(command);
 
     private static void Emit(object record) =>
         Console.WriteLine(JsonSerializer.Serialize(record));
