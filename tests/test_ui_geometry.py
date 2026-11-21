@@ -1,4 +1,4 @@
-"""RiftChatModern v0.2.17 visual geometry, drag and key-focus contracts.
+"""RiftChatModern v0.2.18 visual geometry, drag and key-focus contracts.
 
 Actual Lua 5.1 with mocked game UI. Does not inject keyboard/mouse into RIFT.
 """
@@ -28,7 +28,7 @@ class UiGeometryTests(unittest.TestCase):
         lua.execute((ADDON / "HostIngress.lua").read_text(encoding="utf-8"))
         source = (ADDON / "Main.lua").read_text(encoding="utf-8")
         lua.execute("assert(loadstring(" + _lua_quote(source) +
-                    "))({identifier='RiftChatModern',version='0.2.17'})")
+                    "))({identifier='RiftChatModern',version='0.2.18'})")
         lua.execute(script)
 
     def test_every_control_fits_and_fonts_are_legible(self):
@@ -79,6 +79,45 @@ assert(api.Hide())
 assert(api.GetFocusState()=="hidden")
 assert(api.GetStatus().editorFocused==false)
 assert(api.GetStatus().searchFocused==false)
+''')
+
+    def test_focus_footer_tracks_live_focus_state_without_erasing_other_receipts(self):
+        """A screenshot must never say editor focused if its live focus is gone."""
+        self.run_lua(r'''
+fire(Event.Addon.SavedVariables.Load.End,"RiftChatModern")
+fire(Event.Addon.Load.End,"RiftChatModern")
+local api=RiftChatModernAPI
+assert(api.Show())
+assert(api.FocusEditor())
+assert(api.GetFocusState()=="focused")
+assert(frames.RCMStatus.text:find("Editor focused",1,true))
+assert(frames.RCMFocusIndicator.text:find("FOCUSED",1,true))
+
+-- An external click / game focus loss does not call focusEditor again.
+frames.RCMInput:SetKeyFocus(false)
+fire(Event.System.Update.Begin)
+assert(api.GetFocusState()=="unfocused")
+assert(frames.RCMFocusIndicator.text:find("NOT FOCUSED",1,true))
+assert(not frames.RCMStatus.text:find("Editor focused",1,true),
+    "stale focus success remained after real key-focus loss")
+assert(frames.RCMStatus.text:find("NOT FOCUSED",1,true))
+
+-- Search focus cannot coexist with an "editor focused" footer.
+assert(api.FocusSearch())
+fire(Event.System.Update.Begin)
+assert(api.GetFocusState()=="search")
+assert(frames.RCMStatus.text:find("SEARCH",1,true))
+assert(not frames.RCMStatus.text:find("Editor focused",1,true))
+
+-- Other status messages (e.g. commands) must not be erased by focus polling.
+assert(api.Submit(":status"))
+local ordinary=frames.RCMStatus.text
+frames.RCMSearchField:SetKeyFocus(false)
+fire(Event.System.Update.Begin)
+assert(frames.RCMStatus.text==ordinary)
+
+assert(api.Hide())
+assert(api.GetFocusState()=="hidden")
 ''')
 
     def test_drag_persists_on_mouse_release_outside_and_clamps(self):

@@ -2,7 +2,7 @@
 -- Native player say/tell/guild transmit and full native chat interception are NOT
 -- exposed by the verified addon APIs. This UI never pretends to send those.
 local info = ...
-local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.17"
+local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.18"
 local Core = _G.RiftChatModernCore
 local MessageBridge = _G.RiftChatModernAddonMessages
 local NativeProbe = _G.RiftChatModernNativeProbe
@@ -248,7 +248,8 @@ local function focusState()
 end
 local function updateFocusIndicator(force)
     local state=focusState()
-    if focusIndicator and (force or lastFocusState~=state) then
+    local previous=lastFocusState
+    if focusIndicator and (force or previous~=state) then
         local label=state=="focused" and "INPUT  ●  FOCUSED"
             or state=="search" and "SEARCH  ●  FOCUSED"
             or state=="hidden" and "INPUT  •  HIDDEN"
@@ -258,6 +259,22 @@ local function updateFocusIndicator(force)
         ink(focusIndicator,state=="focused" and C.good
             or state=="search" and C.accent
             or state=="unavailable" and C.warning or C.muted)
+    end
+    -- The footer is shared by import receipts, command results and focus
+    -- instructions. Only refresh a *focus-specific* footer on a state change;
+    -- never overwrite unrelated status or leave stale success visible.
+    if previous~=state and statusField
+        and type(statusField.GetText)=="function" then
+        local ok,message=pcall(statusField.GetText,statusField)
+        if ok and type(message)=="string"
+            and message:sub(1,7)=="FOCUS: " then
+            local current=state=="focused" and "FOCUS: Editor focused • local commands start with :"
+                or state=="search" and "FOCUS: SEARCH FOCUSED"
+                or state=="hidden" and "FOCUS: WINDOW HIDDEN"
+                or state=="unfocused" and "FOCUS: INPUT NOT FOCUSED • click FOCUS INPUT"
+                or "FOCUS: Input focus unavailable"
+            statusField:SetText(current)
+        end
     end
     lastFocusState=state
     return state
@@ -274,7 +291,7 @@ local function focusEditor()
     local good,value=pcall(editor.GetKeyFocus,editor)
     updateFocusIndicator(true)
     if good and value==true then
-        notifyUi("Editor focused • local commands start with :")
+        notifyUi("FOCUS: Editor focused • local commands start with :")
         return true
     end
     return nil,"focus_not_acquired"

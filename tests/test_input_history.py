@@ -1,4 +1,4 @@
-"""RiftChatModern v0.2.17 editor recall, draft and search-sync regressions.
+"""RiftChatModern v0.2.18 editor recall, draft and search-sync regressions.
 
 These are offline Lua 5.1 mock tests, not physical RIFT keyboard acceptance.
 """
@@ -27,7 +27,7 @@ class InputHistoryTests(unittest.TestCase):
         for filename in MODULES:
             source = (ADDON / filename).read_text(encoding="utf-8")
             lua.execute("assert(loadstring(" + _lua_quote(source) +
-                        "))({identifier='RiftChatModern',version='0.2.17'}, {})")
+                        "))({identifier='RiftChatModern',version='0.2.18'}, {})")
         lua.execute(scenario)
 
     def test_up_down_cycles_and_restores_unsent_draft(self):
