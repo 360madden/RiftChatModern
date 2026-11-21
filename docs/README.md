@@ -9,6 +9,7 @@ as [the complete engineering archive](ENGINEERING_ARCHIVE_README_THROUGH_2026112
 
 ## Getting started and architecture
 
+- **[Saturday November 21 engineering handoff](HANDOFF_20261121_SATURDAY.md)** — most recent verified status, source map, test commands, remaining limitations, P0 physical acceptance plan and remote publication context
 - [Addon transport and RIFT messaging limitations](ADDON_TRANSPORT.md)
 - [Original concept and early development history](DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md)
 - [v0.2.11 provenance and API v2 contract](V0_2_11_STRUCTURED_PROVENANCE.md)
