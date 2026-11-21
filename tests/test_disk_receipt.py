@@ -11,6 +11,7 @@ import socket
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"tools"))
 from rcm_disk_receipt import DiskAuditError,inspect_saved_data,peer_file_metadata,run
@@ -91,6 +92,74 @@ class DiskCheckpointTests(unittest.TestCase):
         result=inspect_saved_data(SAVED.replace("lastImportId = 2,","lastImportId = 0,"))
         self.assertFalse(result["checkpointMetadataConsistent"])
 
+    def test_realistic_kind_histogram_does_not_expose_message_text(self):
+        details=inspect_saved_data(SAVED)
+        self.assertEqual(details["historyKindsOnDisk"],{"system":1,"import":1})
+        self.assertNotIn("RCMTest",json.dumps(details))
+        self.assertNotIn("brace }",json.dumps(details))
+
+    def test_duplicate_history_ids_never_count_as_verified_disk_save(self):
+        forged=SAVED.replace('at = 1701, id = 2, kind = "import"',
+                             'at = 1701, id = 1, kind = "import"')
+        forged=forged.replace("lastHistoryId = 2,","lastHistoryId = 1,")
+        forged=forged.replace("lastImportId = 2,","lastImportId = 1,")
+        with self.assertRaisesRegex(DiskAuditError,"duplicate_history_id"):
+            inspect_saved_data(forged)
+
+    def test_out_of_order_history_ids_are_refused_even_if_tail_receipt_matches(self):
+        forged=SAVED.replace('at = 1700, id = 1, kind = "system"',
+                             'at = 1700, id = 2, kind = "system"')
+        forged=forged.replace('at = 1701, id = 2, kind = "import"',
+                              'at = 1701, id = 1, kind = "import"')
+        forged=forged.replace("lastHistoryId = 2,","lastHistoryId = 1,")
+        forged=forged.replace("lastImportId = 2,","lastImportId = 1,")
+        with self.assertRaisesRegex(DiskAuditError,"non_monotonic_history_id"):
+            inspect_saved_data(forged)
+
+    def test_checkpoint_next_id_cannot_disagree_with_root_saved_sequence(self):
+        forged=SAVED.replace("  nextId = 3,\n  schemaVersion = 2,",
+                             "  nextId = 4,\n  schemaVersion = 2,")
+        details=inspect_saved_data(forged)
+        self.assertTrue(details["checkpointOnDisk"])
+        self.assertFalse(details["checkpointMetadataConsistent"])
+        self.write(forged)
+        out=io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(run(["--file",str(self.file),"--require-checkpoint"]),2)
+        self.assertFalse(json.loads(out.getvalue())["diskReceiptVerified"])
+
+    def test_required_import_id_reports_exact_saved_row_without_text(self):
+        present=inspect_saved_data(SAVED,required_import_id=2)
+        missing=inspect_saved_data(SAVED,required_import_id=99)
+        self.assertEqual(present["requiredImportId"],2)
+        self.assertTrue(present["requiredImportIdPresent"])
+        self.assertFalse(missing["requiredImportIdPresent"])
+        self.assertNotIn("RCMTest",json.dumps(present))
+        self.write()
+        stdout=io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            self.assertEqual(run(["--file",str(self.file),"--require-import-id","2"]),0)
+        success=json.loads(stdout.getvalue())
+        self.assertTrue(success["requiredImportIdPresent"])
+        self.assertTrue(success["diskReceiptVerified"])
+        stdout=io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            self.assertEqual(run(["--file",str(self.file),"--require-import-id","99"]),2)
+        self.assertFalse(json.loads(stdout.getvalue())["requiredImportIdPresent"])
+        self.assertNotIn("RCMTest",stdout.getvalue())
+
+    def test_import_id_requires_valid_checkpoint_and_positive_id(self):
+        self.write(SAVED.replace("historyCount = 2,","historyCount = 3,"))
+        out=io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(run(["--file",str(self.file),"--require-import-id","2"]),2)
+        self.assertTrue(json.loads(out.getvalue())["requiredImportIdPresent"])
+        self.assertFalse(json.loads(out.getvalue())["diskReceiptVerified"])
+        out=io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(run(["--file",str(self.file),"--require-import-id","0"]),1)
+        self.assertFalse(json.loads(out.getvalue())["diskReceiptVerified"])
+
     def test_duplicate_keys_in_checkpoint_are_rejected(self):
         bad=SAVED.replace("sequence = 1","sequence = 1, sequence = 2")
         with self.assertRaisesRegex(DiskAuditError,"duplicate_sequence"):
@@ -122,6 +191,25 @@ class DiskCheckpointTests(unittest.TestCase):
             self.assertEqual(run(["--file",str(invalid)]),1)
         self.assertEqual(json.loads(output.getvalue())["error"],
                          "incorrect_saved_filename")
+
+    def test_disk_file_mutation_during_read_invalidates_receipt(self):
+        # Fixture-only interference: ensure a mid-audit save cannot inherit
+        # old bytes and a newer timestamp as one 'verified' snapshot.
+        self.write()
+        original=Path.read_bytes
+        def changed_during_read(path):
+            data=original(path)
+            if path==self.file:
+                path.write_bytes(data+b"\n-- fixture changed during audit\n")
+            return data
+        out=io.StringIO()
+        with mock.patch.object(Path,"read_bytes",autospec=True,side_effect=changed_during_read):
+            with contextlib.redirect_stdout(out):
+                rc=run(["--file",str(self.file),"--require-checkpoint"])
+        self.assertEqual(rc,1)
+        result=json.loads(out.getvalue())
+        self.assertFalse(result["diskReceiptVerified"])
+        self.assertIn("saved_file_changed_during_audit",result["error"])
 
     def test_peer_save_metadata_uses_file_times_not_chat_bodies(self):
         self.write()

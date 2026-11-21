@@ -8,6 +8,7 @@ executes the serialized Lua.
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 from datetime import datetime
 import hashlib
 import json
@@ -160,6 +161,8 @@ def saved_history_rows(source: str, masked: str, depths: list[int],
         return []
     opening, closing = history
     rows = []
+    seen_ids = set()
+    previous_id = 0
     for i in range(opening + 1, closing):
         if masked[i] != "{" or depths[i] != depths[opening] + 1:
             continue
@@ -170,15 +173,21 @@ def saved_history_rows(source: str, masked: str, depths: list[int],
         if len(m) != 1:
             raise DiskAuditError("invalid_history_kind")
         kind = re.match(r"""(["'])([a-z_]+)\1""", source[m[0].end():])
-        if ident is None or kind is None:
+        if ident is None or kind is None or ident < 1:
             raise DiskAuditError("invalid_history_row")
+        if ident in seen_ids:
+            raise DiskAuditError("duplicate_history_id")
+        if ident <= previous_id:
+            raise DiskAuditError("non_monotonic_history_id")
+        seen_ids.add(ident)
+        previous_id = ident
         rows.append({"id": ident, "kind": kind.group(2)})
     if len(rows) > 240:
         raise DiskAuditError("unexpected_history_size")
     return rows
 
 
-def inspect_saved_data(source: str) -> dict:
+def inspect_saved_data(source: str, required_import_id: int | None = None) -> dict:
     if len(source.encode("utf-8")) > MAX_SIZE:
         raise DiskAuditError("saved_file_too_large")
     masked = mask_strings_comments(source)
@@ -191,6 +200,7 @@ def inspect_saved_data(source: str) -> dict:
     if depths[start] != 0:
         raise DiskAuditError("invalid_root_depth")
     schema = scalar(masked, depths, root, "schemaVersion", 1)
+    saved_next_id = scalar(masked, depths, root, "nextId", 1)
     hist = find_child_table(masked, depths, root, "history", 1)
     checkpoint = find_child_table(masked, depths, root, "saveCheckpoint", 1)
     rows = saved_history_rows(source, masked, depths, hist)
@@ -210,17 +220,25 @@ def inspect_saved_data(source: str) -> dict:
         record["historyCount"] == len(rows) and
         record["lastHistoryId"] == last_id and
         record["lastImportId"] == last_import and
-        record["nextId"] > last_id)
-    return {"schemaVersionOnDisk": schema,
-            "historyRowsOnDisk": len(rows),
-            "importRowsOnDisk": sum(x["kind"] == "import" for x in rows),
-            "lastHistoryIdOnDisk": last_id,
-            "lastImportedIdOnDisk": last_import,
-            "checkpointOnDisk": bool(record),
-            "checkpointMetadataConsistent": consistent,
-            "checkpoint": record if record else None,
-            "messageBodiesEmitted": False,
-            "engineSaveEndProven": False}
+        record["nextId"] > last_id and
+        saved_next_id == record["nextId"])
+    result = {"schemaVersionOnDisk": schema,
+              "historyRowsOnDisk": len(rows),
+              "historyKindsOnDisk": dict(sorted(Counter(row["kind"] for row in rows).items())),
+              "importRowsOnDisk": sum(x["kind"] == "import" for x in rows),
+              "lastHistoryIdOnDisk": last_id,
+              "lastImportedIdOnDisk": last_import,
+              "checkpointOnDisk": bool(record),
+              "checkpointMetadataConsistent": consistent,
+              "checkpoint": record if record else None,
+              "messageBodiesEmitted": False,
+              "engineSaveEndProven": False}
+    if required_import_id is not None:
+        result["requiredImportId"] = required_import_id
+        result["requiredImportIdPresent"] = any(
+            row["kind"] == "import" and row["id"] == required_import_id
+            for row in rows)
+    return result
 
 
 def peer_file_metadata(file: Path) -> dict:
@@ -243,22 +261,39 @@ def run(args: list[str] | None = None) -> int:
                         help="Exact character-scoped RiftChatModern.lua SavedVariables file")
     parser.add_argument("--expect-host", default=None)
     parser.add_argument("--require-checkpoint", action="store_true")
+    parser.add_argument("--require-import-id", type=int, default=None,
+                        help="Require a retained import row with this exact ID and a consistent checkpoint")
     options = parser.parse_args(args)
     host = socket.gethostname()
     try:
         if options.expect_host and host.casefold() != options.expect_host.casefold():
             raise DiskAuditError("wrong_machine")
+        if options.require_import_id is not None and not (1 <= options.require_import_id <= 10**12):
+            raise DiskAuditError("invalid_required_import_id")
         path = options.file
         if path.name.casefold() != "riftchatmodern.lua" or path.is_symlink():
             raise DiskAuditError("incorrect_saved_filename")
-        if not path.is_file() or path.stat().st_size > MAX_SIZE:
+        if not path.is_file():
+            raise DiskAuditError("missing_or_oversize_saved_file")
+        before = path.stat()
+        if before.st_size > MAX_SIZE:
             raise DiskAuditError("missing_or_oversize_saved_file")
         data = path.read_bytes()
-        parsed = inspect_saved_data(data.decode("utf-8-sig", "strict"))
+        after = path.stat()
+        # A concurrent game save must not mix one file version's hash with
+        # another version's modification timestamp or claimed checkpoint.
+        before_identity = (before.st_dev, before.st_ino, before.st_size,
+                           before.st_mtime_ns, before.st_ctime_ns)
+        after_identity = (after.st_dev, after.st_ino, after.st_size,
+                          after.st_mtime_ns, after.st_ctime_ns)
+        if before_identity != after_identity or len(data) != after.st_size:
+            raise DiskAuditError("saved_file_changed_during_audit")
+        parsed = inspect_saved_data(data.decode("utf-8-sig", "strict"),
+                                    required_import_id=options.require_import_id)
         result = {"schema": "RCM_DISK_RECEIPT_V1", "machine": host,
                   "savedFile": str(path), "bytes": len(data),
                   "sha256": hashlib.sha256(data).hexdigest(),
-                  "modifiedLocal": datetime.fromtimestamp(path.stat().st_mtime)
+                  "modifiedLocal": datetime.fromtimestamp(after.st_mtime)
                   .astimezone().isoformat(),
                   "diskReceiptVerified": parsed["checkpointOnDisk"] and
                   parsed["checkpointMetadataConsistent"],
@@ -266,7 +301,9 @@ def run(args: list[str] | None = None) -> int:
         result.update(parsed)
         result["peerSaveMetadata"] = peer_file_metadata(path)
         print(json.dumps(result, indent=2, ensure_ascii=False))
-        return 2 if options.require_checkpoint and not result["diskReceiptVerified"] else 0
+        require_proof = options.require_checkpoint or options.require_import_id is not None
+        import_missing = options.require_import_id is not None and not result["requiredImportIdPresent"]
+        return 2 if require_proof and (not result["diskReceiptVerified"] or import_missing) else 0
     except (DiskAuditError, OSError, UnicodeError) as exc:
         print(json.dumps({"schema": "RCM_DISK_RECEIPT_V1",
                           "machine": host, "error": str(exc),
