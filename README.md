@@ -2,7 +2,7 @@
 
 **Standalone chat-style console and addon diagnostics hub for RIFT Live**
 
-![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Source](https://img.shields.io/badge/Source-0.2.18-yellow?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
+![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Installed](https://img.shields.io/badge/Installed-0.2.18-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
 
 A compact, dark-mode chat window that can receive addon diagnostics, record event history, filter/search, copy to clipboard, and expose a command API to **all our RIFT repositories**. LuaPadModern inspired the editor focus design; this is **original code** with no LuaPadModern dependency or source modifications.
 
@@ -57,7 +57,7 @@ The source addon is **C:\work\RiftChatModern\addon\RiftChatModern**:
 - **Main.lua:** draggable dark frame, getter-backed focus indicator, editor, event adapters and RPT Lab integration.
 - **fonts/**: bundled Lato Regular/Bold and original SIL Open Font License. The app uses native font fallback if custom fonts aren't available.
 
-Use `tools/deploy_rcm.py` for a dry-run before updating the verified physical RIFT Interface\AddOns folder. An `--apply` requires the exact expected hostname, backs up replaced files under the local ignored `artifacts/` folder and verifies all installed file hashes. The running game still needs an intentional UI reload and separate physical acceptance.
+Use `tools/deploy_rcm.py` to preview the verified RIFT Interface\AddOns package, then `--apply --expect-host AMD-DESKTOP` to install. **Do not close RIFT just to deploy an existing addon:** replacement files are backed up and hash-verified even while RIFT runs. Use **`/reloadui` in RIFT's original native chat** to activate changed Lua/toc content; the installer reports whether it is required. See the [live deploy + /reloadui policy](docs/LIVE_DEPLOYMENT_RELOADUI_POLICY_20261120.md).
 
 Open the window **once from native RIFT chat**:
 
@@ -455,7 +455,7 @@ An actual RIFT game screenshot made at 9:39:25 PM EST, November 20 revealed an R
 
 The new **read-only** `tools/rcm_game_screenshot_receipt.py` resolves RIFT's configured screenshot directory, checks complete JPEG/PNG bytes, SHA-256 and dimensions, and can mark a precise timestamp baseline to reject stale captures. The native game screenshot dated November 20 at 9:39 PM was verified as JPEG **2560×1369**, SHA-256 `8f56980b976657ddf43028056b71798b7919628d5b023adb94492b3e220f1ffe`. **Eight** screenshot fixture tests passed, including fresh vs stale, malformed, renamed and concurrently created file handling. The helper never presses a key or writes a game file.
 
-**259/259 automated tests passed at the v0.2.18 source milestone (212 Python/Lua, 47 Node.js). Source is v0.2.18 but the physical installed addon remains v0.2.17 while RIFT is running.** Exactly three installed files need replacement: Core.lua, Main.lua and RiftAddon.toc; guarded deployment is deliberately deferred until RIFT is closed. See [v0.2.18 focus root-cause and native screenshot verification report](docs/V0_2_18_FOCUS_AND_GAME_SCREENSHOTS_20261120.md).
+**259/259 tests passed at the initial v0.2.18 source milestone (212 Python/Lua, 47 Node.js).** The three changed addon files were subsequently installed **while RIFT was running**, and their hashes verified; the game requires `/reloadui` to load those bytes. See [v0.2.18 focus root-cause and native screenshot verification report](docs/V0_2_18_FOCUS_AND_GAME_SCREENSHOTS_20261120.md).
 
 ## One-shot RIFT Numpad * screenshot trigger — .NET 10
 
@@ -463,10 +463,16 @@ A separate, tightly scoped **RcmScreenshotKey** Windows helper can inspect the a
 
 The optional **`--arm-seconds 1..15`** mode now waits briefly for RIFT to become the foreground window, without ever activating it. It still requires the explicit one-shot capture acknowledgment and all six exact process/window pins; timeout means **no input**. A failing test first exposed that this option did not exist, and the completed implementation passed its bounded validation and error-case tests. A controlled two-second arm expired as `foreground_timeout_no_input`, and the independent screenshot checker still found no new image.
 
-**Eight Windows subprocess integration tests and 19 internal .NET assertions pass**. If Windows accepts only a key-down during a partial SendInput call, RCM now attempts one **keyup-only recovery**, and only while the same RIFT HWND remains foreground and owned by the same PID; it never repeats the screenshot key-down. The latest full repository suites pass **267/267 tests (220 Python/Lua and 47 Node.js)**. The RIFT addon is unchanged and v0.2.18 is still awaiting a clean game shutdown for deployment. See [one-shot screenshot key helper, arm mode, evidence and controlled acceptance procedure](docs/RCM_NUMPAD_SCREENSHOT_TRIGGER_20261120.md).
+**Eight Windows subprocess integration tests and 19 internal .NET assertions pass**. If Windows accepts only a key-down during a partial SendInput call, RCM now attempts one **keyup-only recovery**, and only while the same RIFT HWND remains foreground and owned by the same PID; it never repeats the screenshot key-down. The latest full repository suites pass **267/267 tests (220 Python/Lua and 47 Node.js)**. This screenshot-helper milestone itself did not change the RIFT Lua package. The later **v0.2.18 live deployment succeeded without stopping RIFT**. See [one-shot screenshot key helper, arm mode, evidence and controlled acceptance procedure](docs/RCM_NUMPAD_SCREENSHOT_TRIGGER_20261120.md).
 
 ## Native screenshot capture from a single command
 
 The new `tools/rcm_screenshot_once.py` removes the manual six-field PID/HWND/process-hash handoff. It checks the actual RIFT process through the existing .NET helper, pins the matching identity, optionally arms a single Numpad `*` screenshot for at most 15 seconds, and independently verifies whether RIFT's configured screenshot folder received a **new complete JPEG** after the trigger timestamp. A read-only **--dry-run** is available by default; actual key input requires both **--capture** and **--ack-single-screenshot**. The tool never steals foreground focus or retries an uncertain keypress.
 
 Ten deterministic cross-component tests passed after red/green corrections for corrupt new images, unavailable screenshot folders and invalid post-key baselines. All these failures retain the known key-insertion result instead of converting it into a false claim that no input occurred. The live one-command trial returned **foreground_timeout_no_input** while RIFT was in the background, with zero key events and no new screenshot. **277 total repository tests pass (230 Python/Lua and 47 Node.js)**. Details and the compact Windows PowerShell command are in the [one-command screenshot engineering report](docs/RCM_ONE_COMMAND_SCREENSHOT_20261120.md).
+
+## Current live deployment policy — update while RIFT runs, then /reloadui
+
+A previous RCM installer check incorrectly treated any running `rift_x64.exe` as a reason to refuse addon deployment. **That assumption has been corrected.** A fresh live deployment on AMD-DESKTOP replaced the three pending v0.2.18 files (`Core.lua`, `Main.lua`, `RiftAddon.toc`) while PID 34596 remained running. The installer created verified backups, and an independent second pass confirmed **10/10 source/installed hashes match**, with character SavedVariables untouched. The installer now returns `reloadUiRequired=true` for a changed live addon, false for an unchanged no-op, and keeps `runtimeReloadVerified=false` until game-side evidence exists.
+
+The current installed version is **v0.2.18**. **Activation via `/reloadui` and an in-game version check are still pending; no game restart is necessary.** This is now the standard RCM development iteration policy, enforced by new running-game/no-op regression tests. See the [root cause, corrected deploy procedure, red/green tests, and exact physical deployment receipt](docs/LIVE_DEPLOYMENT_RELOADUI_POLICY_20261120.md).

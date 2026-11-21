@@ -4,8 +4,10 @@ Examples from a PowerShell terminal:
   python tools/deploy_rcm.py
   python tools/deploy_rcm.py --apply --expect-host AMD-DESKTOP
 
-Dry-run by default. The live install must already exist and have the expected
-RiftAddon.toc identity. Never touches SavedVariables or unrelated addon folders.
+Dry-run by default. The install must already exist with the expected toc.
+Replacing an existing RIFT addon while the game runs is supported: after a
+verified copy, run /reloadui inside RIFT to load the new Lua and manifest.
+Never touches SavedVariables or unrelated addon folders.
 """
 from __future__ import annotations
 
@@ -196,7 +198,7 @@ def apply_copy(source: Path, target: Path, plan: dict, project: Path) -> dict:
 
 
 def running_game_pids() -> list[int]:
-    """Independently query all Windows processes; refuse an uncertain apply."""
+    """Independently query Windows processes; unknown state refuses apply."""
     if os.name != "nt":
         raise RuntimeError("game_process_query_unavailable_non_windows")
     try:
@@ -248,11 +250,15 @@ def main(argv: list[str] | None = None) -> int:
             "gameProcessCheck": "not_checked"
         }
         if args.apply:
+            # Existing RIFT addons may be updated on disk while rift_x64 runs.
+            # Actual Lua/toc changes become active after /reloadui, not merely
+            # after a successful filesystem copy. Avoid a needless game exit.
             live_pids = running_game_pids()
-            if live_pids:
-                raise RuntimeError("RIFT is running (PID " + ", ".join(map(str,live_pids))
-                                   + "); close the game before deploying")
-            result["gameProcessCheck"] = "closed"
+            result["gameProcessCheck"] = "running" if live_pids else "closed"
+            result["runningGamePids"] = live_pids
+            result["reloadUiRequired"] = bool(live_pids and changes)
+            result["reloadUiCommand"] = "/reloadui" if live_pids and changes else None
+            result["runtimeReloadVerified"] = False
             result.update(apply_copy(source, target, plan, project))
             result["hashVerified"] = all(
                 sha256(source / rel) == sha256(target / rel) for rel in plan["files"]

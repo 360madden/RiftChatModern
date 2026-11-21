@@ -148,7 +148,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(paths,[root])
 
 
-    def test_apply_refuses_live_game_before_writing_any_file(self):
+    def test_apply_hot_deploys_live_game_and_requires_reloadui(self):
         target_main=self.target/"Main.lua"
         before=target_main.read_bytes()+b"\n-- installed older version\n"
         target_main.write_bytes(before)
@@ -157,11 +157,34 @@ class DeploymentTests(unittest.TestCase):
             with contextlib.redirect_stdout(stream):
                 rc=deploy_rcm.main(["--apply","--expect-host",socket.gethostname(),
                                     "--target",str(self.target)])
-        self.assertEqual(rc,1)
-        self.assertEqual(target_main.read_bytes(),before)
+        self.assertEqual(rc,0)
+        self.assertEqual(target_main.read_bytes(),(self.source/"Main.lua").read_bytes())
         response=json.loads(stream.getvalue())
-        self.assertFalse(response["success"])
-        self.assertIn("running",response["error"].lower())
+        self.assertEqual(response["gameProcessCheck"],"running")
+        self.assertEqual(response["runningGamePids"],[23164])
+        self.assertTrue(response["reloadUiRequired"])
+        self.assertEqual(response["reloadUiCommand"],"/reloadui")
+        self.assertTrue(response["hashVerified"])
+        self.assertFalse(response["savedVariablesTouched"])
+        self.assertFalse(response["gameInputSent"])
+        self.assertFalse(response["physicalGameLoaded"])
+
+    def test_running_game_with_identical_files_needs_no_reload(self):
+        stream=io.StringIO()
+        with mock.patch.object(deploy_rcm,"running_game_pids",return_value=[34596]):
+            with contextlib.redirect_stdout(stream):
+                rc=deploy_rcm.main(["--apply","--expect-host",socket.gethostname(),
+                                    "--target",str(self.target)])
+        self.assertEqual(rc,0)
+        result=json.loads(stream.getvalue())
+        self.assertEqual(result["gameProcessCheck"],"running")
+        self.assertEqual(result["runningGamePids"],[34596])
+        self.assertEqual(result["changed"],[])
+        self.assertFalse(result["reloadUiRequired"])
+        self.assertIsNone(result["reloadUiCommand"])
+        self.assertTrue(result["hashVerified"])
+        self.assertFalse(result["savedVariablesTouched"])
+        self.assertFalse(result["runtimeReloadVerified"])
 
     def test_apply_fails_closed_when_process_query_unavailable(self):
         target_main=self.target/"Main.lua"
@@ -190,6 +213,8 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(rc,0)
         response=json.loads(stream.getvalue())
         self.assertEqual(response["gameProcessCheck"],"closed")
+        self.assertFalse(response["reloadUiRequired"])
+        self.assertIsNone(response["reloadUiCommand"])
         self.assertTrue(response["hashVerified"])
         self.assertEqual(response["changed"],["Main.lua"])
         self.assertEqual(target_main.read_bytes(),(self.source/"Main.lua").read_bytes())
