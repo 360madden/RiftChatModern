@@ -80,3 +80,26 @@ changes. This companion does not alter `RiftAddon.toc`, any SavedVariables,
 or RIFT game files.
 
 No Ollama, OpenCode or Codex CLI used.
+
+## Later cross-component proof — 11:50 PM EST
+
+Added `tests/test_editor_sender_roundtrip.py` to connect all three actual
+implementations end-to-end **without Windows input**: the Node `--input-mode
+editor` encoder, the .NET 10 sender in validation-only mode, and the Lua 5.1
+mock RiftTextfield calling the real `:import` receiver.
+
+The single-fragment Guild test verifies SHA-256, zero game input, exact text,
+provenance, preserved import token, one assigned history ID, no command-recall
+pollution and no fabricated disk-save proof. A multiple-fragment UTF-8 Party
+test verifies each ordered encoded part against the sender and the actual Lua
+importer, including exact reconstructed text and replay idempotence.
+
+**Failure preserved:** The first generated Party fixture exceeded the real
+encoder's **512-byte text ceiling** and was correctly rejected as invalid
+source. The fixture was corrected to fit the documented transport bound,
+without weakening the encoder. Both cross-component tests then passed.
+
+These two tests raise the full Python/Lua suite from 240 to **242** and combined
+Python/Lua + Node coverage from 287 to **289**, subject to full-suite rerun.
+No test sent any key into physical RIFT. Successful host-to-client delivery
+remains a separate live acceptance criterion.
