@@ -50,7 +50,7 @@ class ManualHostIngressTests(unittest.TestCase):
             source = (ADDON / filename).read_text(encoding="utf-8")
             chunk = ("local f=assert(loadstring(" + _lua_quote(source)
                      + "));assert(f({identifier='RiftChatModern',"
-                     "version='0.2.18'}, {})==nil)")
+                     "version='0.2.19'}, {})==nil)")
             lua.execute(chunk)
         if saved_setup:
             lua.execute(saved_setup)
@@ -288,6 +288,63 @@ assert(stat.imported==0 and stat.pending==true and stat.rejected>=1)
 assert(RiftChatModernAPI.GetHostIngressStatus().imported==1)
 assert(RiftChatModernAPI.GetStatus().nativePlayerChatCaptureAvailable==false)
 ''')
+
+    def test_multipart_progress_extends_idle_deadline_not_absolute_transfer_age(self):
+        # Eight or more real Node encoder chunks, 30 seconds between them.
+        # The whole transfer exceeds 45 seconds, but no idle gap does.
+        record = self.encode("guild", "RCMProbe", "Guild",
+                             "progressive bridge " * 24,
+                             token="ACDC10203040")
+        self.assertGreaterEqual(record["parts"], 5)
+        lua = self.lua()
+        lua.execute(r'''
+published=0
+receiver=assert(RiftChatModernHostIngress.new(function(row)
+    published=published+1
+    return {id=812}
+end))
+''')
+        for i, command in enumerate(record["commands"]):
+            line = command[len("/rcm import "):]
+            at = 1700 + 30 * i
+            lua.execute(
+                "local ok,reason=receiver:receiveLine(" +
+                _lua_quote(line) + f",{at})\n" +
+                f"assert(ok==true, 'chunk {i+1} was rejected: '..tostring(reason))\n" +
+                f"local state=receiver:status({at})\n" +
+                "assert(state.expired==0, 'active transfer expired despite progress')"
+            )
+        lua.execute(r'''
+local status=receiver:status(1700+30*''' + str(len(record["commands"])-1) + r''')
+assert(status.imported==1 and not status.pending)
+assert(status.lastImportToken=="ACDC10203040")
+assert(status.lastImportedMessageId==812)
+assert(published==1)
+''')
+
+    def test_repeating_a_chunk_does_not_keep_stalled_transfer_alive(self):
+        record = self.encode("party", "RCMProbe", "Party",
+                             "idle deadline " * 25,
+                             token="DACD10203040")
+        self.assertGreaterEqual(record["parts"], 2)
+        first = record["commands"][0][len("/rcm import "):]
+        second = record["commands"][1][len("/rcm import "):]
+        lua = self.lua()
+        lua.execute("recv=assert(RiftChatModernHostIngress.new(function() return true end))")
+        lua.execute(
+            "assert(recv:receiveLine("+_lua_quote(first)+",1700))\n" +
+            "local ok,why=recv:receiveLine("+_lua_quote(first)+",1739)\n" +
+            "assert(ok and why=='already_received')\n" +
+            "local state=recv:status(1746)\n" +
+            "assert(state.expired==1 and not state.pending)\n" +
+            "assert(state.imported==0)"
+        )
+        lua.execute(
+            "local ok,why=recv:receiveLine("+_lua_quote(second)+",1747)\n" +
+            "assert(ok and recv:status(1747).pendingParts==1)\n" +
+            "assert(recv:status(1747).expired==1)\n" +
+            "assert(recv:status(1747).imported==0)"
+        )
 
     def test_corrupted_chunk_and_timeout_fail_without_publication(self):
         lua=self.lua()

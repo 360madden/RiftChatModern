@@ -106,11 +106,14 @@ function Receiver:_remember(id)
         self.seen[oldest]=nil
     end
 end
--- Status may be queried after a transfer stalls; expire it without waiting
--- for another data chunk. Only the transient fragment buffer is discarded.
+-- Expiration is based on the last *newly accepted* fragment, not the first
+-- fragment's start time. A 12-part import may take >45s in total while still
+-- making timely progress. Duplicate/rejected chunks never extend the clock.
+-- Only the transient fragment buffer is discarded on expiry.
 function Receiver:expirePending(at)
     local p=self.pending
-    if p and finite(at) and at>=p.at and at-p.at>MAX_SECONDS then
+    if p and finite(at) and at>=p.lastProgressAt
+        and at-p.lastProgressAt>MAX_SECONDS then
         self.pending=nil
         self.expired=self.expired+1
         return true
@@ -155,7 +158,8 @@ function Receiver:receiveLine(line,at)
     if pending and (pending.id~=id or pending.total~=total) then
         self.rejected=self.rejected+1;return nil,"import_busy" end
     if not pending then
-        pending={id=id,total=total,parts={},count=0,at=at}
+        pending={id=id,total=total,parts={},count=0,at=at,
+            lastProgressAt=at}
         self.pending=pending
     end
     if pending.parts[index] then
@@ -166,6 +170,8 @@ function Receiver:receiveLine(line,at)
         self.rejected=self.rejected+1;return nil,"conflicting_chunk"
     end
     pending.parts[index]=piece;pending.count=pending.count+1
+    -- Time can move backwards on the host; never rewind the idle deadline.
+    if at>pending.lastProgressAt then pending.lastProgressAt=at end
     self.acceptedChunks=self.acceptedChunks+1
     if pending.count<total then
         return true,"part "..pending.count.."/"..total

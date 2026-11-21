@@ -2,7 +2,7 @@
 
 **Standalone chat-style console and addon diagnostics hub for RIFT Live**
 
-![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Installed](https://img.shields.io/badge/Installed-0.2.18-16a34a?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
+![RIFT Live](https://img.shields.io/badge/RIFT-Live-3bc4d0?style=flat-square) ![Lua](https://img.shields.io/badge/Lua-5.1-536dfe?style=flat-square) ![Source](https://img.shields.io/badge/Source-0.2.19-yellow?style=flat-square) ![Status](https://img.shields.io/badge/Native_social_bridge-not_verified-c67b28?style=flat-square)
 
 A compact, dark-mode chat window that can receive addon diagnostics, record event history, filter/search, copy to clipboard, and expose a command API to **all our RIFT repositories**. LuaPadModern inspired the editor focus design; this is **original code** with no LuaPadModern dependency or source modifications.
 
@@ -475,4 +475,10 @@ Ten deterministic cross-component tests passed after red/green corrections for c
 
 A previous RCM installer check incorrectly treated any running `rift_x64.exe` as a reason to refuse addon deployment. **That assumption has been corrected.** A fresh live deployment on AMD-DESKTOP replaced the three pending v0.2.18 files (`Core.lua`, `Main.lua`, `RiftAddon.toc`) while PID 34596 remained running. The installer created verified backups, and an independent second pass confirmed **10/10 source/installed hashes match**, with character SavedVariables untouched. The installer now returns `reloadUiRequired=true` for a changed live addon, false for an unchanged no-op, and keeps `runtimeReloadVerified=false` until game-side evidence exists.
 
-The current installed version is **v0.2.18**. **Activation via `/reloadui` and an in-game version check are still pending; no game restart is necessary.** This is now the standard RCM development iteration policy, enforced by new running-game/no-op regression tests. See the [root cause, corrected deploy procedure, red/green tests, and exact physical deployment receipt](docs/LIVE_DEPLOYMENT_RELOADUI_POLICY_20261120.md).
+The first verified live hot-deployment installed **v0.2.18**; source development has subsequently advanced to **v0.2.19**. **Actual UI activation still requires `/reloadui` and an in-game version check; no game restart is necessary.** This is now the standard RCM development iteration policy, enforced by new running-game/no-op regression tests. See the [root cause, corrected deploy procedure, red/green tests, and exact physical deployment receipt](docs/LIVE_DEPLOYMENT_RELOADUI_POLICY_20261120.md).
+
+## v0.2.19 — Preserve actively progressing multipart imports
+
+The existing 45-second host transfer deadline was incorrectly measured from the **first** chunk, so a multi-part message could expire even while new fragments arrived regularly. The receiver now measures inactivity since the **last newly accepted fragment**, allowing a complete transfer that lasts longer than 45 seconds as long as each new part arrives promptly. Duplicate/rejected chunks do **not** reset the clock. This fixes a concrete root cause rather than adding another retry layer or protocol.
+
+The failure was reproduced first using the real Node encoder and Lua 5.1 receiver: chunks 30 seconds apart exceeded the original 45-second absolute deadline and never completed. The corrected receiver produced exactly one imported row, preserved its transfer token and message-ID receipt, and still expired an idle import despite duplicate replays. **233/233 Python/Lua tests and 47/47 Node tests passed (280 total)**. The startup manifest and version-pinned tests are synchronized to **v0.2.19**, with SavedVariables schema 2 unchanged. See the [v0.2.19 root cause and test-first engineering record](docs/V0_2_19_MULTIPART_IDLE_TIMEOUT_20261120.md).
