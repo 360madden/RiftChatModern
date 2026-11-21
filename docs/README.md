@@ -44,6 +44,7 @@ for the historical timeline and cross-links.
 
 - [Physically verified real Say message and disk persistence](V0_2_23_PHYSICAL_RIFT_SAY_LOG_IMPORT_20261121.md)
 - [Bounded read-only Say follower (Windows host, not automatic game delivery)](BOUNDED_SAY_FOLLOW_20261121.md)
+- [Serialized Say delivery coordinator, private state and exact-token receipts](SAY_DELIVERY_COORDINATOR_20261121.md)
 - [Guarded editor sender prototype](EDITOR_SENDER_PROTOTYPE_20261120.md)
 - [Complete multipart .NET 10 batch validation](RCM_MULTIPART_EDITOR_BATCH_20261121.md)
 - [Exact-chat observer → batch gate](RCM_LOG_OBSERVER_BATCH_GATE_20261121.md)
