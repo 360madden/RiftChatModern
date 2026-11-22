@@ -11,7 +11,7 @@
 [![Lua 5.1](https://img.shields.io/badge/runtime-Lua%205.1-334155?style=for-the-badge)](addon/RiftChatModern/)
 [![Status](https://img.shields.io/badge/status-active%20development-f59e0b?style=for-the-badge)](#project-status)
 
-[Features](#what-rcm-can-do) · [Screenshot](#in-game-preview) · [Installation](#install-and-launch) · [Commands](#quick-command-reference) · [Addon API](#for-addon-developers) · [Documentation](#documentation)
+[Features](#what-rcm-can-do) · [Roadmap](ROADMAP.md) · [Screenshot](#in-game-preview) · [Installation](#install-and-launch) · [Commands](#quick-command-reference) · [Addon API](#for-addon-developers) · [Documentation](#documentation)
 
 </div>
 
@@ -166,6 +166,7 @@ The homepage is intentionally concise. The complete development history—includ
 
 | Start here | Purpose |
 |---|---|
+| 🧭 [Current development roadmap](ROADMAP.md) | Canonical priorities, dependency gates, measurable acceptance criteria and current project board |
 | 🎨 [v0.2.20 Glass UI](docs/V0_2_20_GLASS_UI_20261121.md) | Original PNG skin, interactive Lua styling, compatibility tests, and physical acceptance checklist |
 | 📸 [Real v0.2.20 RIFT screenshot evidence](docs/V0_2_20_NATIVE_SCREENSHOT_ACCEPTANCE_20261121.md) | Verified in-game screen capture and managed temporary foreground; private image not published |
 | 💬 [v0.2.21 Message columns](docs/V0_2_21_MESSAGE_COLUMNS_20261121.md) | Local seconds, distinct source/channel/message fields, responsive layout and test evidence |

@@ -1,6 +1,6 @@
 # RiftChatModern · Engineering documentation
 
-[← Return to the project homepage](../README.md)
+[← Return to the project homepage](../README.md) · [Current development roadmap](../ROADMAP.md)
 
 This folder preserves RCM's technical decisions, failures, tests, physical
 acceptance evidence, and release-by-release research. The public README is a
@@ -9,6 +9,8 @@ as [the complete engineering archive](ENGINEERING_ARCHIVE_README_THROUGH_2026112
 
 ## Getting started and architecture
 
+- **[Authoritative living development roadmap](../ROADMAP.md)** — prioritized milestones, evidence levels, acceptance gates, risks and next work
+- **[Sunday roadmap bootstrap and LEGION validation](HANDOFF_20261122_ROADMAP.md)** — docs-only changes and local test/toolchain results
 - **[Saturday evening public-channel handoff (8:55 PM)](HANDOFF_20261121_EVENING_PUBLIC.md)** — current work state, tests, shared claim lock, live-game blocker and next acceptance plan
 - [Earlier Saturday engineering handoff (4:20 PM)](HANDOFF_20261121_SATURDAY.md) — historical development context and initial Say coordinator handoff
 - [Addon transport and RIFT messaging limitations](ADDON_TRANSPORT.md)
