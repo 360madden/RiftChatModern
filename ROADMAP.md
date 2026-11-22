@@ -309,6 +309,7 @@ The `deploy_rcm.py` invocation above is **dry-run by default**; on a host not ma
 
 ### Reference index
 
+- [Latest Sunday development handoff](docs/HANDOFF_20261122_SUNDAY_CLOSEOUT.md)
 - [Sunday roadmap bootstrap and LEGION validation](docs/HANDOFF_20261122_ROADMAP.md)
 - [Latest Saturday evening handoff](docs/HANDOFF_20261121_EVENING_PUBLIC.md)
 - [Real Say coordinator proof](docs/COORDINATOR_PHYSICAL_ACCEPTANCE_20261121.md)

@@ -10,6 +10,7 @@ as [the complete engineering archive](ENGINEERING_ARCHIVE_README_THROUGH_2026112
 ## Getting started and architecture
 
 - **[Authoritative living development roadmap](../ROADMAP.md)** — prioritized milestones, evidence levels, acceptance gates, risks and next work
+- **[Latest Sunday development handoff](HANDOFF_20261122_SUNDAY_CLOSEOUT.md)** — exact next-session resume steps, evidence status, test blockers and P0 public-chat acceptance gate
 - **[Sunday roadmap bootstrap and LEGION validation](HANDOFF_20261122_ROADMAP.md)** — docs-only changes and local test/toolchain results
 - **[Saturday evening public-channel handoff (8:55 PM)](HANDOFF_20261121_EVENING_PUBLIC.md)** — current work state, tests, shared claim lock, live-game blocker and next acceptance plan
 - [Earlier Saturday engineering handoff (4:20 PM)](HANDOFF_20261121_SATURDAY.md) — historical development context and initial Say coordinator handoff

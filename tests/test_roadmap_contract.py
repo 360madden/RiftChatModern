@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ROADMAP = ROOT / "ROADMAP.md"
 README = ROOT / "README.md"
 DOCS_INDEX = ROOT / "docs" / "README.md"
+LATEST_HANDOFF = ROOT / "docs" / "HANDOFF_20261122_SUNDAY_CLOSEOUT.md"
 
 
 def local_markdown_links(source: str):
@@ -61,6 +62,18 @@ class RoadmapContractTests(unittest.TestCase):
         ):
             with self.subTest(boundary=boundary):
                 self.assertIn(boundary.lower(), self.body.lower())
+
+    def test_latest_handoff_is_durable_and_linked(self):
+        self.assertTrue(LATEST_HANDOFF.is_file())
+        self.assertIn("docs/HANDOFF_20261122_SUNDAY_CLOSEOUT.md", self.body)
+        self.assertIn("HANDOFF_20261122_SUNDAY_CLOSEOUT.md", DOCS_INDEX.read_text(encoding="utf-8"))
+        handoff = LATEST_HANDOFF.read_text(encoding="utf-8")
+        for link in local_markdown_links(handoff):
+            with self.subTest(link=link):
+                self.assertTrue((LATEST_HANDOFF.parent / link).is_file(), link)
+        for expected in ("RCM-010", "RCM-015", "117 pass", "16 failures", "AMD-DESKTOP", "single next success condition"):
+            with self.subTest(expected=expected):
+                self.assertIn(expected.lower(), handoff.lower())
 
     def test_roadmap_has_revision_and_operating_instructions(self):
         for label in (
