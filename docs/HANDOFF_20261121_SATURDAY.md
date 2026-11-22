@@ -7,7 +7,7 @@
 **Branch / remote:** main → origin, https://github.com/360madden/RiftChatModern  
 **Current installed in-game addon:** v0.2.23, unchanged by later Windows-only helper work.
 
-> **POST-HANDOFF UPDATE (later November 21):** This document is the historical 16:20 EST handoff. The previously pending coordinator P0 was subsequently **physically accepted** with a real Say import and exact disk token. See [the coordinator acceptance](COORDINATOR_PHYSICAL_ACCEPTANCE_20261121.md) and [new verified public-channel log format](LIVE_PUBLIC_CHANNEL_LOG_FORMAT_20261121.md) before following the older P0 steps below. Unattended continuous social interception and native social sending remain unverified.
+> **POST-HANDOFF UPDATE (later November 21):** This document is the historical 16:20 EST handoff. The coordinator Say P0 was subsequently **physically accepted** with a real Say import and exact disk token. A separate Level 1-29 [public-channel host pipeline](PUBLIC_CHANNEL_DELIVERY_20261121.md) has also passed offline integration tests, but **its real-game public import is pending**. See the [Say acceptance](COORDINATOR_PHYSICAL_ACCEPTANCE_20261121.md), the [verified public log format](LIVE_PUBLIC_CHANNEL_LOG_FORMAT_20261121.md), and the newer pipeline document rather than repeating the old P0 steps below. Unattended continuous social interception and native social sending remain unverified.
 
 ## 1. Goals and current boundaries
 

@@ -47,7 +47,7 @@ The numbered channel slot is retained separately from the normalized readable ch
 
 ## Next acceptance boundary
 
-**P1 public-message import:** Build an independently bounded public-channel observer and exact one-record public import preparation path, with authenticated file/offset evidence, no stale replay, source integrity, separate format/channel provenance and a dedicated no-duplicate receipt. The current Say-only coordinator must not be repurposed by changing its Say guards. Test first using sanitized fixtures; then make one supervised real public-channel-to-RCM editor attempt only with independent in-game and disk evidence.
+**Later implementation update (same evening):** An independently bounded [public-channel follower and delivery coordinator](PUBLIC_CHANNEL_DELIVERY_20261121.md) now support this verified slot 4 / Level 1-29 format. They use separate journals and message policies while sharing the validated source-integrity and receipt code with the Say path. Synthetic follower-to-queue, .NET 10 no-input validation, disk-proof and refusal tests pass. **A supervised real public-channel import into the RCM editor remains pending** because the live logging activation attempt was refused before input while the RIFT window was not foregroundable. The original Say-only policies remain intact.
 
 **Other channels (Guild/Party/Tell):** still require direct game-created bytes from a live RIFT client. Do not generalize their on-wire shapes from these public-channel lines.
 

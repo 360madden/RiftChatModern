@@ -2,7 +2,7 @@
 
 **Repository:** C:\work\RiftChatModern · **Host:** AMD-DESKTOP  
 **Current in-game addon:** v0.2.23 (unchanged by this host-side addition)  
-**Helper:** tools/rcm-live-say-follow.cjs
+**Helper:** tools/rcm-live-say-follow.cjs. A later shared-core refactor moved the bounded LogTailProbe logic to tools/rcm-live-social-follow-core.cjs, retaining the same Say-only entry point. A second explicitly separate public-channel wrapper is documented in [the public delivery pipeline](PUBLIC_CHANNEL_DELIVERY_20261121.md).
 **Local companion prerequisite:** a sibling C:\work\LuaPadModern checkout supplies its already-tested Node LogTailProbe decoder. This dependency applies to the Windows helper, **not** to the installed Lua addon; no npm package installation is required.
 
 ## Purpose and evidence boundary

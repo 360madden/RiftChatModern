@@ -2,7 +2,8 @@
 
 **Saturday, November 21, 2026 · AMD-DESKTOP**  
 **Scope:** Windows host helper only; existing RIFT addon stays at v0.2.23  
-**Implementation:** tools/rcm-say-delivery.cjs and tools/rcm-say-delivery-state.cjs  
+**Implementation:** tools/rcm-say-delivery.cjs and tools/rcm-say-delivery-state.cjs. A later shared-core refactor introduced tools/rcm-delivery-coordinator-core.cjs while retaining the same Say CLI, journal format and source-policy validation; see [separate public pipeline](PUBLIC_CHANNEL_DELIVERY_20261121.md).
+
 **Tests:** tests/test_say_delivery.cjs
 
 > **Later physical update (evening, November 21):** One supervised real Say transfer through this exact coordinator has now passed actual RIFT log capture, pinned .NET sender delivery, visible RCM HOST/SAY receipt, /reloadui and independent matching SavedVariables token verification. Read [the physical acceptance](COORDINATOR_PHYSICAL_ACCEPTANCE_20261121.md). The original notes below document implementation-time uncertainty; unattended delivery remains unverified.
@@ -49,7 +50,7 @@ State transitions:
     failed/ambiguous capture: queued -> quarantined
     crashed capture: capturing until explicit recovery -> failed/quarantined
 
-There is **no claimed -> queued transition**. If a sender call fails before input, may have partially inserted input, times out, or crashes, the token stays claimed. The operator must independently inspect the game or its persisted token; the system does not guess whether resending is safe. New capture sessions never replay old log history from before start; a crash can therefore leave gaps, which must not be misrepresented as lossless streaming.
+A later public-channel companion also shares one **global editor claim lock** with this Say journal. `claim` and `dispatch` refuse if the other channel has an unresolved claimed transfer or a colliding token, preventing cross-profile interleaving into RCM's single editor. The two journals must be in the same private directory; see [public delivery pipeline](PUBLIC_CHANNEL_DELIVERY_20261121.md). There is **no claimed -> queued transition**. If a sender call fails before input, may have partially inserted input, times out, or crashes, the token stays claimed. The operator must independently inspect the game or its persisted token; the system does not guess whether resending is safe. New capture sessions never replay old log history from before start; a crash can therefore leave gaps, which must not be misrepresented as lossless streaming.
 
 ## Typical PowerShell commands (AMD-DESKTOP)
 

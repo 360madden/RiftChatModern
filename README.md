@@ -48,6 +48,7 @@ RCM is built to support other RIFT addons as a shared diagnostics surface—not 
 | 📥 | **Physically proven Say import (v0.2.23)** | Two supervised real Say imports independently verified, including the new serialized coordinator with exact on-disk transfer receipt |
 | ⏱️ | **Bounded Say follower (Windows helper)** | Read-only monitoring of newly appended, physically observed Say syntax; metadata redacted by default; opt-in editor import preparation without in-game submission |
 | 📦 | **Serialized Say delivery coordinator (Windows helper)** | Private durable queue, one in-flight transfer, .NET 10 validation, explicitly pinned send, exact-token disk verification and no automatic retries |
+| 🌐 | **Bounded public-channel companion (Windows helper)** | Separately queued Level 1-29 / slot 4 host imports; exact public wire validation, global cross-profile editor lock, .NET sender preflight and disk-token proof; physical public import not yet accepted |
 | 💾 | **Persistence** | Character-scoped SavedVariables with schema migration and save-status diagnostics |
 
 <sub>Feature support varies between offline Lua 5.1 regression tests and physical in-game acceptance. See [verified status and limitations](#project-status).</sub>
@@ -148,12 +149,13 @@ The API also provides history retrieval, subscriptions, UI controls, copy helper
 |---|---|
 | **Addon release** | **v0.2.23**, physically loaded in RIFT Live; the retained real Say import displays as **`[HOST/SAY]`** without a duplicate |
 | **Physical RIFT evidence** | v0.2.22 General, Loot and named public-channel subscriptions confirmed in native screenshots; v0.2.21 drag/resize, focus, details, message columns previously accepted |
-| **Offline regression suite** | **315 Python/Lua and 99 Node tests passed** (November 21, 2026), including serialized Say queue, .NET sender dry-run/refusal, exact-token disk auditing, physical UI regressions and SavedVariables geometry audit |
+| **Offline regression suite** | **315 Python/Lua and 119 Node tests passed** (November 21, 2026), including serialized Say queue, .NET sender dry-run/refusal, exact-token disk auditing, physical UI regressions and SavedVariables geometry audit |
 | **Persistence** | Window position and size survived `/reloadui`; exact UI geometry and local DEV test entry independently found in the on-disk SavedVariables file |
 | **Windows host tooling** | Existing .NET 10 editor batch validator, exact-candidate gate; temporary RIFT foreground capture/return physically verified |
 | **Native player social chat** | Two supervised real **Say** imports accepted; 20 game-created numbered public-channel log lines establish one additional parser format, but public import and Guild/Party/Tell remain unverified |
 | **Bounded host Say monitoring** | New-only follower physically captured one real Say during a bounded, supervised session; not unattended continuous reception |
 | **Serialized host delivery** | **Physical P0 pass:** exactly one real Say transferred through coordinator to RCM and independently verified on disk under matching token |
+| **Public-channel host delivery** | New Level 1-29 / slot 4 queue, bounded follower, .NET sender preflight and disk-auditor integration **offline tested**; live delivery is pending after a foreground-refused no-input log activation attempt |
 | **Continuous unattended in-game import** | **Not yet implemented**; both verified Say transfers required explicit, supervised host actions |
 
 RCM is under active development. The main engineering priority is proving a reliable real-game social chat source, without mislabeling host-imported records or RIFT console configuration as a native chat transcript.
@@ -174,7 +176,8 @@ The homepage is intentionally concise. The complete development history—includ
 | ⏱️ [Bounded Say follow (host-only)](docs/BOUNDED_SAY_FOLLOW_20261121.md) | New-only multi-message log monitoring, redacted by default; opt-in batches but no automatic RIFT delivery |
 | 📦 [Serialized Say delivery coordinator](docs/SAY_DELIVERY_COORDINATOR_20261121.md) | Private durable queue, one claimed import, explicitly pinned .NET sender and exact SavedVariables token audit |
 | ✅ [First physical coordinator acceptance](docs/COORDINATOR_PHYSICAL_ACCEPTANCE_20261121.md) | New live Say → serialized transfer → in-game HOST/SAY row → /reloadui → independently verified disk token |
-| 🌐 [Real numbered public chat log format](docs/LIVE_PUBLIC_CHANNEL_LOG_FORMAT_20261121.md) | Twenty authentic current-client lines; strict Windows parser, with actual public-channel import still pending |
+| 🌐 [Real numbered public chat log format](docs/LIVE_PUBLIC_CHANNEL_LOG_FORMAT_20261121.md) | Twenty authentic current-client lines and strict Windows parser |
+| 📦 [Public-channel companion pipeline](docs/PUBLIC_CHANNEL_DELIVERY_20261121.md) | Bounded public follower, independent private journal and coordinator, no-input validation and disk-token proof; physical public import pending |
 | 🧭 [Saturday development handoff](docs/HANDOFF_20261121_SATURDAY.md) | Complete November 21 recovery context, verified evidence, tests, known gaps and precise next-cycle acceptance sequence |
 | 📚 [Complete engineering archive](docs/ENGINEERING_ARCHIVE_README_THROUGH_20261121.md) | Previous detailed README, preserved in full |
 | 🧭 [Development history](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md) | Original concept, initial build, fixes, and live findings |
@@ -193,7 +196,7 @@ To run the Windows development regression suite, use the configured Python envir
 
 ```powershell
 & "C:\work\riftreader2\.venv\Scripts\python.exe" -m unittest discover -s tests
-node --test tests/test_chat_import.cjs tests/test_chat_observer.cjs tests/test_chat_observer_cli.cjs tests/test_chat_batch_gate.cjs tests/test_live_say_batch.cjs tests/test_live_say_follow.cjs tests/test_say_delivery.cjs
+node --test tests/test_chat_import.cjs tests/test_chat_observer.cjs tests/test_chat_observer_cli.cjs tests/test_chat_batch_gate.cjs tests/test_live_say_batch.cjs tests/test_live_say_follow.cjs tests/test_live_public_follow.cjs tests/test_say_delivery.cjs tests/test_public_delivery.cjs
 ```
 
 The local Python path above is a developer-workstation example, **not** an end-user installation requirement.

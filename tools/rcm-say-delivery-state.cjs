@@ -1,14 +1,24 @@
 "use strict";
 
-// RCM private host delivery journal. Never a RIFT SavedVariables file.
-// Only VERIFIED-SYNTAX Say batches enter this queue. Serialized on disk with
-// explicit claim, disk verification and no automatic retry on uncertainty.
+// RCM private host delivery journal; strictly bound to an explicit profile.
+// Never writes RIFT SavedVariables or retries ambiguous keyboard insertion.
 const fs=require("node:fs");
 const path=require("node:path");
 const crypto=require("node:crypto");
 const {TextDecoder}=require("node:util");
 
-const SCHEMA="RCM_SAY_DELIVERY_V1";
+const PROFILES=Object.freeze({
+  say:Object.freeze({schema:"RCM_SAY_DELIVERY_V1",filename:"rcm-say-delivery.json",
+    name:"say",kind:"general",wire:"S",channel:"Say",slot:null,
+    event:"say_observed",format:"rift-live-2026-say"}),
+  public:Object.freeze({schema:"RCM_PUBLIC_DELIVERY_V1",filename:"rcm-public-delivery.json",
+    name:"public",kind:"public",wire:"C",channel:"Level 1-29",slot:4,
+    event:"public_observed",format:"rift-live-2026-numbered-public"})
+});
+function createStore(profileName="say"){
+const profile=PROFILES[profileName];
+if(!profile)throw Error("unknown_delivery_profile");
+const SCHEMA=profile.schema;
 const MAX_ENTRIES=200,MAX_SESSIONS=50,MAX_FILE=2*1024*1024;
 const ENTRY_STATES=new Set(["queued","claimed","disk_saved","cancelled","quarantined"]);
 const SESSION_STATES=new Set(["capturing","completed","failed"]);
@@ -24,7 +34,7 @@ function properString(v,min,max){
 function validateBatch(b, observed){
   if(!b||typeof b!=="object"||Array.isArray(b)||
       b.event!=="rcm_manual_import"||b.protocol!=="RCM1-B64URL"||
-      !TOKEN.test(b.id||"")||b.kind!=="general"||b.inputMode!=="editor"||
+      !TOKEN.test(b.id||"")||b.kind!==profile.kind||b.inputMode!=="editor"||
       b.source!=="Windows_candidate_parser"||
       b.automaticGameInput!==false||b.liveGameDeliveryVerified!==false||
       b.requiresManualEntry!==true ||
@@ -50,9 +60,9 @@ function validateBatch(b, observed){
   catch(_){fail("invalid_utf8_wire");}
   if(Buffer.byteLength(decoded,"utf8")!==raw.length)fail("invalid_utf8_wire");
   const fields=decoded.split("\0");
-  if(fields.length!==4||fields[0]!=="S"||fields[2]!=="Say"||
+  if(fields.length!==4||fields[0]!==profile.wire||fields[2]!==profile.channel||
      !properString(fields[1],1,40)||!properString(fields[3],1,512))
-    fail("not_verified_say_wire");
+    fail("not_verified_"+profile.name+"_wire");
   if(observed){
     if(!isObservedReceipt(observed)||observed.textBytes!==
        Buffer.byteLength(fields[3],"utf8"))
@@ -62,8 +72,10 @@ function validateBatch(b, observed){
     wireSha256:crypto.createHash("sha256").update(raw).digest("hex")};
 }
 function isObservedReceipt(e){
-  return !!e && e.event==="say_observed" && e.format==="rift-live-2026-say" &&
-    e.channel==="Say" && e.kind==="general" && e.source==="RIFT_Log.txt" &&
+  return !!e && e.event===profile.event && e.format===profile.format &&
+    e.channel===profile.channel && e.kind===profile.kind &&
+    e.source==="RIFT_Log.txt" &&
+    (profile.slot===null || e.channelSlot===profile.slot) &&
     e.verifiedLiveFormat===true && e.physicalRiftOriginVerified===false &&
     e.senderRedacted===true && e.textRedacted===true &&
     Number.isSafeInteger(e.sequence) && e.sequence>=1 && e.sequence<=100 &&
@@ -115,7 +127,7 @@ function assertJournal(data){
 }
 function validStatePath(p){
   if(typeof p!=="string"||!path.isAbsolute(p)||
-     path.basename(p).toLowerCase()!=="rcm-say-delivery.json")
+     path.basename(p).toLowerCase()!==profile.filename)
     fail("state_must_be_absolute_private_journal");
   return path.resolve(p);
 }
@@ -143,7 +155,7 @@ function writeState(file,state){
   }
   const payload=JSON.stringify(state)+"\n";
   if(Buffer.byteLength(payload,"utf8")>MAX_FILE)fail("delivery_journal_full");
-  const temp=path.join(dir,".rcm-say-"+crypto.randomBytes(12).toString("hex")+".tmp");
+  const temp=path.join(dir,".rcm-"+profile.name+"-"+crypto.randomBytes(12).toString("hex")+".tmp");
   let fd;
   try {
     fd=fs.openSync(temp,"wx",0o600);
@@ -265,7 +277,9 @@ function summary(state){
       reason:s.reason})),counts,activeToken:state.entries.find(x=>x.status==="claimed")?.token||null,
     messageTextEmitted:false};
 }
-module.exports={SCHEMA,MAX_ENTRIES,parseBatch:validateBatch,assertJournal,
+return {SCHEMA,MAX_ENTRIES,profile,parseBatch:validateBatch,assertJournal,
   fresh,validStatePath,readState,writeState,ensureStateFolder,withLock,save,
   beginSession,acceptPair,completeSession,claimNext,cancelClaim,applyDiskProof,summary,
   isObservedReceipt};
+}
+module.exports={...createStore("say"),createStore,PROFILES};
