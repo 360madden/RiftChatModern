@@ -9,7 +9,8 @@ as [the complete engineering archive](ENGINEERING_ARCHIVE_README_THROUGH_2026112
 
 ## Getting started and architecture
 
-- **[Saturday November 21 engineering handoff](HANDOFF_20261121_SATURDAY.md)** — most recent verified status, source map, test commands, remaining limitations, P0 physical acceptance plan and remote publication context
+- **[Saturday evening public-channel handoff (8:55 PM)](HANDOFF_20261121_EVENING_PUBLIC.md)** — current work state, tests, shared claim lock, live-game blocker and next acceptance plan
+- [Earlier Saturday engineering handoff (4:20 PM)](HANDOFF_20261121_SATURDAY.md) — historical development context and initial Say coordinator handoff
 - [Addon transport and RIFT messaging limitations](ADDON_TRANSPORT.md)
 - [Original concept and early development history](DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md)
 - [v0.2.11 provenance and API v2 contract](V0_2_11_STRUCTURED_PROVENANCE.md)

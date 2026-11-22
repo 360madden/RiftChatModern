@@ -178,6 +178,7 @@ The homepage is intentionally concise. The complete development history—includ
 | ✅ [First physical coordinator acceptance](docs/COORDINATOR_PHYSICAL_ACCEPTANCE_20261121.md) | New live Say → serialized transfer → in-game HOST/SAY row → /reloadui → independently verified disk token |
 | 🌐 [Real numbered public chat log format](docs/LIVE_PUBLIC_CHANNEL_LOG_FORMAT_20261121.md) | Twenty authentic current-client lines and strict Windows parser |
 | 📦 [Public-channel companion pipeline](docs/PUBLIC_CHANNEL_DELIVERY_20261121.md) | Bounded public follower, independent private journal and coordinator, no-input validation and disk-token proof; physical public import pending |
+| 🧭 [Evening public-channel handoff](docs/HANDOFF_20261121_EVENING_PUBLIC.md) | Current 8:55 PM checkpoint, source and test map, actual blockers, privacy and exact next physical test |
 | 🧭 [Saturday development handoff](docs/HANDOFF_20261121_SATURDAY.md) | Complete November 21 recovery context, verified evidence, tests, known gaps and precise next-cycle acceptance sequence |
 | 📚 [Complete engineering archive](docs/ENGINEERING_ARCHIVE_README_THROUGH_20261121.md) | Previous detailed README, preserved in full |
 | 🧭 [Development history](docs/DEVELOPMENT_HISTORY_CONCEPT_TO_V0_2_2.md) | Original concept, initial build, fixes, and live findings |
