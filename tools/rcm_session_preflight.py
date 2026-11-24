@@ -18,6 +18,7 @@ import os
 import re
 from pathlib import Path
 import socket
+import stat
 import subprocess
 import sys
 
@@ -71,22 +72,33 @@ def parse_rift_client_settings(contents: str) -> dict:
         raise ValueError("invalid_config_source")
     section=""
     settings={}
-    allowed={"DocumentsDirectory","LogConsole","LogCombatConsole",
-             "LogCombatConsoleExpanded","CombatLogFileFlushInterval"}
+    allowed={"LogConsole","LogCombatConsole","LogCombatConsoleExpanded","CombatLogFileFlushInterval"}
     for line in contents.splitlines():
-        header=re.match(r"^\s*\[([A-Za-z_0-9]+)\]\s*$",line)
+        header=re.match(r"^\s*\[([^\[\]]+)\]\s*$",line)
         if header:
-            section=header.group(1).casefold()
+            section=header.group(1).strip().casefold()
+            continue
+        if section!="client":continue
+        # A malformed explicit override is not the same as an absent override.
+        # Never silently fall back to a stale conventional Documents folder.
+        if re.match(r"^\s*DocumentsDirectory\b",line,re.IGNORECASE):
+            item=re.fullmatch(r"\s*DocumentsDirectory\s*=\s*(.*?)\s*",line,re.IGNORECASE)
+            if not item or "DocumentsDirectory" in settings:
+                raise ValueError("invalid_documents_directory")
+            value=item.group(1)
+            if value.startswith('"') and value.endswith('"') and len(value)>=2:
+                value=value[1:-1]
+            parsed=os.path.expandvars(value)
+            if (not parsed or len(parsed)>260 or '"' in parsed or '\x00' in parsed
+                    or re.search(r"%[^%]+%|\$\{[^}]+\}|\$[A-Za-z_][A-Za-z_0-9]*",parsed)
+                    or not Path(parsed).is_absolute()):
+                raise ValueError("invalid_documents_directory")
+            settings["DocumentsDirectory"]=parsed
             continue
         item=re.match(r"^\s*([A-Za-z_][A-Za-z_0-9]*)\s*=\s*(.*?)\s*$",line)
-        if section!="client" or not item or item.group(1) not in allowed:
-            continue
+        if not item or item.group(1) not in allowed:continue
         key,value=item.groups()
-        if key=="DocumentsDirectory":
-            parsed=os.path.expandvars(value.strip().strip('"'))
-            if len(parsed)<=260 and Path(parsed).is_absolute():
-                settings[key]=parsed
-        elif key in ("LogConsole","LogCombatConsole","LogCombatConsoleExpanded"):
+        if key in ("LogConsole","LogCombatConsole","LogCombatConsoleExpanded"):
             if value.casefold() in ("true","false"):
                 settings[key]=value.casefold()=="true"
         elif key=="CombatLogFileFlushInterval":
@@ -101,16 +113,28 @@ def read_rift_config(home:Path,env:dict) -> dict:
     state={"path":str(path),"exists":False,"settings":{},
            "logFlagSemanticsConfirmed":False}
     try:
-        if not path.is_file():return state
-        if path.stat().st_size>512*1024:
+        try:
+            meta=path.stat()
+        except FileNotFoundError:
+            return state
+        state["exists"]=True
+        if not stat.S_ISREG(meta.st_mode):
+            raise ValueError("invalid_config_file_type")
+        if meta.st_size>512*1024:
             state["readError"]="oversize"
             return state
-        contents=path.read_text(encoding="utf-8-sig",errors="replace")
-        state["exists"]=True
-        state["settings"]=parse_rift_client_settings(contents)
+        # Bound the actual read too: the file could grow after stat. Strict
+        # decoding prevents damaged paths from being accepted as replacements.
+        with path.open("rb") as reader:
+            data=reader.read(512*1024+1)
+        if len(data)>512*1024:
+            state["readError"]="oversize"
+            return state
+        state["settings"]=parse_rift_client_settings(data.decode("utf-8-sig"))
     except (OSError,ValueError):
         state["readError"]="unavailable"
     return state
+
 
 def candidate_log_paths(home:Path, documents:Path|None, env:dict, game_exes:list[str]|None=None,
                         configured_root:Path|None=None) -> list[Path]:
@@ -227,7 +251,16 @@ def make_report(processes:list[dict],host:str,docs:Path|None,
         hints.append("error_handler_companion_present_not_crash_evidence")
     if settings.get("LogConsole") is False:
         hints.append("rift_cfg_logconsole_false_observed_runtime_semantics_unverified")
-    if not any(x["exists"] and Path(x["path"]).name.casefold()=="log.txt" for x in files):
+    # Report candidate metadata for diagnosis, but never qualify an old
+    # conventional Documents log when the client names a different root.
+    if (game_config or {}).get("readError"):
+        reasons.append("rift_config_unreadable")
+    configured=settings.get("DocumentsDirectory")
+    if configured:
+        expected=Path(configured)/"Log.txt"
+        if not any(x["exists"] and Path(x["path"])==expected for x in files):
+            reasons.append("no_log_file_in_configured_documents_directory")
+    elif not any(x["exists"] and Path(x["path"]).name.casefold()=="log.txt" for x in files):
         reasons.append("no_log_file_found_in_known_paths")
     return {
         "schema":"RCM_SESSION_PREFLIGHT_V1",
