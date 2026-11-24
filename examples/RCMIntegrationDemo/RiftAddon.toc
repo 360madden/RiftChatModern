@@ -1,0 +1,10 @@
+Identifier = "RCMIntegrationDemo"
+Name = "RCM Integration Demo"
+NameShort = "RCMDemo"
+Description = "Optional local diagnostics example for the RCM API. No native chat interception or game input."
+Author = "360madden"
+Email = "placeholder@example.com"
+Version = "1.0.0"
+Environment = "4.3"
+Dependencies = { RiftChatModern = {"required", "before"} }
+RunOnStartup = { "Main.lua" }

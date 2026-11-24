@@ -2,7 +2,7 @@
 -- Native player say/tell/guild transmit and full native chat interception are NOT
 -- exposed by the verified addon APIs. This UI never pretends to send those.
 local info = ...
-local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.25"
+local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.26"
 local Core = _G.RiftChatModernCore
 local MessageBridge = _G.RiftChatModernAddonMessages
 local NativeProbe = _G.RiftChatModernNativeProbe
@@ -1859,6 +1859,11 @@ _G.RiftChatModernAPI={
         local data=model and model:status() or {version=VERSION,ready=false}
         data.version=VERSION
         data.ready=model~=nil
+        -- Capabilities remain explicit even before SavedVariables load.
+        data.nativeSocialSendAvailable=false
+        data.nativePlayerChatCaptureAvailable=false
+        data.listenerCount=data.listenerCount or 0
+        data.listenerErrors=data.listenerErrors or 0
         data.windowVisible=panel and panel:GetVisible() or false
         local state=focusState()
         data.editorFocusState=state
@@ -1890,7 +1895,9 @@ _G.RiftChatModernAPI={
     end,
     GetHistory=function(kind,search,limit,offset)
         if not model then return nil,"not_ready" end
-        return model:getHistory(kind,search,limit or 50,offset or 0)
+        if limit==nil then limit=50 end
+        if offset==nil then offset=0 end
+        return model:getHistory(kind,search,limit,offset)
     end,
     GetMessage=function(id)
         if not model then return nil,"not_ready" end

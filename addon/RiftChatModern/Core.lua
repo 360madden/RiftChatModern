@@ -274,7 +274,7 @@ function Core.new(saved)
     local paletteRepaired=sanitizePalette(saved)
     local visibilityRepaired=sanitizeVisibility(saved)
     local initializedSavedState=migrating or saved.nextId==nil or paletteRepaired or visibilityRepaired
-    local self=setmetatable({saved=saved, handlers={}, listeners={},
+    local self=setmetatable({saved=saved, handlers={}, listeners={}, listenerErrors=0,
         filter="all", search="", onChange=nil, onCommand=nil,
         revision=initializedSavedState and 1 or 0}, Model)
     saved.nextId=saved.nextId or (maxId+1)
@@ -324,8 +324,23 @@ function Model:publish(kind, text, source, at, metadata)
     self.saved.nextId=self.saved.nextId+1
     self:_changed()
     if not self._notifying then
+        -- Do not iterate a live map while user callbacks can mutate it.
+        -- Capture registration identities, not just callback functions:
+        -- removing/re-registering the same function is a new subscription.
+        -- The bounded snapshot is dispatched in name order for repeatability.
         self._notifying=true
-        for _,cb in pairs(self.listeners) do pcall(cb,copyRow(row)) end
+        local snapshot={}
+        for name,registration in pairs(self.listeners) do
+            snapshot[#snapshot+1]={name=name,registration=registration}
+        end
+        table.sort(snapshot,function(a,b) return a.name<b.name end)
+        for _,entry in ipairs(snapshot) do
+            if self.listeners[entry.name]==entry.registration then
+                local ok=pcall(entry.registration.callback,copyRow(row))
+                if not ok then self.listenerErrors=self.listenerErrors+1 end
+            end
+        end
+        -- A nested publish is still retained, but does not recursively notify.
         self._notifying=false
     end
     return copyRow(row)
@@ -333,9 +348,11 @@ end
 -- visibleOnly is opt-in. Existing addon API/history and receipt lookups
 -- retain their full semantics even when the player hides a category in RCM.
 function Model:getHistory(filter, search, limit, offset, visibleOnly)
-    filter=filter or self.filter
-    search=search or self.search
+    -- Only nil requests a default. A boolean or malformed query is an error.
+    if filter==nil then filter=self.filter end
+    if search==nil then search=self.search end
     if not filters[filter] or type(search)~="string" or #search>60
+        or search:find("[%z\1-\8\11\12\14-\31]")
         or type(limit)~="number" or limit<1 or limit>MAX_HISTORY
         or limit%1~=0 or type(offset)~="number" or offset<0
         or offset%1~=0 then return nil,"invalid_query" end
@@ -542,13 +559,12 @@ end
 function Model:subscribe(name,callback)
     if not validString(name,1,40) or type(callback)~="function"
         or self.listeners[name] then return nil,"invalid_listener" end
-    local count=0
-    for _ in pairs(self.listeners) do count=count+1 end
-    if count>=48 then return nil,"listener_limit" end
-    self.listeners[name]=callback
+    if self:listenerCount()>=48 then return nil,"listener_limit" end
+    self.listeners[name]={callback=callback}
     return true
 end
 function Model:unsubscribe(name)
+    if not validString(name,1,40) then return nil,"invalid_listener" end
     if not self.listeners[name] then return nil,"not_found" end
     self.listeners[name]=nil
     return true
@@ -612,11 +628,17 @@ function Model:commandCount()
     for _ in pairs(self.handlers) do count=count+1 end
     return count
 end
+function Model:listenerCount()
+    local count=0
+    for _ in pairs(self.listeners) do count=count+1 end
+    return count
+end
 function Model:status()
-    return {version="0.2.25",schemaVersion=2,
+    return {version="0.2.26",schemaVersion=2,
         provenanceRequired=true,historyCount=#self.saved.history,
         filter=self.filter,search=self.search,revision=self.revision,
-        commandCount=self:commandCount(),nativeSocialSendAvailable=false,
+        commandCount=self:commandCount(),listenerCount=self:listenerCount(),
+        listenerErrors=self.listenerErrors,nativeSocialSendAvailable=false,
         nativePlayerChatCaptureAvailable=false}
 end
 -- UI geometry is persisted outside the usual history/filter callbacks.

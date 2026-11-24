@@ -6,7 +6,7 @@
 
 **A modern, draggable chat-style console and developer diagnostics hub for RIFT Live.**
 
-[![Version](https://img.shields.io/badge/version-0.2.25-14b8a6?style=for-the-badge)](addon/RiftChatModern/RiftAddon.toc)
+[![Version](https://img.shields.io/badge/version-0.2.26-14b8a6?style=for-the-badge)](addon/RiftChatModern/RiftAddon.toc)
 [![RIFT Live](https://img.shields.io/badge/game-RIFT%20Live-0ea5e9?style=for-the-badge)](https://www.trionworlds.com/rift/)
 [![Lua 5.1](https://img.shields.io/badge/runtime-Lua%205.1-334155?style=for-the-badge)](addon/RiftChatModern/)
 [![Status](https://img.shields.io/badge/status-active%20development-f59e0b?style=for-the-badge)](#project-status)
@@ -31,7 +31,7 @@ RCM is built to support other RIFT addons as a shared diagnostics surface—not 
 <div align="center">
 <img src="assets/screenshots/rcm-v0.2.22-native-console-live-cropped.jpg" alt="Actual RiftChatModern v0.2.22 native RIFT Console subscription inspector running in RIFT Live" width="900"/>
 
-<sub>Historical real RIFT Live screenshot of **RCM v0.2.22** (November 21, 2026), showing read-only public-channel subscriptions returned by the game. **Last physically verified addon: v0.2.23. Current source: v0.2.25 (offline tested).** Cropped to exclude the player name and private HUD. No simulated transcript. [Previous v0.2.21 UI](assets/screenshots/rcm-v0.2.21-live-ui-cropped.jpg) and [redacted v0.2.2 image](assets/screenshots/rcm-v0.2.2-physical-names-redacted.png) remain available.</sub>
+<sub>Historical real RIFT Live screenshot of **RCM v0.2.22** (November 21, 2026), showing read-only public-channel subscriptions returned by the game. **Last physically verified addon: v0.2.23. Current source: v0.2.26 (offline tested).** Cropped to exclude the player name and private HUD. No simulated transcript. [Previous v0.2.21 UI](assets/screenshots/rcm-v0.2.21-live-ui-cropped.jpg) and [redacted v0.2.2 image](assets/screenshots/rcm-v0.2.2-physical-names-redacted.png) remain available.</sub>
 </div>
 
 ## What RCM can do
@@ -44,7 +44,7 @@ RCM is built to support other RIFT addons as a shared diagnostics surface—not 
 | 💬 | **Accurately labeled message history** | All, Imports, Notices, NPC Say, Addons, Dev; former Chat alias preserved as `:filter chat` |
 | 🔎 | **Find and inspect** | Search, paginated history, expandable message details, copy/export |
 | ⌨️ | **Local command editor** | Dedicated input, focus feedback, local `:` commands, session-only command recall |
-| 🧩 | **Addon integration** | Publish diagnostics, register commands, subscribe to messages, inspect history |
+| 🧩 | **Addon integration (API v2)** | Publish diagnostics, register commands, mutation-safe subscriptions, history queries and a tested standalone consumer example |
 | 🛠️ | **Native CONSOLE inspector (v0.2.22)** | Read-only Game, Loot, Player, public Channel and Combat subscriptions; actual ON/OFF states, console selector and refresh |
 | 📥 | **Physically proven Say import (v0.2.23)** | Two supervised real Say imports independently verified, including the new serialized coordinator with exact on-disk transfer receipt |
 | ⏱️ | **Bounded Say follower (Windows helper)** | Read-only monitoring of newly appended, physically observed Say syntax; metadata redacted by default; opt-in editor import preparation without in-game submission |
@@ -135,7 +135,7 @@ Dependencies = { RiftChatModern = {"required", "before"} }
 ```lua
 local rcm = _G.RiftChatModernAPI
 
-if rcm and rcm.interfaceVersion == 2 then
+if rcm and rcm.interfaceVersion == 2 and rcm.GetStatus().ready then
     rcm.Publish("addons", "Position sampler ready", "RR2")
 
     rcm.RegisterCommand("rr2", function(args)
@@ -147,13 +147,13 @@ if rcm and rcm.interfaceVersion == 2 then
 end
 ```
 
-The API also provides history retrieval, subscriptions, UI controls, copy helpers, native console metadata, and addon-data messaging. The v0.2.24 additive palette API is `GetChannelColors()`, `SetChannelColor(key, hex)`, and `ResetChannelColor(key)`; see [channel palette contract](docs/V0_2_24_CHANNEL_PALETTE_20261123.md). The v0.2.25 visibility API is `GetChannelVisibility()`, `SetChannelVisible(key, visible)`, and `ResetChannelVisibility()`. Existing history queries remain independent of UI visibility; [panel contract](docs/V0_2_25_PALETTE_PANEL_20261123.md). **Addon-data transport is not ordinary player-chat transport.** See the [full API and engineering contract](docs/ENGINEERING_ARCHIVE_README_THROUGH_20261121.md#universal-addon-api).
+The API also provides history retrieval, subscriptions, UI controls, copy helpers, native console metadata, and addon-data messaging. The v0.2.24 additive palette API is `GetChannelColors()`, `SetChannelColor(key, hex)`, and `ResetChannelColor(key)`; see [channel palette contract](docs/V0_2_24_CHANNEL_PALETTE_20261123.md). The v0.2.25 visibility API is `GetChannelVisibility()`, `SetChannelVisible(key, visible)`, and `ResetChannelVisibility()`. Existing history queries remain independent of UI visibility; [panel contract](docs/V0_2_25_PALETTE_PANEL_20261123.md). **Addon-data transport is not ordinary player-chat transport.** See the [current API v2 reference](docs/ADDON_API_V2.md) and [runnable integration demo](examples/RCMIntegrationDemo/README.md). v0.2.26 hardens subscriber delivery, query validation and readiness diagnostics; interfaceVersion remains 2.
 
 ## Project status
 
 | Area | Current evidence |
 |---|---|
-| **Addon source / live baseline** | **v0.2.25** source includes a graphical color/visibility editor; **v0.2.23** is the last physically accepted version, with a retained real **`[HOST/SAY]`** import |
+| **Addon source / live baseline** | **v0.2.26** source includes the graphical palette, API hardening and a separate integration example; **v0.2.23** is the last physically accepted version, with a retained real **`[HOST/SAY]`** import |
 | **Physical RIFT evidence** | v0.2.22 General, Loot and named public-channel subscriptions confirmed in native screenshots; v0.2.21 drag/resize, focus, details, message columns previously accepted |
 | **Offline regression suite** | LEGION's November 23 toolchain qualification passed 321 Python/Lua + 129 Node tests; the [v0.2.25 palette report](docs/V0_2_25_PALETTE_PANEL_20261123.md) tracks the latest UI regression results. Historical AMD-DESKTOP: 315 Python/Lua + 119 Node tests passed November 21. |
 | **Persistence** | Window position and size survived `/reloadui`; exact UI geometry and local DEV test entry independently found in the on-disk SavedVariables file |

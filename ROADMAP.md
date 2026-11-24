@@ -167,7 +167,7 @@ UX1 UI polish & configuration -> API1 addon integration -> REL1 release quality
 
 **Objective:** RCM remains a reusable local diagnostics hub regardless of social-chat feasibility.
 
-- [ ] **RCM-060 · Versioned API:** Inventory `RiftChatModernAPI` `interfaceVersion = 2`, `Publish`, `RegisterCommand`, subscribe/history/UI/copy behavior, argument validation and failure modes. Produce concise reference plus runnable example addon.
+- [x] **RCM-060 · Versioned API:** Inventory `RiftChatModernAPI` `interfaceVersion = 2`, `Publish`, `RegisterCommand`, subscribe/history/UI/copy behavior, argument validation and failure modes. **TESTED-OFFLINE (v0.2.26):** [complete API reference](docs/ADDON_API_V2.md), [optional demo addon](examples/RCMIntegrationDemo/README.md), mutation-safe subscriber dispatch, strict queries and readiness diagnostics. Physical integration remains RCM-061.
 - [ ] **RCM-061 · Cross-addon smoke:** Confirm dependency order and a nontrivial live integration from an existing sibling addon (RPT/RR2/Telemetry as available). Verify one published event and one command result physically; keep project repositories isolated.
 - [ ] **RCM-062 · CLI contracts:** Define redacted machine-readable status/health, bounded diagnostic errors, meaningful exit codes and private data handling for host companion. Do not confuse host CLI with a Lua API.
 - [ ] **RCM-063 · Backwards compatibility:** Compatibility test for existing published commands/filters, importer framing, history schema and saved UI; changes to wire/API must be versioned and migration-tested.
@@ -289,7 +289,7 @@ The `deploy_rcm.py` invocation above is **dry-run by default**; on a host not ma
 | M3 queue/recovery extension | `PLANNED` (foundations implemented) | Any dev host with tests | Start after M1 |
 | M4 continuous companion | `PLANNED` | AMD-DESKTOP qualification | Start after M3 |
 | UX1 improvements | `TESTED-OFFLINE` v0.2.25 graphical palette and visibility implemented; physical acceptance pending | Any dev host; AMD for acceptance | Verify live color/visibility, reload/relogin persistence; continue UX1/API1 offline |
-| API1 integration | `PLANNED` / API v2 existing | Any dev host; AMD for acceptance | Contract review + test consumer |
+| API1 integration | `TESTED-OFFLINE` RCM-060 API reference, hardened callback lifecycle and consumer example | Any dev host; AMD for acceptance | RCM-061 physical roundtrip; RCM-062 host CLI contracts |
 | GATE B full replacement | `RESEARCH`, no GO decision | Physical current client required | After incoming coverage/source feasibility |
 | REL1 release | `PLANNED` | Verified game host | After required gates |
 
