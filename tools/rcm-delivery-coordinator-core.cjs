@@ -204,7 +204,7 @@ function withGlobalEditorClaimLock(statePath,fn){
   // Separate private journals therefore share ONE exclusive claim/input lock.
   store.ensureStateFolder(statePath);
   const dir=path.dirname(statePath);
-  const lock=path.join(dir,"rcm-global-editor-claim.lock");
+  const lock=path.join(dir,stateModule.GLOBAL_EDITOR_LOCK);
   let fd;
   try{fd=fs.openSync(lock,"wx",0o600);}
   catch(_){fail("global_editor_claim_lock_held_inspect_before_recovery");}

@@ -122,6 +122,8 @@ RIFT/
 
 ### Windows host companion (optional)
 
+Start with `node tools/rcm-companion-health.cjs --expect-host LEGION` (substitute the verified target hostname). This read-only check reports dependency availability, both journal states, locks and cross-profile conflicts as redacted JSON. It never authorizes game input. See the [health CLI contract](docs/COMPANION_HEALTH_20261123.md).
+
 Run `node tools/rcm-say-delivery.cjs status` from the repository root to inspect its private Say-transfer queue. An explicitly started capture can collect newly appended real-log Say-shaped messages, and `preflight` validates one queued batch through the real .NET 10 sender without game input. An opt-in `dispatch` requires fresh, fully pinned RIFT process identity and focus acknowledgments; **one supervised coordinator Say transfer has now passed real-game and disk acceptance**, while unattended continuous delivery remains unverified. Read the [physical coordinator acceptance](docs/COORDINATOR_PHYSICAL_ACCEPTANCE_20261121.md) and [delivery contract](docs/SAY_DELIVERY_COORDINATOR_20261121.md) before using it. This is a host-side tool, not a new Lua chat API.
 
 ## For addon developers
@@ -207,7 +209,7 @@ py -3.14 -m venv .venv
 & .\.venv\Scripts\python.exe -m pip install --only-binary=:all: -r requirements-dev.txt
 dotnet build tools/RcmEditorSender/RcmEditorSender.csproj -c Release --nologo
 & .\.venv\Scripts\python.exe -m unittest discover -s tests
-node --test tests/test_chat_import.cjs tests/test_chat_observer.cjs tests/test_chat_observer_cli.cjs tests/test_chat_batch_gate.cjs tests/test_live_say_batch.cjs tests/test_live_say_follow.cjs tests/test_live_public_follow.cjs tests/test_say_delivery.cjs tests/test_public_delivery.cjs tests/test_test_python.cjs tests/test_dotnet_host.cjs
+node --test tests/test_chat_import.cjs tests/test_chat_observer.cjs tests/test_chat_observer_cli.cjs tests/test_chat_batch_gate.cjs tests/test_live_say_batch.cjs tests/test_live_say_follow.cjs tests/test_live_public_follow.cjs tests/test_say_delivery.cjs tests/test_public_delivery.cjs tests/test_test_python.cjs tests/test_dotnet_host.cjs tests/test_companion_health.cjs
 ```
 
 Python 3.14, Node 24 and .NET 10 were verified on LEGION. Test Python can be overridden with an absolute `RCM_TEST_PYTHON` executable; the repo-local `.venv` takes precedence over the legacy sibling environment. The coordinator uses the standard Windows .NET installation, an absolute PATH entry, or an explicit absolute `RCM_DOTNET` override. Invalid explicit paths fail closed. Missing test prerequisites are reported as skips or failures, not silent passes. These developer dependencies are not required for the addon-only installation.

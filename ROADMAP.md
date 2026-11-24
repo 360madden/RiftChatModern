@@ -169,7 +169,7 @@ UX1 UI polish & configuration -> API1 addon integration -> REL1 release quality
 
 - [x] **RCM-060 · Versioned API:** Inventory `RiftChatModernAPI` `interfaceVersion = 2`, `Publish`, `RegisterCommand`, subscribe/history/UI/copy behavior, argument validation and failure modes. **TESTED-OFFLINE (v0.2.26):** [complete API reference](docs/ADDON_API_V2.md), [optional demo addon](examples/RCMIntegrationDemo/README.md), mutation-safe subscriber dispatch, strict queries and readiness diagnostics. Physical integration remains RCM-061.
 - [ ] **RCM-061 · Cross-addon smoke:** Confirm dependency order and a nontrivial live integration from an existing sibling addon (RPT/RR2/Telemetry as available). Verify one published event and one command result physically; keep project repositories isolated.
-- [ ] **RCM-062 · CLI contracts:** Define redacted machine-readable status/health, bounded diagnostic errors, meaningful exit codes and private data handling for host companion. Do not confuse host CLI with a Lua API.
+- [x] **RCM-062 · CLI contracts:** **TESTED-OFFLINE:** [companion health V1](docs/COMPANION_HEALTH_20261123.md) emits redacted JSON, fixed exit codes, dependency availability, bounded journal validation, lock and cross-profile diagnostics. No game input or automatic recovery.
 - [ ] **RCM-063 · Backwards compatibility:** Compatibility test for existing published commands/filters, importer framing, history schema and saved UI; changes to wire/API must be versioned and migration-tested.
 - [ ] **RCM-064 · Operator documentation:** Practical PowerShell recipes for initial install, verified deployment, `/reloadui`, read-only log inspection, opt-in capture, full stop and troubleshooting.
 
@@ -271,7 +271,7 @@ cd C:\work\RiftChatModern
 git status -sb
 git log -3 --oneline
 & "C:\work\riftreader2\.venv\Scripts\python.exe" -m unittest discover -s tests
-node --test tests/test_chat_import.cjs tests/test_chat_observer.cjs tests/test_chat_observer_cli.cjs tests/test_chat_batch_gate.cjs tests/test_live_say_batch.cjs tests/test_live_say_follow.cjs tests/test_live_public_follow.cjs tests/test_say_delivery.cjs tests/test_public_delivery.cjs
+node --test tests/test_chat_import.cjs tests/test_chat_observer.cjs tests/test_chat_observer_cli.cjs tests/test_chat_batch_gate.cjs tests/test_live_say_batch.cjs tests/test_live_say_follow.cjs tests/test_live_public_follow.cjs tests/test_say_delivery.cjs tests/test_public_delivery.cjs tests/test_test_python.cjs tests/test_dotnet_host.cjs tests/test_companion_health.cjs
 dotnet build .\tools\RcmEditorSender\RcmEditorSender.csproj -c Release --nologo
 & "C:\work\riftreader2\.venv\Scripts\python.exe" tools/deploy_rcm.py
 ~~~
@@ -289,7 +289,7 @@ The `deploy_rcm.py` invocation above is **dry-run by default**; on a host not ma
 | M3 queue/recovery extension | `PLANNED` (foundations implemented) | Any dev host with tests | Start after M1 |
 | M4 continuous companion | `PLANNED` | AMD-DESKTOP qualification | Start after M3 |
 | UX1 improvements | `TESTED-OFFLINE` v0.2.25 graphical palette and visibility implemented; physical acceptance pending | Any dev host; AMD for acceptance | Verify live color/visibility, reload/relogin persistence; continue UX1/API1 offline |
-| API1 integration | `TESTED-OFFLINE` RCM-060 API reference, hardened callback lifecycle and consumer example | Any dev host; AMD for acceptance | RCM-061 physical roundtrip; RCM-062 host CLI contracts |
+| API1 integration | `TESTED-OFFLINE` RCM-060 API/consumer + RCM-062 redacted companion health | Any dev host; AMD for acceptance | RCM-061 physical roundtrip; RCM-063 compatibility and RCM-064 operator workflow |
 | GATE B full replacement | `RESEARCH`, no GO decision | Physical current client required | After incoming coverage/source feasibility |
 | REL1 release | `PLANNED` | Verified game host | After required gates |
 

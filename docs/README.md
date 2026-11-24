@@ -11,6 +11,7 @@ as [the complete engineering archive](ENGINEERING_ARCHIVE_README_THROUGH_2026112
 
 - **[Authoritative living development roadmap](../ROADMAP.md)** — prioritized milestones, evidence levels, acceptance gates, risks and next work
 - **[Current addon API v2 reference](ADDON_API_V2.md)** — complete source contract and runnable consumer
+- **[Companion health CLI V1](COMPANION_HEALTH_20261123.md)** — read-only aggregate dependency, queue, lock and cross-profile inspection
 - **[v0.2.26 API integration verification](V0_2_26_API_INTEGRATION_20261123.md)** — callback lifecycle, query validation and readiness fixes
 - **[v0.2.25 graphical palette and visibility](V0_2_25_PALETTE_PANEL_20261123.md)** — settings controls, view-only filters and Lua 5.1 acceptance
 - **[v0.2.24 persistent channel palette](V0_2_24_CHANNEL_PALETTE_20261123.md)** — command/API controls, validation and offline acceptance

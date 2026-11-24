@@ -6,6 +6,8 @@ const fs=require("node:fs");
 const path=require("node:path");
 const crypto=require("node:crypto");
 const {TextDecoder}=require("node:util");
+const GLOBAL_EDITOR_LOCK="rcm-global-editor-claim.lock";
+const {inspectPath,readBounded}=require("./rcm-readonly-file.cjs");
 
 const PROFILES=Object.freeze({
   say:Object.freeze({schema:"RCM_SAY_DELIVERY_V1",filename:"rcm-say-delivery.json",
@@ -133,12 +135,16 @@ function validStatePath(p){
 }
 function readState(file){
   validStatePath(file);
-  if(!fs.existsSync(file))return fresh();
-  const st=fs.lstatSync(file);
-  if(!st.isFile()||st.isSymbolicLink()||st.size>MAX_FILE)
+  // Only a genuinely absent file is a fresh journal. existsSync() also
+  // returns false on some errors and for dangling symlinks: never let those
+  // cases masquerade as an empty queue before another claim is considered.
+  const directory=inspectPath(path.dirname(file),"directory");
+  if(!["present","absent"].includes(directory.state))fail("unsafe_state_directory");
+  const observed=inspectPath(file);
+  if(observed.state==="absent")return fresh();
+  if(observed.state!=="present"||observed.stat.size>BigInt(MAX_FILE))
     fail("unsafe_or_oversized_delivery_journal");
-  const bytes=fs.readFileSync(file);
-  if(bytes.length>MAX_FILE)fail("oversized_delivery_journal");
+  const bytes=readBounded(file,MAX_FILE,observed);
   let value;
   try{value=JSON.parse(textDecoder.decode(bytes));}
   catch(_){fail("corrupt_delivery_journal");}
@@ -149,10 +155,8 @@ function writeState(file,state){
   const dir=path.dirname(file);
   const stat=fs.lstatSync(dir);
   if(!stat.isDirectory()||stat.isSymbolicLink())fail("unsafe_state_directory");
-  if(fs.existsSync(file)){
-    const fstat=fs.lstatSync(file);
-    if(!fstat.isFile()||fstat.isSymbolicLink())fail("unsafe_existing_state_file");
-  }
+  const existing=inspectPath(file);
+  if(!["present","absent"].includes(existing.state))fail("unsafe_existing_state_file");
   const payload=JSON.stringify(state)+"\n";
   if(Buffer.byteLength(payload,"utf8")>MAX_FILE)fail("delivery_journal_full");
   const temp=path.join(dir,".rcm-"+profile.name+"-"+crypto.randomBytes(12).toString("hex")+".tmp");
@@ -277,9 +281,9 @@ function summary(state){
       reason:s.reason})),counts,activeToken:state.entries.find(x=>x.status==="claimed")?.token||null,
     messageTextEmitted:false};
 }
-return {SCHEMA,MAX_ENTRIES,profile,parseBatch:validateBatch,assertJournal,
+return {SCHEMA,MAX_ENTRIES,MAX_SESSIONS,MAX_FILE,profile,parseBatch:validateBatch,assertJournal,
   fresh,validStatePath,readState,writeState,ensureStateFolder,withLock,save,
   beginSession,acceptPair,completeSession,claimNext,cancelClaim,applyDiskProof,summary,
   isObservedReceipt};
 }
-module.exports={...createStore("say"),createStore,PROFILES};
+module.exports={...createStore("say"),createStore,PROFILES,GLOBAL_EDITOR_LOCK};
