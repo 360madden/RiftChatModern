@@ -90,7 +90,7 @@ UX1 UI polish & configuration -> API1 addon integration -> REL1 release quality
 **Objective:** prove which machine, repo state, tools, and game build are actually in use.
 
 - [ ] **RCM-001 · Host and repo qualification:** Record hostname, verified `C:\work\RiftChatModern` root, remote URL, branch, local HEAD, `origin/main` SHA, untracked/modified files and whether AMD-DESKTOP is reachable. Never conflate LEGION with AMD-DESKTOP. Preserve any pre-existing local changes.
-- [ ] **RCM-002 · Toolchain:** Check Python environment with Lua 5.1 via Lupa, Node, and .NET 10 SDK. Execute the full existing tests and Release sender build; write counts, failures, versions and date to a new dated verification note. If unavailable on LEGION, label tests blocked rather than pretending the old AMD result is current.
+- [x] **RCM-002 · Toolchain (LEGION qualified 2026-11-23):** Check Python environment with Lua 5.1 via Lupa, Node, and .NET 10 SDK. Execute the full existing tests and Release sender build; write counts, failures, versions and date to a new dated verification note. If unavailable on LEGION, label tests blocked rather than pretending the old AMD result is current.
 - [ ] **RCM-003 · Evidence index:** Keep one latest-session evidence matrix (source format → test → real-game screenshot → save token → commit) with links to dated `docs/` reports. Preserve original reports as immutable historical records.
 - [ ] **RCM-004 · Client preflight, AMD only:** Verify exact game PID/HWND/start ticks/EXE SHA and current `Rift.cfg` DocumentsDirectory, active addon location, `Log.txt` path and actual noncombat logging state. Never reuse the historical pins in documents.
 
@@ -280,10 +280,10 @@ The `deploy_rcm.py` invocation above is **dry-run by default**; on a host not ma
 
 ## 9. Current project board and next move
 
-| Work item / milestone | Status on 2026-11-22 | Owner environment | Next action |
+| Work item / milestone | Status on 2026-11-23 | Owner environment | Next action |
 |---|---|---|---|
 | Core v0.2.23 UI and Say coordinator | `VERIFIED-LIVE` / `VERIFIED-DISK` (as recorded Nov 21) | AMD-DESKTOP | Preserve working baseline |
-| M0 Git checkout | `DONE` on LEGION; `BLOCKED` for current AMD status check | LEGION / AMD-DESKTOP | Run current test/toolchain discovery on LEGION; reconnect AMD |
+| M0 Git checkout and toolchain | `TESTED-OFFLINE` on LEGION (321 Python/Lua + 129 Node; clean .NET build); `BLOCKED` for current AMD status check | LEGION / AMD-DESKTOP | Reconnect AMD for live preflight; preserve dependency provenance |
 | M1 Level 1–29 import | `TESTED-OFFLINE` only; live pending | AMD-DESKTOP | Recover foregroundable client; complete exact-source → RCM → disk proof |
 | M2 additional social formats | `RESEARCH` | AMD-DESKTOP | Obtain current real log examples after M1 |
 | M3 queue/recovery extension | `PLANNED` (foundations implemented) | Any dev host with tests | Start after M1 |
@@ -293,9 +293,11 @@ The `deploy_rcm.py` invocation above is **dry-run by default**; on a host not ma
 | GATE B full replacement | `RESEARCH`, no GO decision | Physical current client required | After incoming coverage/source feasibility |
 | REL1 release | `PLANNED` | Verified game host | After required gates |
 
-**Immediate P0:** **RCM-010 → RCM-015**. Get one *new authentic* Level 1–29 message through the existing public-only companion, prove one RCM-host row and one saved transfer token, and restore the original logging state. If AMD is inaccessible, execute **RCM-002** and an independent UX/API test without misreporting that the physical blocker has been resolved.
+**Immediate P0:** **RCM-010 → RCM-015**. Get one *new authentic* Level 1–29 message through the existing public-only companion, prove one RCM-host row and one saved transfer token, and restore the original logging state. If AMD is inaccessible, RCM-002 is now qualified on LEGION; proceed with independent UX/API tests or dependency preflight without misreporting that the physical blocker has been resolved.
 
 **Sunday LEGION-only validation checkpoint:** The new roadmap contract passed 5/5; Node host tests returned 117 passed / 2 skipped; the .NET 10 sender Release build passed. The broader Python suite did **not** pass on LEGION (missing Pillow and Lua 5.1 prerequisites plus a Windows application-control-blocked screenshot helper). Details: [Sunday roadmap bootstrap handoff](docs/HANDOFF_20261122_ROADMAP.md). Do not replace the historical AMD 434-pass result with a false current all-green claim.
+
+**Monday LEGION-only checkpoint:** RCM's isolated Python environment and .NET host discovery now work. 321 Python/Lua and 129 Node tests passed with zero skips/failures; .NET Release build clean. See [M0 toolchain qualification](docs/M0_LEGION_TOOLCHAIN_20261123.md). Physical M1 acceptance remains blocked.
 
 ## 10. Roadmap maintenance policy (durability contract)
 
@@ -309,6 +311,7 @@ The `deploy_rcm.py` invocation above is **dry-run by default**; on a host not ma
 
 ### Reference index
 
+- [Monday LEGION toolchain qualification](docs/M0_LEGION_TOOLCHAIN_20261123.md)
 - [Latest Sunday development handoff](docs/HANDOFF_20261122_SUNDAY_CLOSEOUT.md)
 - [Sunday roadmap bootstrap and LEGION validation](docs/HANDOFF_20261122_ROADMAP.md)
 - [Latest Saturday evening handoff](docs/HANDOFF_20261121_EVENING_PUBLIC.md)

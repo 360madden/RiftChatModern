@@ -1,0 +1,4 @@
+# RCM's validated isolated Windows Python 3.14 development environment.
+# Install with: python -m pip install --only-binary=:all: -r requirements-dev.txt
+lupa==2.8
+Pillow==13.0.0

@@ -11,7 +11,9 @@ const cli=require("../tools/rcm-say-delivery.cjs");
 const {encodeRecord}=require("../tools/rcm-chat-import.cjs");
 const CLI=path.resolve(__dirname,"../tools/rcm-say-delivery.cjs");
 const TEST_BODY="RCM_SERIALIZED_20261121";
-const PYTHON="C:\\work\\riftreader2\\.venv\\Scripts\\python.exe";
+const { resolveTestPython } = require("./rcm-test-python.cjs");
+const PYTHON = resolveTestPython();
+const SENDER=path.resolve(__dirname,"../tools/RcmEditorSender/bin/Release/net10.0-windows/RcmEditorSender.dll");
 function fixtures(){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),"rcm-delivery-"));
   return {dir,state:path.join(dir,"rcm-say-delivery.json"),
@@ -250,7 +252,7 @@ test("status command hides encoded text, claim command reveals opt-in transfer",
   }finally{fs.rmSync(f.dir,{recursive:true,force:true});}
 });
 test("real Python disk auditor verifies a synthetic exact-token save; failed receipt cannot clear claim",
-  {skip:!fs.existsSync(PYTHON)},()=>{
+  {skip: PYTHON ? false : "Configure RCM .venv or RCM_TEST_PYTHON"},()=>{
   const f=fixtures();
   try{
     seeded(f);queue.ensureStateFolder(f.state);
@@ -282,9 +284,8 @@ test("unresolved crashed capture is not silently resumed, explicit recovery quar
     assert.equal(result(["claim","--state",f.state]).status,2);
   }finally{fs.rmSync(f.dir,{recursive:true,force:true});}
 });
-test("sender preflight uses real .NET 10 validator without changing durable queue",()=>{
-  const sender=path.resolve(__dirname,"../tools/RcmEditorSender/bin/Release/net10.0-windows/RcmEditorSender.dll");
-  if(!fs.existsSync(sender))return;
+test("sender preflight uses real .NET 10 validator without changing durable queue",
+  {skip: fs.existsSync(SENDER) ? false : "Build the Release editor sender first"},()=>{
   const f=fixtures();
   try{
     seeded(f);
@@ -312,9 +313,8 @@ test("dispatch syntax requires exact pins and four explicit acknowledgments",()=
   assert.equal(cli.parseOptions(["dispatch",...pins,"--ack-send-in-game",
     "--ack-editor-focused","--ack-submit","--ack-batch"]).pid,"999999999");
 });
-test("impossible target pins refuse before input but still leave a no-retry claim",()=>{
-  const sender=path.resolve(__dirname,"../tools/RcmEditorSender/bin/Release/net10.0-windows/RcmEditorSender.dll");
-  if(!fs.existsSync(sender))return;
+test("impossible target pins refuse before input but still leave a no-retry claim",
+  {skip: fs.existsSync(SENDER) ? false : "Build the Release editor sender first"},()=>{
   const f=fixtures();
   try{
     seeded(f);

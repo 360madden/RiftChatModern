@@ -8,6 +8,7 @@ const fs=require("node:fs");
 const path=require("node:path");
 const os=require("node:os");
 const {spawn,spawnSync}=require("node:child_process");
+const {resolveDotnet}=require("./rcm-dotnet-host.cjs");
 const {validLogPath}=require("./rcm-chat-observer.cjs");
 const stateModule=require("./rcm-say-delivery-state.cjs");
 const followerProfiles=require("./rcm-live-social-follow-core.cjs").PROFILES;
@@ -24,7 +25,6 @@ const FOLLOW=path.resolve(__dirname,profileName==="say"?
 const AUDITOR=path.resolve(__dirname,"rcm_disk_receipt.py");
 const SENDER=path.resolve(__dirname,"RcmEditorSender","bin","Release",
   "net10.0-windows","RcmEditorSender.dll");
-const DOTNET=process.platform==="win32"?"C:\\Program Files\\dotnet\\dotnet.exe":"dotnet";
 const DEFAULT_STATE=path.resolve(__dirname,"..","artifacts",
   "rcm-private-queue",profile.filename);
 const TOKEN=/^[A-F0-9]{12}$/;
@@ -239,8 +239,9 @@ function claim(o,output=emit){
   }));
 }
 function senderCall(item,pins=null){
-  if(!fs.existsSync(SENDER)||!fs.existsSync(DOTNET))
-    fail("release_editor_sender_not_built");
+  if(!fs.existsSync(SENDER))fail("release_editor_sender_not_built");
+  const dotnet=resolveDotnet();
+  if(!dotnet)fail("dotnet_host_not_found");
   const batch=JSON.stringify(item.batch);
   if(Buffer.byteLength(batch,"utf8")>8192)fail("sender_batch_over_budget");
   const argv=[SENDER,"--stdin-batch"];
@@ -250,7 +251,7 @@ function senderCall(item,pins=null){
       "--hwnd",pins.hwnd,"--start-ticks",pins.startTicks,
       "--exe-path",pins.exePath,"--exe-sha256",pins.exeSha256);
   }
-  const result=spawnSync(DOTNET,argv,{input:batch+"\n",encoding:"utf8",
+  const result=spawnSync(dotnet,argv,{input:batch+"\n",encoding:"utf8",
     timeout:30000,maxBuffer:64*1024,windowsHide:true});
   if(result.error || typeof result.stdout!=="string" ||
      result.stdout.length>16384)

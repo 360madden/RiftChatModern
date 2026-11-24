@@ -11,7 +11,8 @@ const pub=say.createStore("public");
 const cli=require("../tools/rcm-public-delivery.cjs");
 const CLI=path.resolve(__dirname,"../tools/rcm-public-delivery.cjs");
 const SENDER=path.resolve(__dirname,"../tools/RcmEditorSender/bin/Release/net10.0-windows/RcmEditorSender.dll");
-const PYTHON="C:\\work\\riftreader2\\.venv\\Scripts\\python.exe";
+const { resolveTestPython } = require("./rcm-test-python.cjs");
+const PYTHON = resolveTestPython();
 const BODY="RCM_PUBLIC_CHANNEL_FIXTURE_20261121";
 const LINE="23:37:21: [4. Level 1-29][Example@Greybriar]: "+BODY+"\n";
 const SAY="23:37:22: [Example] says: unrelated say\n";
@@ -174,8 +175,8 @@ test("public queue claim is single-inflight, durable, private in status",()=>{
       "A1B2C3D4E5F6");
   }finally{fs.rmSync(fx.dir,{recursive:true,force:true})}
 });
-test("public .NET sender preflight is no-input and cannot claim the batch",()=>{
-  if(!fs.existsSync(SENDER))return;
+test("public .NET sender preflight is no-input and cannot claim the batch",
+  {skip: fs.existsSync(SENDER) ? false : "Build the Release editor sender first"},()=>{
   const fx=f();
   try{
     seed(fx);
@@ -190,8 +191,8 @@ test("public .NET sender preflight is no-input and cannot claim the batch",()=>{
     assert.deepEqual(fs.readFileSync(fx.state),old);
   }finally{fs.rmSync(fx.dir,{recursive:true,force:true})}
 });
-test("fake window PID refuses public dispatch and never automatically retries",()=>{
-  if(!fs.existsSync(SENDER))return;
+test("fake window PID refuses public dispatch and never automatically retries",
+  {skip: fs.existsSync(SENDER) ? false : "Build the Release editor sender first"},()=>{
   const fx=f();
   try{
     seed(fx);
@@ -212,7 +213,7 @@ test("fake window PID refuses public dispatch and never automatically retries",(
   }finally{fs.rmSync(fx.dir,{recursive:true,force:true})}
 });
 test("public disk verifier requires exact token and independently saved checkpoint",
-  {skip:!fs.existsSync(PYTHON)},()=>{
+  {skip: PYTHON ? false : "Configure RCM .venv or RCM_TEST_PYTHON"},()=>{
   const fx=f();
   try{
     seed(fx);
