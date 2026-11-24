@@ -10,6 +10,7 @@ as [the complete engineering archive](ENGINEERING_ARCHIVE_README_THROUGH_2026112
 ## Getting started and architecture
 
 - **[Authoritative living development roadmap](../ROADMAP.md)** — prioritized milestones, evidence levels, acceptance gates, risks and next work
+- **[Latest development handoff](HANDOFF_20261123_MONDAY_CLOSEOUT.md)** — Monday closeout, five development commits, 497-test checkpoint and precise next-session plan
 - **[Current addon API v2 reference](ADDON_API_V2.md)** — complete source contract and runnable consumer
 - **[Companion health CLI V1](COMPANION_HEALTH_20261123.md)** — read-only aggregate dependency, queue, lock and cross-profile inspection
 - **[v0.2.26 API integration verification](V0_2_26_API_INTEGRATION_20261123.md)** — callback lifecycle, query validation and readiness fixes

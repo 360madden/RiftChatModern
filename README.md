@@ -157,7 +157,7 @@ The API also provides history retrieval, subscriptions, UI controls, copy helper
 |---|---|
 | **Addon source / live baseline** | **v0.2.26** source includes the graphical palette, API hardening and a separate integration example; **v0.2.23** is the last physically accepted version, with a retained real **`[HOST/SAY]`** import |
 | **Physical RIFT evidence** | v0.2.22 General, Loot and named public-channel subscriptions confirmed in native screenshots; v0.2.21 drag/resize, focus, details, message columns previously accepted |
-| **Offline regression suite** | LEGION's November 23 toolchain qualification passed 321 Python/Lua + 129 Node tests; the [v0.2.25 palette report](docs/V0_2_25_PALETTE_PANEL_20261123.md) tracks the latest UI regression results. Historical AMD-DESKTOP: 315 Python/Lua + 119 Node tests passed November 21. |
+| **Offline regression suite** | **497 passed** on LEGION, November 23 (353 Python/Lua + 144 Node; zero failures/skips). See [Monday closeout](docs/HANDOFF_20261123_MONDAY_CLOSEOUT.md). Historical AMD-DESKTOP: 315 Python/Lua + 119 Node passed November 21. |
 | **Persistence** | Window position and size survived `/reloadui`; exact UI geometry and local DEV test entry independently found in the on-disk SavedVariables file |
 | **Windows host tooling** | Existing .NET 10 editor batch validator, exact-candidate gate; temporary RIFT foreground capture/return physically verified |
 | **Native player social chat** | Two supervised real **Say** imports accepted; 20 game-created numbered public-channel log lines establish one additional parser format, but public import and Guild/Party/Tell remain unverified |
@@ -175,6 +175,7 @@ The homepage is intentionally concise. The complete development history—includ
 | Start here | Purpose |
 |---|---|
 | 🧭 [Current development roadmap](ROADMAP.md) | Canonical priorities, dependency gates, measurable acceptance criteria and current project board |
+| 📋 [Latest development handoff](docs/HANDOFF_20261123_MONDAY_CLOSEOUT.md) | Current source, test results, blockers and exact next-session actions |
 | 🎨 [v0.2.20 Glass UI](docs/V0_2_20_GLASS_UI_20261121.md) | Original PNG skin, interactive Lua styling, compatibility tests, and physical acceptance checklist |
 | 📸 [Real v0.2.20 RIFT screenshot evidence](docs/V0_2_20_NATIVE_SCREENSHOT_ACCEPTANCE_20261121.md) | Verified in-game screen capture and managed temporary foreground; private image not published |
 | 💬 [v0.2.21 Message columns](docs/V0_2_21_MESSAGE_COLUMNS_20261121.md) | Local seconds, distinct source/channel/message fields, responsive layout and test evidence |

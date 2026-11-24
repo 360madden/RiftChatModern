@@ -299,6 +299,8 @@ The `deploy_rcm.py` invocation above is **dry-run by default**; on a host not ma
 
 **Monday LEGION-only checkpoint:** RCM's isolated Python environment and .NET host discovery now work. 321 Python/Lua and 129 Node tests passed with zero skips/failures; .NET Release build clean. See [M0 toolchain qualification](docs/M0_LEGION_TOOLCHAIN_20261123.md). Physical M1 acceptance remains blocked.
 
+**Monday closeout:** source v0.2.26, graphical palette/visibility and API improvements implemented, aggregate companion health added. Latest completed full LEGION regression: 353 Python/Lua + 144 Node = **497 passed**, zero failures/skips. See the [Monday development handoff](docs/HANDOFF_20261123_MONDAY_CLOSEOUT.md). M1 remains blocked; next independent task is RCM-063 compatibility and migration testing.
+
 ## 10. Roadmap maintenance policy (durability contract)
 
 - **This root file is authoritative for forward priorities and current milestone state.** `README.md` links here; `docs/` contains the detailed historical evidence and acceptance records. Do not make a second conflicting “current roadmap”.
@@ -311,6 +313,7 @@ The `deploy_rcm.py` invocation above is **dry-run by default**; on a host not ma
 
 ### Reference index
 
+- [Latest development handoff](docs/HANDOFF_20261123_MONDAY_CLOSEOUT.md)
 - [Monday LEGION toolchain qualification](docs/M0_LEGION_TOOLCHAIN_20261123.md)
 - [Latest Sunday development handoff](docs/HANDOFF_20261122_SUNDAY_CLOSEOUT.md)
 - [Sunday roadmap bootstrap and LEGION validation](docs/HANDOFF_20261122_ROADMAP.md)
