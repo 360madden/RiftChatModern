@@ -24,7 +24,7 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 
-from rcm_session_preflight import GAME, parse_tasklist
+from rcm_session_preflight import GAME, parse_tasklist, read_rift_config
 
 ADDON = "RiftChatModern"
 MODULES = ("Core.lua", "AddonMessages.lua", "NativeChatProbe.lua",
@@ -82,6 +82,15 @@ def manifest(source: Path) -> dict:
 
 
 def discover_targets(home: Path, environ: dict) -> list[Path]:
+    # An explicit client override is authoritative, even when the addon is
+    # absent there. Never select a stale installation as a fallback.
+    config = read_rift_config(home, environ)
+    if config.get("readError"):
+        raise ValueError("RIFT DocumentsDirectory configuration unreadable")
+    configured = config["settings"].get("DocumentsDirectory")
+    if configured:
+        folder = Path(configured) / "Interface" / "AddOns" / ADDON
+        return [folder] if folder.is_dir() and (folder / "RiftAddon.toc").is_file() else []
     roots = []
     for name in ("OneDrive", "OneDriveConsumer", "OneDriveCommercial"):
         value = environ.get(name)
@@ -133,6 +142,7 @@ def preflight(source: Path, target: Path) -> dict:
         raise ValueError("Target is not an established RCM installation")
     all_files = payload(source)
     changes = []
+    source_hashes, target_hashes = {}, {}
     for rel in all_files:
         installed = target / rel
         if installed.is_symlink():
@@ -147,15 +157,23 @@ def preflight(source: Path, target: Path) -> dict:
             parent = parent.parent
         if installed.exists() and not installed.is_file():
             raise ValueError(f"Installed item is not a file: {rel}")
-        if not installed.is_file() or sha256(installed) != sha256(source / rel):
+        source_hashes[rel] = sha256(source / rel)
+        target_hashes[rel] = sha256(installed) if installed.is_file() else None
+        if target_hashes[rel] != source_hashes[rel]:
             changes.append(rel)
-    return {"version": expected["version"], "files": all_files, "changed": changes}
+    return {"version": expected["version"], "files": all_files, "changed": changes,
+            "sourceHashes": source_hashes, "targetHashes": target_hashes}
 
 
 def apply_copy(source: Path, target: Path, plan: dict, project: Path) -> dict:
     """Copy after full preflight, preserve originals, roll back on failure."""
     if not target.is_absolute():
         raise ValueError("Target must be an absolute path")
+    # Guard the entire plan, including initially unchanged files. An old
+    # dry-run must not overwrite a newer edit or deploy a different source.
+    current = preflight(source, target)
+    if current != plan:
+        raise RuntimeError("Deployment source or target changed since preflight")
     pending = plan["changed"]
     if not pending:
         return {"changed": [], "backups": None, "rollback": False}
@@ -169,11 +187,17 @@ def apply_copy(source: Path, target: Path, plan: dict, project: Path) -> dict:
     try:
         for rel in pending:
             destination = target / rel
+            expected_hash = plan["targetHashes"][rel]
+            if destination.is_symlink() or destination.is_junction():
+                raise RuntimeError("Deployment target changed to a link")
+            actual_hash = sha256(destination) if destination.is_file() else None
+            if actual_hash != expected_hash:
+                raise RuntimeError("Deployment target changed before backup")
             if destination.exists():
                 backup = backup_dir / rel
                 backup.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(destination, backup)
-                if sha256(destination) != sha256(backup):
+                if sha256(backup) != expected_hash or sha256(destination) != expected_hash:
                     raise RuntimeError(f"Backup verification failed: {rel}")
                 originals[rel] = backup
             else:
@@ -197,15 +221,22 @@ def apply_copy(source: Path, target: Path, plan: dict, project: Path) -> dict:
             try:
                 with os.fdopen(fd, "wb") as out, (source / rel).open("rb") as inp:
                     shutil.copyfileobj(inp, out)
-                if sha256(Path(staging)) != sha256(source / rel):
-                    raise RuntimeError(f"Staged file hash mismatch: {rel}")
+                if sha256(Path(staging)) != plan["sourceHashes"][rel]:
+                    raise RuntimeError(f"Staged source changed: {rel}")
+                if destination.is_symlink() or destination.is_junction():
+                    raise RuntimeError("Deployment target changed to a link")
+                current_hash = sha256(destination) if destination.is_file() else None
+                if current_hash != plan["targetHashes"][rel]:
+                    raise RuntimeError(f"Deployment target changed before copy: {rel}")
                 os.replace(staging, destination)
                 written.append(rel)
             finally:
                 if os.path.exists(staging):
                     os.unlink(staging)
         bad = [str(rel) for rel in plan["files"]
-               if not (target / rel).is_file() or sha256(source / rel) != sha256(target / rel)]
+               if not (target / rel).is_file()
+               or sha256(target / rel) != plan["sourceHashes"][rel]
+               or sha256(source / rel) != plan["sourceHashes"][rel]]
         if bad:
             raise RuntimeError("Deployment hash mismatch: " + ", ".join(bad))
     except Exception:
@@ -261,7 +292,9 @@ def main(argv: list[str] | None = None) -> int:
     project = Path(__file__).resolve().parents[1]
     source = project / "addon" / ADDON
     try:
-        if args.apply and (not args.expect_host or host.casefold() != args.expect_host.casefold()):
+        if args.expect_host and host.casefold() != args.expect_host.casefold():
+            raise ValueError("Expected host does not match the verified machine")
+        if args.apply and not args.expect_host:
             raise ValueError("Apply requires --expect-host matching the verified machine")
         if args.target:
             target = args.target

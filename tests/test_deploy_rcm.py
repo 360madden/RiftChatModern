@@ -150,6 +150,42 @@ class DeploymentTests(unittest.TestCase):
         self.assertFalse(response["success"])
         self.assertEqual(deploy_rcm.preflight(self.source,self.target)["changed"],[])
 
+    def test_expected_host_also_applies_to_dry_run(self):
+        stream = io.StringIO()
+        with contextlib.redirect_stdout(stream):
+            result = deploy_rcm.main(["--expect-host", "WRONG-HOST",
+                                      "--target", str(self.target)])
+        self.assertEqual(result, 1)
+        self.assertFalse(json.loads(stream.getvalue())["success"])
+
+    def test_configured_documents_directory_precedes_stale_fallback(self):
+        home = self.root / "home"
+        stale = home / "Documents" / "RIFT" / "Interface" / "AddOns" / "RiftChatModern"
+        stale.parent.mkdir(parents=True)
+        shutil.copytree(self.source, stale)
+        configured = self.root / "custom-rift"
+        active = configured / "Interface" / "AddOns" / "RiftChatModern"
+        active.parent.mkdir(parents=True)
+        shutil.copytree(self.source, active)
+        roaming = self.root / "roaming"
+        (roaming / "RIFT").mkdir(parents=True)
+        (roaming / "RIFT" / "Rift.cfg").write_text(
+            "[Client]\nDocumentsDirectory = " + str(configured) + "\n", encoding="utf-8")
+        self.assertEqual(deploy_rcm.discover_targets(home, {"APPDATA": str(roaming)}), [active])
+        shutil.rmtree(active)
+        # An authoritative configured directory with no addon must not
+        # redirect a write to an old copy in conventional Documents.
+        self.assertEqual(deploy_rcm.discover_targets(home, {"APPDATA": str(roaming)}), [])
+
+    def test_deployment_refuses_target_content_changed_after_plan(self):
+        main = self.target / "Main.lua"
+        main.write_bytes(b"old installation")
+        plan = deploy_rcm.preflight(self.source, self.target)
+        main.write_bytes(b"newer external edit")
+        with self.assertRaisesRegex((ValueError, RuntimeError), "changed"):
+            deploy_rcm.apply_copy(self.source, self.target, plan, self.root / "project")
+        self.assertEqual(main.read_bytes(), b"newer external edit")
+
     def test_explicit_target_dry_run_does_not_write(self):
         old=(self.target/"Main.lua").read_bytes() + b"\n-- changed here\n"
         (self.target/"Main.lua").write_bytes(old)

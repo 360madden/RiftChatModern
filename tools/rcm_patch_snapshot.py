@@ -47,6 +47,20 @@ def check_ancestry(path: Path) -> None:
         plain(parent, True)
 
 
+def ensure_directory(path: Path) -> None:
+    """Create missing output ancestors individually, rejecting existing links."""
+    if not path.is_absolute():
+        raise ValueError("relative_output")
+    for parent in reversed((path, *path.parents)):
+        try:
+            plain(parent, True)
+        except FileNotFoundError:
+            # A dangling symlink is not absent: lstat detects it. A race that
+            # creates this component before mkdir also fails closed.
+            parent.mkdir()
+            plain(parent, True)
+
+
 def discover(root: Path) -> list[Path]:
     """Bounded walk; copy only RCM files, never unrelated addon/character data."""
     addon = root / "Interface" / "AddOns" / ADDON
@@ -123,10 +137,9 @@ def snapshot(root: Path, output: Path, phase: str, host: str, source_version: st
     version = re.search(r'(?m)^\s*Version\s*=\s*"(\d+\.\d+\.\d+)"', toc)
     if not version:
         raise ValueError("invalid_installed_version")
-    # Validate the existing parent before creating any output directory.
-    check_ancestry(output.parent)
-    output.mkdir(exist_ok=True)
-    check_ancestry(output)
+    # Fresh clones have no ignored artifacts directory. Validate existing
+    # ancestors and create only missing components in the private output.
+    ensure_directory(output)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     directory = Path(tempfile.mkdtemp(prefix=f"{stamp}-{host}-{phase}-", dir=output))
     rows = []
@@ -162,26 +175,112 @@ def snapshot(root: Path, output: Path, phase: str, host: str, source_version: st
         "bytes": total, "files": rows, "consistency": "non_atomic_rechecked",
         "gameSaveTriggered": False, "runtimeVerified": False,
     }
-    with (directory / "manifest.json").open("x", encoding="utf-8") as writer:
+    # Publish the manifest only after the complete JSON has been flushed and
+    # read back. Interrupted writes must not leave a final success marker.
+    temporary = directory / "manifest.pending"
+    with temporary.open("x", encoding="utf-8") as writer:
         json.dump(report, writer, indent=2)
         writer.write("\n")
+        writer.flush()
+        os.fsync(writer.fileno())
+    content = stable_bytes(temporary)
+    if json.loads(content) != report:
+        raise ValueError("manifest_verification_failed")
+    os.replace(temporary, directory / "manifest.json")
     # Never print private character names, save contents, or account paths.
     return {key: val for key, val in report.items() if key != "files"} | {
-        "artifactDirectory": directory.name, "manifestSha256": digest(stable_bytes(directory / "manifest.json"))
+        "artifactDirectory": directory.name, "manifestSha256": digest(content)
     }
+
+
+def verify_snapshot(directory: Path, host: str, expected_hash: str) -> dict:
+    """Requalify a retained backup against its independently recorded digest.
+
+    Never restore files or trust paths merely because a manifest names them.
+    The existing V1 manifest is supported, including the November 24 baseline.
+    """
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_hash):
+        raise ValueError("invalid_manifest_hash")
+    check_ancestry(directory)
+    manifest_file = directory / "manifest.json"
+    content = stable_bytes(manifest_file)
+    if digest(content) != expected_hash:
+        raise ValueError("manifest_hash_mismatch")
+    report = json.loads(content)
+    if (not isinstance(report, dict) or report.get("schema") != "RCM_PATCH_SNAPSHOT_V1"
+            or report.get("host") != host or report.get("phase") not in ("before", "after")
+            or report.get("consistency") != "non_atomic_rechecked"
+            or report.get("gameSaveTriggered") is not False
+            or report.get("runtimeVerified") is not False):
+        raise ValueError("invalid_snapshot_manifest")
+    rows = report.get("files")
+    if not isinstance(rows, list) or not 1 <= len(rows) <= MAX_FILES:
+        raise ValueError("invalid_snapshot_inventory")
+    payload_root = directory / "files"
+    inventory = discover(payload_root)
+    # Enumerate locally first; no path obtained from JSON is opened. Require
+    # exact relative path equality, file count, hash and byte size.
+    if len(inventory) != len(rows):
+        raise ValueError("snapshot_inventory_mismatch")
+    total = 0
+    for relative, row in zip(inventory, rows):
+        if (not isinstance(row, dict) or row.get("relative") != relative.as_posix()
+                or type(row.get("bytes")) is not int or not 0 <= row["bytes"] <= MAX_FILE
+                or not isinstance(row.get("sha256"), str)
+                or not re.fullmatch(r"[0-9a-f]{64}", row["sha256"])):
+            raise ValueError("invalid_snapshot_file_entry")
+        content_bytes = stable_bytes(payload_root / relative)
+        if len(content_bytes) != row["bytes"] or digest(content_bytes) != row["sha256"]:
+            raise ValueError("snapshot_file_hash_mismatch")
+        total += len(content_bytes)
+        if total > MAX_TOTAL:
+            raise ValueError("total_size_limit")
+    addon_count = sum(p.parts[1] == "AddOns" for p in inventory)
+    save_count = len(inventory) - addon_count
+    if (type(report.get("bytes")) is not int or report["bytes"] != total
+            or type(report.get("addonFiles")) is not int or report["addonFiles"] != addon_count
+            or type(report.get("savedVariableFiles")) is not int
+            or report["savedVariableFiles"] != save_count):
+        raise ValueError("snapshot_totals_mismatch")
+    toc = stable_bytes(payload_root / "Interface" / "AddOns" / ADDON / "RiftAddon.toc").decode("utf-8-sig")
+    version = re.search(r'(?m)^\s*Version\s*=\s*"(\d+\.\d+\.\d+)"', toc)
+    if (not re.search(r'(?m)^\s*Identifier\s*=\s*"RiftChatModern"', toc)
+            or not version or version.group(1) != report.get("installedVersion")):
+        raise ValueError("snapshot_version_mismatch")
+    # Repeat the inventory after reading so concurrent additions/deletions
+    # and a changed manifest cannot produce a false stable receipt.
+    if discover(payload_root) != inventory or stable_bytes(manifest_file) != content:
+        raise ValueError("snapshot_changed_during_verification")
+    return {"status": "verified", "host": host, "phase": report["phase"],
+            "artifactDirectory": directory.name, "manifestSha256": expected_hash,
+            "installedVersion": version.group(1), "addonFiles": addon_count,
+            "savedVariableFiles": save_count, "bytes": total, "runtimeVerified": False,
+            "restored": False}
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expect-host", required=True)
-    parser.add_argument("--phase", choices=("before", "after"), required=True)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--phase", choices=("before", "after"))
+    mode.add_argument("--verify", help="Snapshot directory name under artifacts/patch-snapshots")
+    parser.add_argument("--manifest-sha256", help="Independently recorded SHA-256 for --verify")
     args = parser.parse_args(argv)
+    if bool(args.verify) != bool(args.manifest_sha256):
+        parser.error("--verify and --manifest-sha256 must be used together")
     host = socket.gethostname()
     if host.casefold() != args.expect_host.casefold() or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", host):
         print(json.dumps({"status": "blocked", "reason": "host_mismatch"}))
         return 2
     try:
         project = Path(__file__).resolve().parents[1]
+        if args.verify:
+            if not re.fullmatch(r"[A-Za-z0-9_-]{1,150}", args.verify):
+                raise ValueError("invalid_snapshot_name")
+            report = verify_snapshot(project / "artifacts" / "patch-snapshots" / args.verify,
+                                     host, args.manifest_sha256)
+            print(json.dumps(report, indent=2))
+            return 0
         cfg = read_rift_config(Path.home(), os.environ)
         configured = cfg["settings"].get("DocumentsDirectory")
         if not configured or cfg.get("readError"):

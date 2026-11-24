@@ -41,13 +41,14 @@ Set-Location -LiteralPath 'C:\work\RiftChatModern'
 git status -sb
 git rev-parse HEAD
 git ls-remote origin refs/heads/main
+& .\.venv\Scripts\python.exe -B tools/rcm_patch_snapshot.py --expect-host LEGION --verify 20261124T044936Z-LEGION-before-ohkcq6qm --manifest-sha256 288f91bdbf47ce966c0e5372adf9a209faa6d18b59aa31d72993c82e6b7770ab
 & .\.venv\Scripts\python.exe -B tools/rcm_patch_snapshot.py --phase after --expect-host LEGION
 & .\.venv\Scripts\python.exe -B tools/rcm_session_preflight.py --expect-host LEGION
 & .\.venv\Scripts\python.exe -B tools/deploy_rcm.py --expect-host LEGION
 node tools/rcm-companion-health.cjs --expect-host LEGION
 ~~~
 
-The backup helper uses actual Rift.cfg DocumentsDirectory; it copies only the installed RCM folder and exact RCM character save files beneath Interface/Saved, to a fresh ignored artifact directory. Python 3.12+ required (qualified 3.14). It refuses wrong host, links/junctions, excessive inventory, overlapping output, and observable changing files. A partial directory without a successful manifest is not rollback evidence. Keep raw saved data and private paths local; do not commit or publish artifacts. Health exit 1 is attention, 2 blocked; session exit 2 may simply indicate a missing process/log. A deploy dry-run does not establish runtime compatibility; use the actual configured path, not a guessed fallback. If private snapshots differ, compare their relative file identities and hashes locally without publishing account/character names; a save change is not automatically a regression.
+The backup helper uses actual Rift.cfg DocumentsDirectory; it copies only the installed RCM folder and exact RCM character save files beneath Interface/Saved, to a fresh ignored artifact directory. Python 3.12+ required (qualified 3.14). It refuses wrong host, links/junctions, excessive inventory, overlapping output, and observable changing files. A partial directory without a successful manifest is not rollback evidence. The manifest is now published atomically after read-back. Before using any retained backup, verify it with `--verify <artifact-directory-name> --manifest-sha256 <previously-recorded-hash> --expect-host LEGION`; this checks the retained manifest and all copied files without restoring anything. Preserve the independently recorded digest outside the backup. See [pre-patch bug hunt](PATCH_RECOVERY_BUGHUNT_20261124.md). Keep raw saved data and private paths local; do not commit or publish artifacts. Health exit 1 is attention, 2 blocked; session exit 2 may simply indicate a missing process/log. A deploy dry-run does not establish runtime compatibility; use the actual configured path, not a guessed fallback. If private snapshots differ, compare their relative file identities and hashes locally without publishing account/character names; a save change is not automatically a regression.
 
 ## 3. P0: qualify current client before upgrading
 

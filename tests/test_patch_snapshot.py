@@ -98,6 +98,43 @@ class PatchSnapshotTests(unittest.TestCase):
         result = self.capture()
         self.assertEqual(result["savedVariableFiles"], 0)
 
+    def test_fresh_clone_without_artifacts_parent(self):
+        self.output = self.base / "artifacts" / "patch-snapshots"
+        self.assertEqual(self.capture()["savedVariableFiles"], 1)
+
+    def test_manifest_write_failure_leaves_no_success_marker(self):
+        # Simulate a disk-full/interrupt error after partial JSON was written.
+        def interrupted(report, writer, **kwargs):
+            writer.write('{"schema":')
+            raise OSError("fixture write interrupted")
+        with patch.object(gate.json, "dump", side_effect=interrupted):
+            with self.assertRaises(OSError):
+                self.capture()
+        self.assertEqual(list(self.output.rglob("manifest.json")), [])
+
+    def test_verify_retained_snapshot_and_detect_tampered_copy(self):
+        result = self.capture()
+        directory = self.output / result["artifactDirectory"]
+        verified = gate.verify_snapshot(directory, "LEGION", result["manifestSha256"])
+        self.assertEqual(verified["status"], "verified")
+        self.assertFalse(verified["restored"])
+        self.assertFalse(verified["runtimeVerified"])
+        with self.assertRaisesRegex(ValueError, "manifest_hash_mismatch"):
+            gate.verify_snapshot(directory, "LEGION", "0" * 64)
+        with self.assertRaisesRegex(ValueError, "invalid_snapshot_manifest"):
+            gate.verify_snapshot(directory, "AMD-DESKTOP", result["manifestSha256"])
+        copied = directory / "files" / self.lua.relative_to(self.root)
+        copied.write_bytes(b"tampered backup")
+        with self.assertRaisesRegex(ValueError, "snapshot_file_hash_mismatch"):
+            gate.verify_snapshot(directory, "LEGION", result["manifestSha256"])
+
+    def test_verify_rejects_missing_backup_file(self):
+        result = self.capture()
+        directory = self.output / result["artifactDirectory"]
+        (directory / "files" / self.save.relative_to(self.root)).unlink()
+        with self.assertRaisesRegex(ValueError, "snapshot_inventory_mismatch"):
+            gate.verify_snapshot(directory, "LEGION", result["manifestSha256"])
+
     def test_size_limit_blocks_success_receipt(self):
         with patch.object(gate, "MAX_TOTAL", 10):
             with self.assertRaisesRegex(ValueError, "total_size_limit"):
