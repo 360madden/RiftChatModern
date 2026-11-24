@@ -110,6 +110,26 @@ def discover_targets(home: Path, environ: dict) -> list[Path]:
     return found
 
 
+def select_target(explicit: Path | None, home: Path, environ: dict) -> Path:
+    """An explicit path may disambiguate discovery, not override RIFT config."""
+    if explicit is None:
+        choices = discover_targets(home, environ)
+        if len(choices) != 1:
+            raise ValueError(f"Expected exactly one verified installation, found {len(choices)}")
+        return choices[0]
+    if not explicit.is_absolute():
+        raise ValueError("Target must be an absolute path")
+    config = read_rift_config(home, environ)
+    if config.get("readError"):
+        raise ValueError("RIFT DocumentsDirectory configuration unreadable")
+    configured = config["settings"].get("DocumentsDirectory")
+    if configured:
+        expected = Path(configured) / "Interface" / "AddOns" / ADDON
+        if explicit != expected:
+            raise ValueError("Explicit target does not match configured RIFT DocumentsDirectory")
+    return explicit
+
+
 def payload(source: Path) -> list[Path]:
     result = []
     for file in source.rglob("*"):
@@ -296,13 +316,7 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("Expected host does not match the verified machine")
         if args.apply and not args.expect_host:
             raise ValueError("Apply requires --expect-host matching the verified machine")
-        if args.target:
-            target = args.target
-        else:
-            choices = discover_targets(Path.home(), os.environ)
-            if len(choices) != 1:
-                raise ValueError(f"Expected exactly one verified installation, found {len(choices)}")
-            target = choices[0]
+        target = select_target(args.target, Path.home(), os.environ)
         plan = preflight(source, target)
         changes = [str(x) for x in plan["changed"]]
         result = {
@@ -323,6 +337,11 @@ def main(argv: list[str] | None = None) -> int:
             result["reloadUiRequired"] = bool(live_pids and changes)
             result["reloadUiCommand"] = "/reloadui" if live_pids and changes else None
             result["runtimeReloadVerified"] = False
+            # The process query may take several seconds. Re-read the client
+            # configuration before touching the target; a changed selection
+            # invalidates the plan even if the old package hashes still match.
+            if select_target(args.target, Path.home(), os.environ) != target:
+                raise RuntimeError("Deployment target selection changed since preflight")
             result.update(apply_copy(source, target, plan, project))
             result["hashVerified"] = all(
                 sha256(source / rel) == sha256(target / rel) for rel in plan["files"]

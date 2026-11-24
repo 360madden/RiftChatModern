@@ -23,6 +23,10 @@ class DeploymentTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="rcm-deploy-test-")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        # CLI tests must never depend on the real user's Rift.cfg.
+        self.enterContext(mock.patch.dict(deploy_rcm.os.environ, {
+            "APPDATA": str(self.root / "cli-roaming")
+        }))
         self.source = self.root / "project" / "addon" / "RiftChatModern"
         self.target = self.root / "installed" / "RiftChatModern"
         self.source.parent.mkdir(parents=True)
@@ -309,6 +313,51 @@ class DeploymentTests(unittest.TestCase):
         with mock.patch.object(deploy_rcm.os,"name","nt"):
             with mock.patch.object(deploy_rcm.subprocess,"run",return_value=fake):
                 self.assertEqual(deploy_rcm.running_game_pids(),[])
+
+    def test_explicit_target_cannot_bypass_configured_directory(self):
+        # Both modes must reject an otherwise valid stale package.
+        active = self.root / "active-rift" / "Interface" / "AddOns" / "RiftChatModern"
+        active.parent.mkdir(parents=True)
+        shutil.copytree(self.source, active)
+        cfg = {"settings": {"DocumentsDirectory": str(active.parents[2])}}
+        original = (self.target / "Main.lua").read_bytes()
+        with mock.patch.object(deploy_rcm, "read_rift_config", return_value=cfg):
+            self.assertEqual(deploy_rcm.select_target(active, self.root, {}), active)
+            for mode in ([], ["--apply"]):
+                with self.subTest(mode=mode), mock.patch.object(
+                        deploy_rcm, "apply_copy") as copy, contextlib.redirect_stdout(io.StringIO()) as stream:
+                    rc = deploy_rcm.main(mode + ["--expect-host", socket.gethostname(),
+                                                "--target", str(self.target)])
+                    self.assertEqual(rc, 1)
+                    self.assertIn("does not match", json.loads(stream.getvalue())["error"])
+                    copy.assert_not_called()
+        self.assertEqual((self.target / "Main.lua").read_bytes(), original)
+
+    def test_explicit_target_refuses_unreadable_config(self):
+        with mock.patch.object(deploy_rcm, "read_rift_config",
+                               return_value={"settings": {}, "readError": "unavailable"}):
+            with self.assertRaisesRegex(ValueError, "unreadable"):
+                deploy_rcm.select_target(self.target, self.root, {})
+
+    def test_explicit_target_keeps_manual_selection_without_override(self):
+        with mock.patch.object(deploy_rcm, "read_rift_config",
+                               return_value={"settings": {}}):
+            self.assertEqual(deploy_rcm.select_target(self.target, self.root, {}), self.target)
+
+    def test_target_change_during_process_check_refuses_apply(self):
+        # A newly configured directory between preflight and apply must stop
+        # the operation before any copy or backup is attempted.
+        other = self.root / "other-rift"
+        with mock.patch.object(deploy_rcm, "read_rift_config", side_effect=[
+                {"settings": {}}, {"settings": {"DocumentsDirectory": str(other)}}]), \
+                mock.patch.object(deploy_rcm, "running_game_pids", return_value=[]), \
+                mock.patch.object(deploy_rcm, "apply_copy") as copy, \
+                contextlib.redirect_stdout(io.StringIO()) as stream:
+            rc = deploy_rcm.main(["--apply", "--expect-host", socket.gethostname(),
+                                  "--target", str(self.target)])
+        self.assertEqual(rc, 1)
+        self.assertIn("does not match", json.loads(stream.getvalue())["error"])
+        copy.assert_not_called()
 
 if __name__=="__main__":
     unittest.main()
