@@ -6,6 +6,8 @@
 >
 > **Baseline when this roadmap was written:** Git `main` at `29941242778de4026dc32b9a806e88538c6a6ebe`, in-game addon **v0.2.23**. LEGION has a freshly cloned development copy, **not** a verified RIFT client/deployment. The last *recorded* complete suite (November 21 on AMD-DESKTOP) passed **315 Python/Lua + 119 Node = 434 tests** and a .NET 10 Release build. These results have **not been rerun merely by creating this roadmap**.
 
+> **Current checkpoint — Tuesday, 2026-11-24 (America/New_York):** **387 Python/Lua + 144 Node = 531 Windows tests passed**, zero failures/skips and three clean Release builds at code commit `bd8d40a`; both PR and push CI succeeded. See [PR #1](https://github.com/360madden/RiftChatModern/pull/1) and the [Tuesday handoff](docs/HANDOFF_20261124_TUESDAY_RECOVERY.md). Source **v0.2.26**, last verified installed version **v0.2.23**. **Physical recovery remains blocked:** AMD-DESKTOP is unavailable, and LEGION bridge access returned `Session terminated`. Fresh game patch acceptance is pending.
+
 ## 1. Mission, success, and the central feasibility constraint
 
 Build **the most useful modern, legible and reliable RIFT Live chat experience that the actual client permits**, without confusing a diagnostic console, external log companion, and a true replacement for the original social-chat window.
@@ -44,7 +46,8 @@ A Git commit, a passing unit test, a successful Win32 SendInput call, a visible 
 | Public chat | 20 real lines of `[4. Level 1-29][Speaker@Shard]: message`; strict public-only parser and companion tests | **First new real public import → RCM → disk** is NOT YET accepted |
 | Guild/Party/Tell | Some historical guesses/fixtures | Exact current-client bytes and send/receive evidence still missing |
 | Windows companion | Separate Say/public journals; shared exclusive editor claim lock; .NET 10 pinned-window sender; read-only disk audit | Cross-session reliability/automatic operation, latencies, fault recovery |
-| Quality | Last recorded AMD baseline: 434 pass, 0 fail; sender build clean | Fresh tests needed on whichever machine performs development |
+| Quality | Code commit `bd8d40a`: **531 Windows tests passed**, no failures/skips; three Release builds with zero warnings/errors | Keep future code commits green; offline acceptance does not qualify the physical game |
+| Current host / patch | AMD-DESKTOP unavailable; LEGION bridge returned `Session terminated` on November 24 | Fresh host identity, actual patch/build, installed addon, log and save qualification required |
 
 **Do not rewrite history:** Earlier per-version reports may record older intermediate failures or then-pending tasks. Prefer the latest dated acceptance or handoff that supersedes them.
 
@@ -52,6 +55,9 @@ A Git commit, a passing unit test, a successful Win32 SendInput call, a visible 
 
 ~~~text
 M0 establish machine + clean Git + test toolchain
+  |
+  v
+RCM-085 qualify actual post-patch client with installed v0.2.23
   |
   v
 M1 qualify NEW live Level 1-29 -> public import -> saved receipt
@@ -90,17 +96,17 @@ UX1 UI polish & configuration -> API1 addon integration -> REL1 release quality
 **Objective:** prove which machine, repo state, tools, and game build are actually in use.
 
 - [ ] **RCM-001 · Host and repo qualification:** Record hostname, verified `C:\work\RiftChatModern` root, remote URL, branch, local HEAD, `origin/main` SHA, untracked/modified files and whether AMD-DESKTOP is reachable. Never conflate LEGION with AMD-DESKTOP. Preserve any pre-existing local changes.
-- [x] **RCM-002 · Toolchain (LEGION qualified 2026-11-23):** Check Python environment with Lua 5.1 via Lupa, Node, and .NET 10 SDK. Execute the full existing tests and Release sender build; write counts, failures, versions and date to a new dated verification note. If unavailable on LEGION, label tests blocked rather than pretending the old AMD result is current.
+- [x] **RCM-002 · Toolchain (LEGION 2026-11-23; Windows CI 2026-11-24):** Complete current gate passed at `bd8d40a`: Python 3.14.10 with Lua 5.1, Node 24.22.3, .NET SDK 10.0.404, **387 Python/Lua + 144 Node**, all three Release builds clean. See [Tuesday verification](docs/HANDOFF_20261124_TUESDAY_RECOVERY.md). Runner results do not establish current LEGION access or game acceptance.
 - [ ] **RCM-003 · Evidence index:** Keep one latest-session evidence matrix (source format → test → real-game screenshot → save token → commit) with links to dated `docs/` reports. Preserve original reports as immutable historical records.
 - [ ] **RCM-004 · Client preflight, machine-bound:** Verify exact game PID/HWND/start ticks/EXE SHA and current `Rift.cfg` DocumentsDirectory, active addon location, `Log.txt` path and actual noncombat logging state. Never reuse the historical pins in documents.
 
-**Exit gate:** current machine and Git state are known, full available regression results are recorded without exaggeration, and a reproducible live-game preflight is possible on AMD (or the live milestone remains explicitly `BLOCKED`). **No Lua version bump** is needed for a documentation-only change.
+**Exit gate:** current machine and Git state are known, full available regression results are recorded without exaggeration, and a reproducible live-game preflight is possible on the freshly verified host. LEGION is the current recovery candidate; inaccessible physical milestones remain `BLOCKED`. After a game update, RCM-085 patch-only qualification precedes M1. **No Lua version bump** is needed for a documentation-only change.
 
 ### M1 — First complete public-channel acceptance (P0; most valuable next proof)
 
 **Objective:** one **new, naturally game-generated** Level 1–29 / slot 4 message reaches RCM and its real persisted history, without interfering with previously settled Say transfers.
 
-- [ ] **RCM-010 · Verify physical prerequisites:** AMD RIFT is running in world, window can be foregrounded, RCM v0.2.23 editor is usable, native chat fallback works, old Say claim is settled and public journal has no unresolved transfer. Read current status rather than relying on Saturday's values.
+- [ ] **RCM-010 · Verify physical prerequisites:** On the freshly qualified game host after RCM-085, verify RIFT is running in world, its window can be foregrounded, the accepted installed RCM editor is usable, native chat fallback works, the Say claim is settled and the public journal has no unresolved transfer. LEGION is the recovery candidate; AMD-DESKTOP's historical receipts do not qualify it. Read current status rather than reusing old process pins or journal values.
 - [ ] **RCM-011 · Log activation, finite session:** Determine current noncombat logging state from actual client evidence. `/log` is a **toggle**, never a blind enable action. If changed for this test, record and restore original state. Start capture from EOF, not from historic bytes.
 - [ ] **RCM-012 · Genuine input source:** Observe one complete, newly appended `[4. Level 1-29]` line while the bounded public follower is active. Do not synthesize public messages or mislabel an old line as new.
 - [ ] **RCM-013 · Preflight and single dispatch:** Verify one public queued token, shared lock, exact format/slot, .NET no-input preflight; obtain fresh process/window/executable pins and physically confirm `INPUT • FOCUSED`. Use **one** guarded `dispatch`; **do not `claim` first**, because it reserves the transfer. No retry of partial/ambiguous keyboard input.
@@ -193,7 +199,7 @@ UX1 UI polish & configuration -> API1 addon integration -> REL1 release quality
 - [ ] **RCM-082 · Compatibility matrix:** Test clean install, upgrade from v0.2.23, addon absent/disabled, unexpected SavedVariables data, host disconnected, RIFT minimized, console settings unavailable, and client updates.
 - [ ] **RCM-083 · Observability & support:** Redacted bug-report template, failure signatures, supported channel/version matrix, complete known limitations and recovery steps; publish authentic privacy-cropped screenshots.
 - [ ] **RCM-084 · Shipping:** Prepare an honest release tier (`Core` or `Core + Companion`), changelog, versioned source tag and distributable addon package. Do not mix host helper binaries into the Lua addon without a documented opt-in path. CurseForge publication and licensing decisions are separate owner approvals.
-- [ ] **RCM-085 · Post-update recovery:** On each RIFT patch, reverify API presence, source line grammars, native window/process identity policy, log path and deployment; compare source evidence before changing adapters. Maintain known-good rollback. **PREPARED 2026-11-23:** [November 24 playbook](docs/PATCH_RECOVERY_20261124.md), shared LEGION baseline verified, private installed-v0.2.23/addon-save snapshot captured and offline checks passed; post-patch runtime qualification pending.
+- [ ] **RCM-085 · Post-update recovery:** On each RIFT patch, reverify API presence, source line grammars, native window/process identity policy, log path and deployment; compare source evidence before changing adapters. Maintain known-good rollback. **BLOCKED 2026-11-24:** [recovery playbook](docs/PATCH_RECOVERY_20261124.md) and historical LEGION before-snapshot exist; current host access and actual patch-only runtime qualification are pending. Preserve installed v0.2.23 until that gate passes. The [Tuesday recovery branch](docs/HANDOFF_20261124_TUESDAY_RECOVERY.md) adds deployment/config guards and Windows CI; offline fixes do not complete physical recovery.
 
 **Exit gate:** a new installation and upgrade pass actual game smoke tests; artifacts match committed code; no unresolved P0 defects; release notes state exactly which social channels are supported and how.
 
@@ -248,7 +254,7 @@ These are **goals and pass/fail gates**, not claimed current results.
 | Duplicate import after ambiguous sender | High data integrity impact | Claimed token but no independent saved receipt | Fail closed, inspect game/save; never auto-resend |
 | Private messages in host files | High exposure if published | Encoded journal or raw logs in changed files | Ignore private paths, review diff before commit/push |
 | Game patch breaks parser/window | Medium-high | Build/API/log grammar changes | Requalify source and client identity on patch; retain prior version |
-| LEGION vs AMD confusion | High deployment risk | Repo exists on laptop but RIFT on desktop | Verify hostname and active game per session; never cross-deploy by assumption |
+| LEGION vs AMD confusion | High deployment risk | Historical AMD acceptance mistaken for current LEGION qualification | Verify hostname, active game and installed version per session; never cross-deploy by assumption |
 | Overexpansion before vertical proof | High schedule risk | Many unverified adapters/UI panels at once | WIP limit, M1 acceptance first, evidence-driven promotion |
 | Locked-to-foreground import UX | High usability risk | Game cannot receive input in normal play | Treat host helper as opt-in companion, investigate alternatives before always-on claim |
 
@@ -270,36 +276,37 @@ These are **goals and pass/fail gates**, not claimed current results.
 cd C:\work\RiftChatModern
 git status -sb
 git log -3 --oneline
-& "C:\work\riftreader2\.venv\Scripts\python.exe" -m unittest discover -s tests
-node --test tests/test_chat_import.cjs tests/test_chat_observer.cjs tests/test_chat_observer_cli.cjs tests/test_chat_batch_gate.cjs tests/test_live_say_batch.cjs tests/test_live_say_follow.cjs tests/test_live_public_follow.cjs tests/test_say_delivery.cjs tests/test_public_delivery.cjs tests/test_test_python.cjs tests/test_dotnet_host.cjs tests/test_companion_health.cjs
-dotnet build .\tools\RcmEditorSender\RcmEditorSender.csproj -c Release --nologo
-& "C:\work\riftreader2\.venv\Scripts\python.exe" tools/deploy_rcm.py
+& .\.venv\Scripts\python.exe -B tools/rcm_offline_ci.py
+& .\.venv\Scripts\python.exe -B tools/deploy_rcm.py --expect-host LEGION
 ~~~
 
-The `deploy_rcm.py` invocation above is **dry-run by default**; on a host not matching the verified active game it may refuse, and that is expected. Do not `--apply` until exact host, installed folder and backup are checked.
+Use the [Windows qualification setup](docs/OFFLINE_CI.md), including the sibling decoder and actual tool versions. `LEGION` above is the current recovery candidate; substitute only the freshly verified host. The `deploy_rcm.py` invocation is **dry-run by default** and refuses a hostname mismatch. Do not `--apply` until exact host, installed folder and backup are checked and the patch-only baseline has passed.
 
 ## 9. Current project board and next move
 
-| Work item / milestone | Status on 2026-11-23 | Owner environment | Next action |
+| Work item / milestone | Status on 2026-11-24 | Owner environment | Next action |
 |---|---|---|---|
 | Core v0.2.23 UI and Say coordinator | `VERIFIED-LIVE` / `VERIFIED-DISK` (as recorded Nov 21) | AMD-DESKTOP | Preserve working baseline |
-| M0 Git checkout and toolchain | `TESTED-OFFLINE` on LEGION (321 Python/Lua + 129 Node; clean .NET build); `BLOCKED` for current AMD status check | LEGION / AMD-DESKTOP | Qualify LEGION's current session; preserve AMD historical evidence and dependency provenance |
-| M1 Level 1–29 import | `TESTED-OFFLINE` only; live pending | LEGION (qualification pending) | Recover foregroundable client; complete exact-source → RCM → disk proof |
+| M0 Git checkout and toolchain | `TESTED-OFFLINE`: **531 Windows tests passed**, all three builds clean at `bd8d40a` | GitHub Windows Server 2025 runner | Preserve passing gate for subsequent code changes; verify actual game host separately |
+| RCM-085 patch recovery | `BLOCKED` for physical acceptance; deployment/config/rollback fixes and Windows CI qualified offline | LEGION candidate; bridge returned `Session terminated` | Restore access, verify actual updater/build state and qualify installed v0.2.23 before deployment |
+| M1 Level 1–29 import | `TESTED-OFFLINE` only; live pending after RCM-085 | Freshly verified game host | After patch-only baseline, complete exact new source → RCM → disk proof |
 | M2 additional social formats | `RESEARCH` | Qualified live host | Obtain current real log examples after M1 |
 | M3 queue/recovery extension | `PLANNED` (foundations implemented) | Any dev host with tests | Start after M1 |
 | M4 continuous companion | `PLANNED` | Qualified live host | Start after M3 |
-| UX1 improvements | `TESTED-OFFLINE` v0.2.25 graphical palette and visibility implemented; physical acceptance pending | Any dev host; AMD for acceptance | Verify live color/visibility, reload/relogin persistence; continue UX1/API1 offline |
-| API1 integration | `TESTED-OFFLINE` RCM-060 API/consumer + RCM-062 redacted companion health | Any dev host; AMD for acceptance | RCM-061 physical roundtrip; RCM-063 compatibility and RCM-064 operator workflow |
+| UX1 improvements | `TESTED-OFFLINE` v0.2.25 graphical palette and visibility implemented; physical acceptance pending | Development host; freshly qualified game host for acceptance | After staged addon upgrade, verify color/visibility and reload/relogin persistence |
+| API1 integration | `TESTED-OFFLINE` RCM-060 API/consumer + RCM-062 redacted companion health | Development host; freshly qualified game host for acceptance | RCM-061 physical roundtrip; independent RCM-063 compatibility and RCM-064 operator workflow |
 | GATE B full replacement | `RESEARCH`, no GO decision | Physical current client required | After incoming coverage/source feasibility |
 | REL1 release | `PLANNED` | Verified game host | After required gates |
 
-**Immediate P0:** **RCM-010 → RCM-015**. Get one *new authentic* Level 1–29 message through the existing public-only companion, prove one RCM-host row and one saved transfer token, and restore the original logging state. If AMD is inaccessible, RCM-002 is now qualified on LEGION; proceed with independent UX/API tests or dependency preflight without misreporting that the physical blocker has been resolved.
+**Immediate P0:** **RCM-085 → RCM-010 → RCM-015** on the freshly verified game host. Establish the actual patch/build and existing installed-v0.2.23 baseline first. Only then capture one *new authentic* Level 1–29 message, prove one RCM-host row and one saved transfer token, and restore the original logging state. The Windows offline gate has passed. AMD-DESKTOP is unavailable and current LEGION access failed; continue evidence-backed offline work without marking the physical gate complete.
+
+**Tuesday recovery checkpoint:** [PR #1](https://github.com/360madden/RiftChatModern/pull/1) contains explicit deployment-target, malformed-config/stale-log and rollback guards plus the native-slash backend correction and Windows qualification runner. At **`bd8d40a1ee4ed71b4b676b01e085e1db77ccc8cd`**, [PR CI](https://github.com/360madden/RiftChatModern/actions/runs/45496085182) and [push CI](https://github.com/360madden/RiftChatModern/actions/runs/45496076722) both completed successfully: **387 Python/Lua + 144 Node = 531 passed**, no failures/skips/todo, and three Release builds with zero warnings/errors. Five rollback regressions and the six original native-slash failures were reproduced before their fixes. The [Tuesday handoff](docs/HANDOFF_20261124_TUESDAY_RECOVERY.md) preserves the initial YAML failure, first Windows failures, corrective work and exact toolchain. No live deployment or patch acceptance occurred.
 
 **Sunday LEGION-only validation checkpoint:** The new roadmap contract passed 5/5; Node host tests returned 117 passed / 2 skipped; the .NET 10 sender Release build passed. The broader Python suite did **not** pass on LEGION (missing Pillow and Lua 5.1 prerequisites plus a Windows application-control-blocked screenshot helper). Details: [Sunday roadmap bootstrap handoff](docs/HANDOFF_20261122_ROADMAP.md). Do not replace the historical AMD 434-pass result with a false current all-green claim.
 
 **Monday LEGION-only checkpoint:** RCM's isolated Python environment and .NET host discovery now work. 321 Python/Lua and 129 Node tests passed with zero skips/failures; .NET Release build clean. See [M0 toolchain qualification](docs/M0_LEGION_TOOLCHAIN_20261123.md). Physical M1 acceptance remains blocked.
 
-**Monday closeout:** source v0.2.26, graphical palette/visibility and API improvements implemented, aggregate companion health added. Latest completed full LEGION regression: 353 Python/Lua + 144 Node = **497 passed**, zero failures/skips. See the [Monday development handoff](docs/HANDOFF_20261123_MONDAY_CLOSEOUT.md). M1 remains blocked; next independent task is RCM-063 compatibility and migration testing.
+**Historical Monday closeout:** source v0.2.26, graphical palette/visibility and API improvements implemented, aggregate companion health added. That checkpoint's full LEGION regression was 353 Python/Lua + 144 Node = **497 passed**, zero failures/skips. See the [Monday development handoff](docs/HANDOFF_20261123_MONDAY_CLOSEOUT.md). The later [pre-patch bug hunt](docs/PATCH_RECOVERY_BUGHUNT_20261124.md) established the historical main baseline of **367 Python/Lua + 144 Node = 511 passed**. RCM-063 compatibility and migration testing remains independent offline work; physical recovery takes priority before M1.
 
 ## 10. Roadmap maintenance policy (durability contract)
 
@@ -313,7 +320,10 @@ The `deploy_rcm.py` invocation above is **dry-run by default**; on a host not ma
 
 ### Reference index
 
-- [Latest development handoff](docs/HANDOFF_20261123_MONDAY_CLOSEOUT.md)
+- [Latest development handoff](docs/HANDOFF_20261124_TUESDAY_RECOVERY.md)
+- [Windows offline qualification](docs/OFFLINE_CI.md)
+- [Patch recovery playbook](docs/PATCH_RECOVERY_20261124.md)
+- [Historical Monday closeout](docs/HANDOFF_20261123_MONDAY_CLOSEOUT.md)
 - [Monday LEGION toolchain qualification](docs/M0_LEGION_TOOLCHAIN_20261123.md)
 - [Latest Sunday development handoff](docs/HANDOFF_20261122_SUNDAY_CLOSEOUT.md)
 - [Sunday roadmap bootstrap and LEGION validation](docs/HANDOFF_20261122_ROADMAP.md)

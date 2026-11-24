@@ -82,7 +82,7 @@ RIFT/
 ```
 
 > [!TIP]
-> For development on the configured AMD-DESKTOP workstation, `tools/deploy_rcm.py` offers a guarded dry-run and hash-verified deployment. **An existing addon can be updated while RIFT is running; use `/reloadui` afterward.** See [deployment policy](docs/LIVE_DEPLOYMENT_RELOADUI_POLICY_20261120.md).
+> On a freshly verified game host, `tools/deploy_rcm.py` offers a guarded dry-run and hash-verified deployment. **An existing addon can be updated while RIFT is running; use `/reloadui` afterward.** For the November 24 recovery, qualify the installed v0.2.23 against the actual game build before upgrading. See the [patch recovery playbook](docs/PATCH_RECOVERY_20261124.md) and [deployment policy](docs/LIVE_DEPLOYMENT_RELOADUI_POLICY_20261120.md).
 
 ## Quick command reference
 
@@ -153,11 +153,15 @@ The API also provides history retrieval, subscriptions, UI controls, copy helper
 
 ## Project status
 
+**November 24 checkpoint:** **531 Windows tests passed**, with all three Release builds clean. Physical patch recovery remains **blocked** pending fresh access and game acceptance on LEGION.
+
 | Area | Current evidence |
 |---|---|
 | **Addon source / live baseline** | **v0.2.26** source includes the graphical palette, API hardening and a separate integration example; **v0.2.23** is the last physically accepted version, with a retained real **`[HOST/SAY]`** import |
 | **Physical RIFT evidence** | v0.2.22 General, Loot and named public-channel subscriptions confirmed in native screenshots; v0.2.21 drag/resize, focus, details, message columns previously accepted |
-| **Offline regression suite** | **497 passed** on LEGION, November 23 (353 Python/Lua + 144 Node; zero failures/skips). See [Monday closeout](docs/HANDOFF_20261123_MONDAY_CLOSEOUT.md). Historical AMD-DESKTOP: 315 Python/Lua + 119 Node passed November 21. |
+| **Current Windows regression result** | **387 Python/Lua + 144 Node = 531 passed**, zero failures/skips, all three .NET Release builds clean at code commit `bd8d40a`. Both [PR CI](https://github.com/360madden/RiftChatModern/actions/runs/45496085182) and [push CI](https://github.com/360madden/RiftChatModern/actions/runs/45496076722) succeeded. See [Tuesday handoff](docs/HANDOFF_20261124_TUESDAY_RECOVERY.md) and [PR #1](https://github.com/360madden/RiftChatModern/pull/1). |
+| **Historical regression baseline** | **511 passed** on LEGION before the recovery branch (367 Python/Lua + 144 Node; zero failures/skips), at main `d2e280a`. See [pre-patch bug hunt](docs/PATCH_RECOVERY_BUGHUNT_20261124.md). |
+| **Current physical access** | AMD-DESKTOP unavailable; LEGION is the recovery candidate, but its bridge returned `Session terminated` on November 24. Fresh game patch, startup, log and save acceptance remain pending. |
 | **Persistence** | Window position and size survived `/reloadui`; exact UI geometry and local DEV test entry independently found in the on-disk SavedVariables file |
 | **Windows host tooling** | Existing .NET 10 editor batch validator, exact-candidate gate; temporary RIFT foreground capture/return physically verified |
 | **Native player social chat** | Two supervised real **Say** imports accepted; 20 game-created numbered public-channel log lines establish one additional parser format, but public import and Guild/Party/Tell remain unverified |
@@ -175,7 +179,9 @@ The homepage is intentionally concise. The complete development history—includ
 | Start here | Purpose |
 |---|---|
 | 🧭 [Current development roadmap](ROADMAP.md) | Canonical priorities, dependency gates, measurable acceptance criteria and current project board |
-| 📋 [Latest development handoff](docs/HANDOFF_20261123_MONDAY_CLOSEOUT.md) | Current source, test results, blockers and exact next-session actions |
+| 📋 [Latest development handoff](docs/HANDOFF_20261124_TUESDAY_RECOVERY.md) | Tuesday fixes, verified 531-test Windows result and pending physical patch gate |
+| 🧪 [Windows offline qualification](docs/OFFLINE_CI.md) | Reproducible toolchain, pinned companion dependency, all three builds and no-skip suite gate |
+| 📋 [Monday development closeout](docs/HANDOFF_20261123_MONDAY_CLOSEOUT.md) | Preserved v0.2.26 API/palette work and historical 497-test checkpoint |
 | 🎨 [v0.2.20 Glass UI](docs/V0_2_20_GLASS_UI_20261121.md) | Original PNG skin, interactive Lua styling, compatibility tests, and physical acceptance checklist |
 | 📸 [Real v0.2.20 RIFT screenshot evidence](docs/V0_2_20_NATIVE_SCREENSHOT_ACCEPTANCE_20261121.md) | Verified in-game screen capture and managed temporary foreground; private image not published |
 | 💬 [v0.2.21 Message columns](docs/V0_2_21_MESSAGE_COLUMNS_20261121.md) | Local seconds, distinct source/channel/message fields, responsive layout and test evidence |
@@ -203,17 +209,15 @@ The homepage is intentionally concise. The complete development history—includ
 
 This is an independent community addon. Bug reports and reproducible test cases are welcome through [GitHub Issues](https://github.com/360madden/RiftChatModern/issues). Read the [contribution guide](CONTRIBUTING.md) before submitting changes.
 
-From the repository root, create an isolated Python 3.14 environment and build the Windows sender. A compatible sibling `LuaPadModern` checkout must provide `tools/rift-log-probe.cjs` for host observer tests.
+From the repository root, create an isolated Python 3.14 environment and run the Windows qualification gate. A sibling `LuaPadModern` checkout must provide `tools/rift-log-probe.cjs`; see [offline qualification](docs/OFFLINE_CI.md) for the pinned, offline-qualified decoder and its distinction from the historical LEGION decoder.
 
 ```powershell
 py -3.14 -m venv .venv
 & .\.venv\Scripts\python.exe -m pip install --only-binary=:all: -r requirements-dev.txt
-dotnet build tools/RcmEditorSender/RcmEditorSender.csproj -c Release --nologo
-& .\.venv\Scripts\python.exe -m unittest discover -s tests
-node --test tests/test_chat_import.cjs tests/test_chat_observer.cjs tests/test_chat_observer_cli.cjs tests/test_chat_batch_gate.cjs tests/test_live_say_batch.cjs tests/test_live_say_follow.cjs tests/test_live_public_follow.cjs tests/test_say_delivery.cjs tests/test_public_delivery.cjs tests/test_test_python.cjs tests/test_dotnet_host.cjs tests/test_companion_health.cjs
+& .\.venv\Scripts\python.exe -B tools/rcm_offline_ci.py
 ```
 
-Python 3.14, Node 24 and .NET 10 were verified on LEGION. Test Python can be overridden with an absolute `RCM_TEST_PYTHON` executable; the repo-local `.venv` takes precedence over the legacy sibling environment. The coordinator uses the standard Windows .NET installation, an absolute PATH entry, or an explicit absolute `RCM_DOTNET` override. Invalid explicit paths fail closed. Missing test prerequisites are reported as skips or failures, not silent passes. These developer dependencies are not required for the addon-only installation.
+The complete Windows Server 2025 run used Python 3.14.10, Node 24.22.3 and .NET SDK 10.0.404. The gate builds all three Windows helpers, supplies the actual Python/.NET paths to the fixtures, then requires complete Python/Lua and Node results with no skips. Future code changes need a fresh successful run. These developer dependencies are not required for the addon-only installation.
 
 ---
 
