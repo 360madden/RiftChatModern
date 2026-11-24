@@ -15,9 +15,10 @@ import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-# Preserve the last recorded complete baseline. A silently skipped or missing
-# suite must not be accepted as a clean regression result.
-MIN_PYTHON_TESTS = 367
+# November 24 recovery baseline: 367 existing methods + 10 target/config
+# guards + 2 CI summaries + 5 rollback cases + 3 backend-factory cases.
+# A silently skipped or missing suite must not qualify as a clean result.
+MIN_PYTHON_TESTS = 387
 MIN_NODE_TESTS = 144
 
 
