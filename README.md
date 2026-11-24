@@ -6,7 +6,7 @@
 
 **A modern, draggable chat-style console and developer diagnostics hub for RIFT Live.**
 
-[![Version](https://img.shields.io/badge/version-0.2.23-14b8a6?style=for-the-badge)](addon/RiftChatModern/RiftAddon.toc)
+[![Version](https://img.shields.io/badge/version-0.2.24-14b8a6?style=for-the-badge)](addon/RiftChatModern/RiftAddon.toc)
 [![RIFT Live](https://img.shields.io/badge/game-RIFT%20Live-0ea5e9?style=for-the-badge)](https://www.trionworlds.com/rift/)
 [![Lua 5.1](https://img.shields.io/badge/runtime-Lua%205.1-334155?style=for-the-badge)](addon/RiftChatModern/)
 [![Status](https://img.shields.io/badge/status-active%20development-f59e0b?style=for-the-badge)](#project-status)
@@ -31,7 +31,7 @@ RCM is built to support other RIFT addons as a shared diagnostics surface—not 
 <div align="center">
 <img src="assets/screenshots/rcm-v0.2.22-native-console-live-cropped.jpg" alt="Actual RiftChatModern v0.2.22 native RIFT Console subscription inspector running in RIFT Live" width="900"/>
 
-<sub>Historical real RIFT Live screenshot of **RCM v0.2.22** (November 21, 2026), showing read-only public-channel subscriptions returned by the game. **Current addon: v0.2.23.** Cropped to exclude the player name and private HUD. No simulated transcript. [Previous v0.2.21 UI](assets/screenshots/rcm-v0.2.21-live-ui-cropped.jpg) and [redacted v0.2.2 image](assets/screenshots/rcm-v0.2.2-physical-names-redacted.png) remain available.</sub>
+<sub>Historical real RIFT Live screenshot of **RCM v0.2.22** (November 21, 2026), showing read-only public-channel subscriptions returned by the game. **Last physically verified addon: v0.2.23. Current source: v0.2.24 (offline tested).** Cropped to exclude the player name and private HUD. No simulated transcript. [Previous v0.2.21 UI](assets/screenshots/rcm-v0.2.21-live-ui-cropped.jpg) and [redacted v0.2.2 image](assets/screenshots/rcm-v0.2.2-physical-names-redacted.png) remain available.</sub>
 </div>
 
 ## What RCM can do
@@ -40,6 +40,7 @@ RCM is built to support other RIFT addons as a shared diagnostics surface—not 
 |:--:|---|---|
 | 🖥️ | **Glass UI (v0.2.20)** | Translucent charcoal PNG surfaces, cyan outlines, responsive hover tabs, readable fonts, saved placement and dimensions |
 | 💬 | **Separated message columns (v0.2.21)** | Local timestamps to seconds, colored channel labels, sender names, and independently sized message previews |
+| 🎨 | **Saved channel palette (v0.2.24)** | Command/API color controls, separate host-channel families, validated bright colors and live row recoloring; physical game acceptance pending |
 | 💬 | **Accurately labeled message history** | All, Imports, Notices, NPC Say, Addons, Dev; former Chat alias preserved as `:filter chat` |
 | 🔎 | **Find and inspect** | Search, paginated history, expandable message details, copy/export |
 | ⌨️ | **Local command editor** | Dedicated input, focus feedback, local `:` commands, session-only command recall |
@@ -107,6 +108,9 @@ RIFT/
 | `:filter addons` | Filter addon messages |
 | `:find text` | Search history |
 | `:echo Hello` | Create a local developer message |
+| `:color list` / `:color show host_public` | Inspect presentation colors |
+| `:color set host_public #F0E080` | Change a channel label and marker color |
+| `:color reset host_public` / `:color reset all` | Restore defaults |
 | `:native channels` | Inspect console channel metadata (not chat transcripts) |
 | `:host status` | Inspect the manual host-import receiver |
 | `:mirror status` | Inspect optional addon-console mirroring |
@@ -141,13 +145,13 @@ if rcm and rcm.interfaceVersion == 2 then
 end
 ```
 
-The API also provides history retrieval, subscriptions, UI controls, copy helpers, native console metadata, and addon-data messaging. **Addon-data transport is not ordinary player-chat transport.** See the [full API and engineering contract](docs/ENGINEERING_ARCHIVE_README_THROUGH_20261121.md#universal-addon-api).
+The API also provides history retrieval, subscriptions, UI controls, copy helpers, native console metadata, and addon-data messaging. The v0.2.24 additive palette API is `GetChannelColors()`, `SetChannelColor(key, hex)`, and `ResetChannelColor(key)`; see [channel palette contract](docs/V0_2_24_CHANNEL_PALETTE_20261123.md). **Addon-data transport is not ordinary player-chat transport.** See the [full API and engineering contract](docs/ENGINEERING_ARCHIVE_README_THROUGH_20261121.md#universal-addon-api).
 
 ## Project status
 
 | Area | Current evidence |
 |---|---|
-| **Addon release** | **v0.2.23**, physically loaded in RIFT Live; the retained real Say import displays as **`[HOST/SAY]`** without a duplicate |
+| **Addon source / live baseline** | **v0.2.24** source includes persistent channel colors; **v0.2.23** is the last physically accepted version, with a retained real **`[HOST/SAY]`** import |
 | **Physical RIFT evidence** | v0.2.22 General, Loot and named public-channel subscriptions confirmed in native screenshots; v0.2.21 drag/resize, focus, details, message columns previously accepted |
 | **Offline regression suite** | **315 Python/Lua and 119 Node tests passed** (November 21, 2026), including serialized Say queue, .NET sender dry-run/refusal, exact-token disk auditing, physical UI regressions and SavedVariables geometry audit |
 | **Persistence** | Window position and size survived `/reloadui`; exact UI geometry and local DEV test entry independently found in the on-disk SavedVariables file |

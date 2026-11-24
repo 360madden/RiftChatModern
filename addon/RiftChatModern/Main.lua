@@ -2,7 +2,7 @@
 -- Native player say/tell/guild transmit and full native chat interception are NOT
 -- exposed by the verified addon APIs. This UI never pretends to send those.
 local info = ...
-local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.23"
+local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.24"
 local Core = _G.RiftChatModernCore
 local MessageBridge = _G.RiftChatModernAddonMessages
 local NativeProbe = _G.RiftChatModernNativeProbe
@@ -479,10 +479,9 @@ render=function()
                 local ok,value=pcall(os.date,"%H:%M:%S",math.floor(r.at))
                 if ok and type(value)=="string" then ts=value end
             end
-            local color=r.kind=="import" and C.accent
-                or r.kind=="npc" and C.good
-                or r.kind=="system" and C.warning
-                or r.kind=="dev" and C.info or C.accent
+            -- Only the channel label and its marker use the saved palette.
+            -- Text, source identity, and native subscription state stay distinct.
+            local color=model:getRowColor(r)
             item.time:SetText(ts)
             item.channel:SetText("["..cutUtf8(Core.rowShortLabel(r),12).."]")
             item.sender:SetText(cutUtf8(r.source,
@@ -602,7 +601,9 @@ local function executeLocal(value)
     if type(value)=="string" and value:match("^%s*:copy%s*$") then
         return copyHistory()
     end
-    return model:execute(value,clock())
+    local ok,result=model:execute(value,clock())
+    if ok and type(result)=="string" then notifyUi(result) end
+    return ok,result
 end
 local function mirrorStatus()
     return mirror and mirror:status()
@@ -660,7 +661,8 @@ local function submit()
     -- Copy writes a useful receipt into the footer; preserve it until changed.
     if not value:match("^%s*:copy%s*$") then render() end
     -- render updates the standard footer; restore the precise import receipt.
-    if lastEditorImportReceipt then notifyUi(lastEditorImportReceipt) end
+    if lastEditorImportReceipt then notifyUi(lastEditorImportReceipt)
+    elseif type(err)=="string" then notifyUi(err) end
     lastEditorImportReceipt=nil
     return true
 end
@@ -1180,6 +1182,9 @@ local function parseSlash(_,args)
             local ok,err=resizeTo(tonumber(requestedW),tonumber(requestedH),true)
             notice(ok and ("Window size "..W.."x"..H) or ("Size failed: "..tostring(err)))
         end
+    elseif verb=="color" and model then
+        local ok,result=model:paletteCommand(rest)
+        notice(ok and result or ("Color rejected: "..tostring(result)))
     elseif verb=="checkpoint" then notice(checkpointSummary())
     elseif verb=="import" then
         -- Every intermediate receipt must be visible in native chat even if
@@ -1227,7 +1232,7 @@ local function parseSlash(_,args)
         else visibleOffset=0;render() end
     elseif verb=="help" then
         notice("/rcm [show|hide|focus|status|copy|clear|import ID PART/TOTAL B64|import status|import cancel|size W H|size reset]")
-        notice("Input: :import ID INDEX/TOTAL BASE64URL | :host status | :mirror | :native | :logprobe | :addon ...")
+        notice("Input: :color help | :import ID INDEX/TOTAL BASE64URL | :host status | :mirror | :native | :logprobe | :addon ...")
     else notice("Unknown command. Use /rcm help") end
 end
 
@@ -1598,6 +1603,7 @@ _G.RiftChatModernAPI={
     end,
     GetStatus=function()
         local data=model and model:status() or {version=VERSION,ready=false}
+        data.version=VERSION
         data.ready=model~=nil
         data.windowVisible=panel and panel:GetVisible() or false
         local state=focusState()
@@ -1633,6 +1639,19 @@ _G.RiftChatModernAPI={
     GetMessage=function(id)
         if not model then return nil,"not_ready" end
         return model:getMessage(id)
+    end,
+    -- Additive API v2 presentation controls; no changes to message provenance.
+    GetChannelColors=function()
+        if not model then return nil,"not_ready" end
+        return model:getChannelColors()
+    end,
+    SetChannelColor=function(key,value)
+        if not model then return nil,"not_ready" end
+        return model:setChannelColor(key,value)
+    end,
+    ResetChannelColor=function(key)
+        if not model then return nil,"not_ready" end
+        return model:resetChannelColor(key)
     end,
     OpenMessage=openMessage,
     GetSelectedMessage=selectedMessage,

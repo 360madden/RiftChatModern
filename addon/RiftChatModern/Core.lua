@@ -14,6 +14,70 @@ local origins = {local_addon=true, game_event=true, addon_data=true,
     external_api=true, host_manual=true, legacy_unknown=true}
 local filters = {all=true, chat=true, imports=true, system=true,
     npc=true, addons=true, dev=true, combat=true}
+-- Sparse, character-local presentation overrides. History schema remains v2.
+-- Fixed keys prevent arbitrary channel strings from growing SavedVariables.
+-- Imported families never change their provenance or become native chat.
+local paletteKeys={"system","npc","addons","dev","combat","import",
+    "host_general","host_say","host_yell","host_emote","host_local",
+    "host_public","host_party","host_guild","host_tell"}
+local paletteDefaults={
+    system="FFBF75",npc="66F0B8",addons="1FD1D4",dev="99C7FF",
+    combat="E8C58B",import="1FD1D4",host_general="1FD1D4",
+    host_say="1FD1D4",host_yell="FFBF75",host_emote="D8B4FE",
+    host_local="1FD1D4",host_public="99C7FF",host_party="89E5FF",
+    host_guild="9AE6B4",host_tell="F5B5E8",
+}
+local function normalizeColor(value)
+    if type(value)~="string" or #value>7 then return nil,"invalid_color" end
+    local hex=value:match("^#?(%x%x%x%x%x%x)$")
+    if not hex then return nil,"invalid_color" end
+    hex=hex:upper()
+    -- Reject very dark colors against the existing dark glass row background.
+    -- This conservative luminance floor is a readability guard, not a claim
+    -- of measured contrast against every possible live game background.
+    local function linear(byte)
+        local v=tonumber(byte,16)/255
+        return v<=0.04045 and v/12.92 or ((v+0.055)/1.055)^2.4
+    end
+    local lum=0.2126*linear(hex:sub(1,2))+0.7152*linear(hex:sub(3,4))
+        +0.0722*linear(hex:sub(5,6))
+    if lum<0.25 then return nil,"color_too_dark" end
+    return hex
+end
+local function paletteKey(row)
+    if row.kind~="import" then return paletteDefaults[row.kind] and row.kind or "import" end
+    if row.origin~="host_manual" then return "import" end
+    if row.channelKind=="general" then
+        local named={Say="host_say",Yell="host_yell",Emote="host_emote",Local="host_local"}
+        return named[row.channelName] or "host_general"
+    end
+    local candidate="host_"..(row.channelKind or "")
+    return paletteDefaults[candidate] and candidate or "import"
+end
+-- Repair only the optional presentation field. Never discard valid history,
+-- tokens or other settings because an old or malformed palette was loaded.
+local function sanitizePalette(saved)
+    local raw=saved.channelColors
+    if raw==nil then return false end
+    local clean,changed={},type(raw)~="table"
+    if type(raw)=="table" then
+        for _,key in ipairs(paletteKeys) do
+            local value=raw[key]
+            if value~=nil then
+                local hex=normalizeColor(value)
+                if hex and hex~=paletteDefaults[key] then clean[key]=hex end
+                if clean[key]~=value then changed=true end
+            end
+        end
+        for key in pairs(raw) do
+            if clean[key]~=raw[key] then changed=true;break end
+        end
+        if next(raw)==nil then changed=true end
+    end
+    if changed then saved.channelColors=next(clean) and clean or nil end
+    return changed
+end
+
 local originLabels = {host_manual="HOST IMPORT",legacy_unknown="UNVERIFIED",
     external_api="EXTERNAL",local_addon="LOCAL",game_event="GAME EVENT",
     addon_data="ADDON DATA"}
@@ -187,7 +251,8 @@ function Core.new(saved)
     end
     -- Migration and missing nextId repair mutate character SavedVariables.
     -- They must remain marked as unsaved until an actual RIFT Save.Begin.
-    local initializedSavedState=migrating or saved.nextId==nil
+    local paletteRepaired=sanitizePalette(saved)
+    local initializedSavedState=migrating or saved.nextId==nil or paletteRepaired
     local self=setmetatable({saved=saved, handlers={}, listeners={},
         filter="all", search="", onChange=nil, onCommand=nil,
         revision=initializedSavedState and 1 or 0}, Model)
@@ -295,6 +360,77 @@ function Model:setSearch(value)
     if changed then self:_changed() end
     return true
 end
+-- Public readers return fresh tables/immutable strings, never saved tables.
+function Model:getChannelColors()
+    local result={}
+    for _,key in ipairs(paletteKeys) do
+        result[key]=(self.saved.channelColors or {})[key] or paletteDefaults[key]
+    end
+    return result
+end
+function Model:getChannelColor(key)
+    if not paletteDefaults[key] then return nil,"invalid_color_key" end
+    return (self.saved.channelColors or {})[key] or paletteDefaults[key]
+end
+function Model:setChannelColor(key,value)
+    if not paletteDefaults[key] then return nil,"invalid_color_key" end
+    local hex,err=normalizeColor(value)
+    if not hex then return nil,err end
+    if self:getChannelColor(key)==hex then return true end
+    local overrides=self.saved.channelColors or {}
+    overrides[key]=hex~=paletteDefaults[key] and hex or nil
+    self.saved.channelColors=next(overrides) and overrides or nil
+    self:_changed()
+    return true
+end
+function Model:resetChannelColor(key)
+    if key~="all" and not paletteDefaults[key] then return nil,"invalid_color_key" end
+    local overrides=self.saved.channelColors
+    if not overrides then return true end
+    if key=="all" then self.saved.channelColors=nil
+    elseif overrides[key] then
+        overrides[key]=nil
+        self.saved.channelColors=next(overrides) and overrides or nil
+    else return true end
+    self:_changed()
+    return true
+end
+function Model:getRowColor(row)
+    local key=paletteKey(row)
+    local hex=self:getChannelColor(key)
+    return {tonumber(hex:sub(1,2),16)/255,tonumber(hex:sub(3,4),16)/255,
+        tonumber(hex:sub(5,6),16)/255,1},key
+end
+-- Configuration commands deliberately do not publish history rows. This keeps
+-- queries and no-op changes from consuming the bounded history/save revision.
+function Model:paletteCommand(args)
+    local verb,rest=args:match("^%s*(%S*)%s*(.-)%s*$")
+    if verb=="" or verb=="help" then
+        return true,":color list | show KEY | set KEY #RRGGBB | reset KEY/all"
+    elseif verb=="list" and rest=="" then
+        local items={}
+        for _,key in ipairs(paletteKeys) do
+            items[#items+1]=key.."=#"..self:getChannelColor(key)
+        end
+        return true,table.concat(items,"  ")
+    elseif verb=="show" then
+        local hex,err=self:getChannelColor(rest)
+        if not hex then return nil,err end
+        return true,rest.." = #"..hex
+    elseif verb=="set" then
+        local key,value=rest:match("^(%S+)%s+(%S+)$")
+        if not key then return nil,"color_usage" end
+        local ok,err=self:setChannelColor(key,value)
+        if not ok then return nil,err end
+        return true,key.." = #"..self:getChannelColor(key)
+    elseif verb=="reset" then
+        local ok,err=self:resetChannelColor(rest)
+        if not ok then return nil,err end
+        return true,"Color reset: "..rest
+    end
+    return nil,"color_usage"
+end
+
 function Model:clear()
     -- Empty history is already serialized as empty: do not manufacture a save.
     if #self.saved.history==0 then return true end
@@ -349,7 +485,7 @@ function Model:registerCommand(name,callback)
         or #name>24 or type(callback)~="function" or self.handlers[name]
         or name=="help" or name=="clear" or name=="filter" or name=="find"
         or name=="status" or name=="echo" or name=="copy"
-        or name=="import" then
+        or name=="import" or name=="color" then
         return nil,"invalid_command"
     end
     if self:commandCount()>=48 then return nil,"command_limit" end
@@ -365,7 +501,8 @@ function Model:execute(text, clock)
     local handled=true
     local response
     if name=="help" then
-        response="Local commands: :help :clear :status :filter TAB :find TEXT :copy :echo TEXT | extension commands: "..tostring(self:commandCount())
+        response="Local commands: :help :clear :status :filter TAB :find TEXT :copy :echo TEXT :color help | extension commands: "..tostring(self:commandCount())
+    elseif name=="color" then return self:paletteCommand(args)
     elseif name=="clear" then self:clear();response=nil
     elseif name=="filter" then
         local ok,err=self:setFilter(args)
@@ -403,7 +540,7 @@ function Model:commandCount()
     return count
 end
 function Model:status()
-    return {version="0.2.23",schemaVersion=2,
+    return {version="0.2.24",schemaVersion=2,
         provenanceRequired=true,historyCount=#self.saved.history,
         filter=self.filter,search=self.search,revision=self.revision,
         commandCount=self:commandCount(),nativeSocialSendAvailable=false,
