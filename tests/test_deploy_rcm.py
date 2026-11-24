@@ -23,6 +23,10 @@ class DeploymentTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="rcm-deploy-test-")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        # CLI tests must never depend on the real user's Rift.cfg.
+        self.enterContext(mock.patch.dict(deploy_rcm.os.environ, {
+            "APPDATA": str(self.root / "cli-roaming")
+        }))
         self.source = self.root / "project" / "addon" / "RiftChatModern"
         self.target = self.root / "installed" / "RiftChatModern"
         self.source.parent.mkdir(parents=True)
@@ -209,13 +213,15 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(len(plan["changed"]),2)
         real_replace=deploy_rcm.os.replace
         calls=[]
+        injected_error=OSError("test injection: second replace failed")
         def fails_second(src,dst):
             calls.append(dst)
-            if len(calls)==2:raise OSError("test injection: second replace failed")
+            if len(calls)==2:raise injected_error
             return real_replace(src,dst)
         with mock.patch.object(deploy_rcm.os,"replace",side_effect=fails_second):
-            with self.assertRaisesRegex(OSError,"second replace"):
+            with self.assertRaisesRegex(OSError,"second replace") as failure:
                 deploy_rcm.apply_copy(self.source,self.target,plan,self.root/"project")
+        self.assertIs(failure.exception, injected_error)
         for n,data in before.items():
             self.assertEqual((self.target/n).read_bytes(),data)
 
@@ -309,6 +315,169 @@ class DeploymentTests(unittest.TestCase):
         with mock.patch.object(deploy_rcm.os,"name","nt"):
             with mock.patch.object(deploy_rcm.subprocess,"run",return_value=fake):
                 self.assertEqual(deploy_rcm.running_game_pids(),[])
+
+    def _rollback_plan(self, names):
+        before = {}
+        for name in names:
+            before[name] = ("old installed " + name).encode()
+            (self.target / name).write_bytes(before[name])
+        return deploy_rcm.preflight(self.source, self.target), before
+
+    def _fail_main_replace(self, before_failure=None):
+        real_replace = deploy_rcm.os.replace
+        def replace(src, dst):
+            if Path(dst) == self.target / "Main.lua":
+                if before_failure:
+                    before_failure()
+                raise OSError("injected later Main.lua deployment failure")
+            return real_replace(src, dst)
+        return replace
+
+    def _assert_incomplete_rollback(self, error, name):
+        self.assertIsInstance(error, RuntimeError)
+        self.assertIn("rollback incomplete", str(error))
+        self.assertIn(name, str(error))
+        backup = next((self.root / "project" / "artifacts" / "deploy-backups").iterdir())
+        self.assertIn(str(backup), str(error))
+        self.assertIsInstance(error.__cause__, OSError)
+        self.assertIn("later Main.lua deployment failure", str(error.__cause__))
+
+    def test_rollback_preserves_newer_existing_file_and_restores_others(self):
+        plan, before = self._rollback_plan(["AddonMessages.lua", "Core.lua", "Main.lua"])
+        newer = b"newer external Core.lua edit"
+        def edit_written_file():
+            (self.target / "Core.lua").write_bytes(newer)
+        with mock.patch.object(deploy_rcm.os, "replace",
+                               side_effect=self._fail_main_replace(edit_written_file)):
+            with self.assertRaises(Exception) as failure:
+                deploy_rcm.apply_copy(self.source, self.target, plan, self.root / "project")
+        self.assertEqual((self.target / "Core.lua").read_bytes(), newer)
+        self.assertEqual((self.target / "AddonMessages.lua").read_bytes(), before["AddonMessages.lua"])
+        self.assertEqual((self.target / "Main.lua").read_bytes(), before["Main.lua"])
+        self._assert_incomplete_rollback(failure.exception, "Core.lua")
+
+    def test_rollback_preserves_newer_edit_to_added_file(self):
+        (self.target / "HostIngress.lua").unlink()
+        plan, _ = self._rollback_plan(["Main.lua"])
+        newer = b"newer external HostIngress.lua edit"
+        def edit_added_file():
+            (self.target / "HostIngress.lua").write_bytes(newer)
+        with mock.patch.object(deploy_rcm.os, "replace",
+                               side_effect=self._fail_main_replace(edit_added_file)):
+            with self.assertRaises(Exception) as failure:
+                deploy_rcm.apply_copy(self.source, self.target, plan, self.root / "project")
+        self.assertTrue((self.target / "HostIngress.lua").is_file())
+        self.assertEqual((self.target / "HostIngress.lua").read_bytes(), newer)
+        self._assert_incomplete_rollback(failure.exception, "HostIngress.lua")
+
+    def test_rollback_refuses_corrupted_backup_and_restores_other_files(self):
+        plan, before = self._rollback_plan(["AddonMessages.lua", "Core.lua", "Main.lua"])
+        def corrupt_backup():
+            backup = next((self.root / "project" / "artifacts" / "deploy-backups").glob("*/Core.lua"))
+            backup.write_bytes(b"corrupted retained backup")
+        with mock.patch.object(deploy_rcm.os, "replace",
+                               side_effect=self._fail_main_replace(corrupt_backup)):
+            with self.assertRaises(Exception) as failure:
+                deploy_rcm.apply_copy(self.source, self.target, plan, self.root / "project")
+        self.assertEqual((self.target / "Core.lua").read_bytes(), (self.source / "Core.lua").read_bytes())
+        self.assertEqual((self.target / "AddonMessages.lua").read_bytes(), before["AddonMessages.lua"])
+        self._assert_incomplete_rollback(failure.exception, "Core.lua")
+
+    def test_rollback_restore_error_does_not_abandon_other_files(self):
+        plan, before = self._rollback_plan(["AddonMessages.lua", "Core.lua", "Main.lua"])
+        restoring = False
+        def started_rollback():
+            nonlocal restoring
+            restoring = True
+        replace_main = self._fail_main_replace(started_rollback)
+        real_copyfile = deploy_rcm.shutil.copyfile
+        def replace(src, dst):
+            if restoring and Path(dst) == self.target / "Core.lua":
+                raise OSError("injected Core.lua restore failure")
+            return replace_main(src, dst)
+        def copyfile(src, dst, **kwargs):
+            if restoring and Path(dst) == self.target / "Core.lua":
+                raise OSError("injected Core.lua restore failure")
+            return real_copyfile(src, dst, **kwargs)
+        with mock.patch.object(deploy_rcm.os, "replace", side_effect=replace), \
+                mock.patch.object(deploy_rcm.shutil, "copyfile", side_effect=copyfile):
+            with self.assertRaises(Exception) as failure:
+                deploy_rcm.apply_copy(self.source, self.target, plan, self.root / "project")
+        self.assertEqual((self.target / "AddonMessages.lua").read_bytes(), before["AddonMessages.lua"])
+        self.assertEqual((self.target / "Core.lua").read_bytes(), (self.source / "Core.lua").read_bytes())
+        self._assert_incomplete_rollback(failure.exception, "Core.lua")
+        self.assertIn("injected Core.lua restore failure", str(failure.exception))
+
+    def test_rollback_staging_failure_never_truncates_installed_file(self):
+        plan, before = self._rollback_plan(["AddonMessages.lua", "Core.lua", "Main.lua"])
+        real_copyfile, real_copyfileobj = deploy_rcm.shutil.copyfile, deploy_rcm.shutil.copyfileobj
+        def is_core_backup(path):
+            path = Path(path)
+            return path.name == "Core.lua" and "deploy-backups" in path.parts
+        def copyfile(src, dst, **kwargs):
+            if is_core_backup(src):
+                Path(dst).write_bytes(b"incomplete restore")
+                raise OSError("injected interrupted backup read")
+            return real_copyfile(src, dst, **kwargs)
+        def copyfileobj(src, dst, *args, **kwargs):
+            if is_core_backup(src.name):
+                dst.write(b"incomplete restore")
+                raise OSError("injected interrupted backup read")
+            return real_copyfileobj(src, dst, *args, **kwargs)
+        with mock.patch.object(deploy_rcm.os, "replace", side_effect=self._fail_main_replace()), \
+                mock.patch.object(deploy_rcm.shutil, "copyfile", side_effect=copyfile), \
+                mock.patch.object(deploy_rcm.shutil, "copyfileobj", side_effect=copyfileobj):
+            with self.assertRaises(Exception) as failure:
+                deploy_rcm.apply_copy(self.source, self.target, plan, self.root / "project")
+        self.assertEqual((self.target / "Core.lua").read_bytes(), (self.source / "Core.lua").read_bytes())
+        self.assertEqual((self.target / "AddonMessages.lua").read_bytes(), before["AddonMessages.lua"])
+        self.assertFalse(list(self.target.rglob(".rcm-rollback-*.tmp")))
+        self._assert_incomplete_rollback(failure.exception, "Core.lua")
+
+    def test_explicit_target_cannot_bypass_configured_directory(self):
+        # Both modes must reject an otherwise valid stale package.
+        active = self.root / "active-rift" / "Interface" / "AddOns" / "RiftChatModern"
+        active.parent.mkdir(parents=True)
+        shutil.copytree(self.source, active)
+        cfg = {"settings": {"DocumentsDirectory": str(active.parents[2])}}
+        original = (self.target / "Main.lua").read_bytes()
+        with mock.patch.object(deploy_rcm, "read_rift_config", return_value=cfg):
+            self.assertEqual(deploy_rcm.select_target(active, self.root, {}), active)
+            for mode in ([], ["--apply"]):
+                with self.subTest(mode=mode), mock.patch.object(
+                        deploy_rcm, "apply_copy") as copy, contextlib.redirect_stdout(io.StringIO()) as stream:
+                    rc = deploy_rcm.main(mode + ["--expect-host", socket.gethostname(),
+                                                "--target", str(self.target)])
+                    self.assertEqual(rc, 1)
+                    self.assertIn("does not match", json.loads(stream.getvalue())["error"])
+                    copy.assert_not_called()
+        self.assertEqual((self.target / "Main.lua").read_bytes(), original)
+
+    def test_explicit_target_refuses_unreadable_config(self):
+        with mock.patch.object(deploy_rcm, "read_rift_config",
+                               return_value={"settings": {}, "readError": "unavailable"}):
+            with self.assertRaisesRegex(ValueError, "unreadable"):
+                deploy_rcm.select_target(self.target, self.root, {})
+
+    def test_explicit_target_keeps_manual_selection_without_override(self):
+        with mock.patch.object(deploy_rcm, "read_rift_config",
+                               return_value={"settings": {}}):
+            self.assertEqual(deploy_rcm.select_target(self.target, self.root, {}), self.target)
+
+    def test_target_change_during_process_check_refuses_apply(self):
+        # A newly configured directory between preflight and apply must stop
+        # the operation before any copy or backup is attempted.
+        other = self.root / "other-rift"
+        with mock.patch.object(deploy_rcm, "read_rift_config", side_effect=[
+                {"settings": {}}, {"settings": {"DocumentsDirectory": str(other)}}]), \
+                mock.patch.object(deploy_rcm, "running_game_pids", return_value=[]), \
+                mock.patch.object(deploy_rcm, "apply_copy") as copy, \
+                contextlib.redirect_stdout(io.StringIO()) as stream:
+            rc = deploy_rcm.main(["--apply", "--expect-host", socket.gethostname(),
+                                  "--target", str(self.target)])
+        self.assertEqual(rc, 1)
+        self.assertIn("does not match", json.loads(stream.getvalue())["error"])
+        copy.assert_not_called()
 
 if __name__=="__main__":
     unittest.main()

@@ -6,6 +6,8 @@ import socket
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import rcm_native_slash_once as slash
@@ -18,7 +20,7 @@ IDENTITY = {
     "pid": 37676,
     "hwnd": "0x360BC4",
     "startUtcTicks": 639308249563595623,
-    "exePath": r"C:\Program Files (x86)\Glyph\Games\RIFT\Live\rift_x64.exe",
+    "exePath": str(Path(__file__).resolve().parent / "fixtures" / "rift_x64.exe"),
     "exeSha256": "A" * 64,
 }
 
@@ -29,6 +31,7 @@ class FakeBackend:
         self.current = prior
         self.iconic = iconic
         self.events = []
+        self.allocated_events = []
         self.focus_calls = []
         self.fail_at = fail_at
         self.external = external
@@ -60,8 +63,14 @@ class FakeBackend:
         if self.current != self.target:
             raise RuntimeError("foreground_changed")
 
-    def _key(self, scan, release):
-        return (scan, release)
+    def _key(self, scan, *, release):
+        # The fake owns its inert event representation just as Win32Input
+        # owns and validates its native ctypes INPUT layout.
+        event = SimpleNamespace(type=1, u=SimpleNamespace(ki=SimpleNamespace(
+            wVk=0, wScan=scan, dwFlags=0x0008 | (0x0002 if release else 0),
+            time=0, dwExtraInfo=0)))
+        self.allocated_events.append(event)
+        return event
 
     def _insert(self, action):
         if self.fail_at is not None and len(self.events) == self.fail_at:
@@ -116,6 +125,47 @@ class NativeSlashTests(unittest.TestCase):
         self.assertEqual(recover[:2], [("virtual",slash.VK_BACKSPACE)]*2)
         self.assertEqual(recover[2], ("unicode",ord("/")))
         self.assertEqual(recover[-1], ("virtual",slash.VK_RETURN))
+
+    def test_keyboard_event_preserves_backend_owned_layout_and_defaults(self):
+        f = FakeBackend()
+        for kind, value in (("virtual", slash.VK_RETURN), ("unicode", ord("/"))):
+            for release in (False, True):
+                with self.subTest(kind=kind, release=release):
+                    event = slash._keyboard_event(f, kind, value, release=release)
+                    self.assertIs(event, f.allocated_events[-1])
+                    self.assertEqual(event.type, 1)
+                    self.assertEqual(event.u.ki.wVk, value if kind == "virtual" else 0)
+                    self.assertEqual(event.u.ki.wScan, value if kind == "unicode" else 0)
+                    self.assertEqual(event.u.ki.dwFlags,
+                        (slash.UNICODE_FLAG if kind == "unicode" else 0)
+                        | (slash.KEYUP_FLAG if release else 0))
+                    self.assertEqual((event.u.ki.time, event.u.ki.dwExtraInfo), (0, 0))
+
+    def test_injected_backend_needs_no_private_module_import(self):
+        f = FakeBackend()
+        # Block the sibling import even on a developer PC where it exists.
+        # The injected backend must supply every event object it receives.
+        with mock.patch.dict(sys.modules, {"python_win32_input": None}):
+            code, report = self.invoke(["--execute", "--ack-native-chat"], fake=f)
+        self.assertEqual(code, 0, report)
+        self.assertEqual(len(f.events), 2 * (len("/reloadui") + 2))
+        self.assertEqual(len(f.allocated_events), len(f.events))
+        for allocated, inserted in zip(f.allocated_events, f.events):
+            self.assertIs(allocated, inserted)
+        self.assertTrue(report["restoredPreviousForeground"])
+
+    def test_event_construction_failure_refuses_before_focus_or_input(self):
+        class BrokenFactory(FakeBackend):
+            def _key(self, scan, *, release):
+                raise RuntimeError("event_factory_unavailable")
+        f = BrokenFactory()
+        code, report = self.invoke(["--execute", "--ack-native-chat"], fake=f)
+        self.assertEqual(code, 2)
+        self.assertEqual(report["status"], "input_plan_refused")
+        self.assertEqual(report["reason"], "event_factory_unavailable")
+        self.assertFalse(report["gameInputSent"])
+        self.assertEqual(f.focus_calls, [])
+        self.assertEqual(f.events, [])
 
     def test_realistic_session_restores_prior_and_minimized_state(self):
         f = FakeBackend(iconic=True)

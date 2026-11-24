@@ -229,5 +229,64 @@ class SessionPreflightTests(unittest.TestCase):
         self.assertTrue(selected["canAttemptSupervisedLogTest"])
         self.assertFalse(selected["canClaimLiveChatReception"])
 
+    def test_explicit_invalid_documents_overrides_fail_closed(self):
+        for assignment in ("DocumentsDirectory = relative", "DocumentsDirectory =",
+                           'DocumentsDirectory = ""', 'DocumentsDirectory = "' + str(self.root),
+                           "DocumentsDirectory: " + str(self.root),
+                           "DocumentsDirectory = " + str(self.root / "%RCM_MISSING_FIXTURE%")):
+            with self.subTest(assignment=assignment), mock.patch.dict(os.environ, {}, clear=True):
+                with self.assertRaisesRegex(ValueError, "invalid_documents_directory"):
+                    p.parse_rift_client_settings("[Client]\n" + assignment)
+
+    def test_duplicate_case_insensitive_documents_overrides_refused(self):
+        with self.assertRaisesRegex(ValueError, "invalid_documents_directory"):
+            p.parse_rift_client_settings("[Client]\nDocumentsDirectory = " +
+                str(self.root) + "\ndocumentsdirectory = " + str(self.docs))
+
+    def test_valid_quoted_override_and_nonclient_dotted_section(self):
+        result=p.parse_rift_client_settings('[client]\ndocumentsdirectory = "' +
+            str(self.root) + '"\n[Other.Section]\nDocumentsDirectory = ignored')
+        self.assertEqual(result, {"DocumentsDirectory": str(self.root)})
+
+    def test_unreadable_or_invalid_config_is_not_missing(self):
+        env={"APPDATA": str(self.root / "roaming")}
+        cfg=Path(env["APPDATA"])/"RIFT"/"Rift.cfg"
+        cfg.parent.mkdir(parents=True)
+        self.assertNotIn("readError", p.read_rift_config(self.root,env))
+        cfg.write_bytes(b"[Client]\nDocumentsDirectory = relative\n")
+        self.assertIn("readError",p.read_rift_config(self.root,env))
+        cfg.write_bytes(b"[Client]\nDocumentsDirectory = \xff")
+        self.assertIn("readError",p.read_rift_config(self.root,env))
+        cfg.unlink()
+        cfg.mkdir()
+        self.assertIn("readError",p.read_rift_config(self.root,env))
+
+    def test_stale_fallback_log_does_not_qualify_configured_root(self):
+        stale=self.docs/"RIFT"/"Log.txt"
+        stale.write_text("fixture\n",encoding="utf-8")
+        current=self.root/"configured"
+        current.mkdir()
+        active=current/"Log.txt"
+        rows=[{"name":p.GAME,"pid":30000}]
+        config={"settings":{"DocumentsDirectory":str(current)}}
+        report=p.make_report(rows,"LEGION",self.docs,"fixture",[active,stale],
+                             None,None,"LEGION",config)
+        self.assertIn("no_log_file_in_configured_documents_directory",report["blockers"])
+        self.assertFalse(report["canAttemptSupervisedLogTest"])
+        active.write_text("new fixture\n",encoding="utf-8")
+        report=p.make_report(rows,"LEGION",self.docs,"fixture",[active,stale],
+                             None,None,"LEGION",config)
+        self.assertTrue(report["canAttemptSupervisedLogTest"])
+        self.assertFalse(report["canClaimLiveChatReception"])
+
+    def test_config_read_error_blocks_supervised_test_even_with_log(self):
+        log=self.docs/"RIFT"/"Log.txt"
+        log.write_text("fixture\n",encoding="utf-8")
+        report=p.make_report([{"name":p.GAME,"pid":30000}],"LEGION",
+            self.docs,"fixture",[log],None,None,"LEGION",
+            {"settings":{},"readError":"unavailable"})
+        self.assertIn("rift_config_unreadable",report["blockers"])
+        self.assertFalse(report["canAttemptSupervisedLogTest"])
+
 if __name__=="__main__":
     unittest.main()

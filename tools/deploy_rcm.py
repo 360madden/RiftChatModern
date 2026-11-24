@@ -110,6 +110,26 @@ def discover_targets(home: Path, environ: dict) -> list[Path]:
     return found
 
 
+def select_target(explicit: Path | None, home: Path, environ: dict) -> Path:
+    """An explicit path may disambiguate discovery, not override RIFT config."""
+    if explicit is None:
+        choices = discover_targets(home, environ)
+        if len(choices) != 1:
+            raise ValueError(f"Expected exactly one verified installation, found {len(choices)}")
+        return choices[0]
+    if not explicit.is_absolute():
+        raise ValueError("Target must be an absolute path")
+    config = read_rift_config(home, environ)
+    if config.get("readError"):
+        raise ValueError("RIFT DocumentsDirectory configuration unreadable")
+    configured = config["settings"].get("DocumentsDirectory")
+    if configured:
+        expected = Path(configured) / "Interface" / "AddOns" / ADDON
+        if explicit != expected:
+            raise ValueError("Explicit target does not match configured RIFT DocumentsDirectory")
+    return explicit
+
+
 def payload(source: Path) -> list[Path]:
     result = []
     for file in source.rglob("*"):
@@ -163,6 +183,52 @@ def preflight(source: Path, target: Path) -> dict:
             changes.append(rel)
     return {"version": expected["version"], "files": all_files, "changed": changes,
             "sourceHashes": source_hashes, "targetHashes": target_hashes}
+
+
+def _rollback_file_hash(path: Path) -> str | None:
+    """Inspect recovery paths without following a replaced file or parent link."""
+    for parent in path.parents:
+        if parent.is_symlink() or parent.is_junction() or not parent.is_dir():
+            raise RuntimeError(f"Unsafe rollback parent: {parent}")
+    if path.is_symlink() or path.is_junction():
+        raise RuntimeError(f"Unsafe rollback link: {path}")
+    if not path.exists():
+        return None
+    if not path.is_file():
+        raise RuntimeError(f"Rollback item is not a file: {path}")
+    return sha256(path)
+
+
+def _rollback_file(destination: Path, original: Path | None,
+                   deployed_hash: str, original_hash: str | None) -> None:
+    """Restore only our written bytes, using a verified, staged backup."""
+    current_hash = _rollback_file_hash(destination)
+    if current_hash == original_hash:
+        return  # Already restored (or a newly added file already removed).
+    if current_hash != deployed_hash:
+        raise RuntimeError("Destination changed after deployment; preserved current state")
+    if original is None:
+        destination.unlink()
+        if _rollback_file_hash(destination) is not None:
+            raise RuntimeError("Destination reappeared after removal; preserved current state")
+        return
+    if _rollback_file_hash(original) != original_hash:
+        raise RuntimeError("Retained backup checksum mismatch")
+    fd, staging = tempfile.mkstemp(prefix=".rcm-rollback-", suffix=".tmp", dir=destination.parent)
+    try:
+        with os.fdopen(fd, "wb") as out, original.open("rb") as inp:
+            shutil.copyfileobj(inp, out)
+        if sha256(Path(staging)) != original_hash:
+            raise RuntimeError("Staged backup checksum mismatch")
+        # A backup read can fail or take time. Never truncate the installed
+        # file, and check it again before the final atomic replacement.
+        if _rollback_file_hash(destination) != deployed_hash:
+            raise RuntimeError("Destination changed during rollback; preserved current state")
+        os.replace(staging, destination)
+        if _rollback_file_hash(destination) != original_hash:
+            raise RuntimeError("Restored file checksum mismatch")
+    finally:
+        Path(staging).unlink(missing_ok=True)
 
 
 def apply_copy(source: Path, target: Path, plan: dict, project: Path) -> dict:
@@ -239,21 +305,30 @@ def apply_copy(source: Path, target: Path, plan: dict, project: Path) -> dict:
                or sha256(source / rel) != plan["sourceHashes"][rel]]
         if bad:
             raise RuntimeError("Deployment hash mismatch: " + ", ".join(bad))
-    except Exception:
+    except Exception as error:
+        rollback_errors = []
         for rel in reversed(written):
-            original = originals.get(rel)
-            destination = target / rel
-            if original is None:
-                destination.unlink(missing_ok=True)
-            else:
-                shutil.copyfile(original, destination)
+            try:
+                _rollback_file(target / rel, originals[rel],
+                               plan["sourceHashes"][rel], plan["targetHashes"][rel])
+            except Exception as rollback_error:
+                # Continue recovering independent files; retain every failure
+                # and the original deployment error for manual recovery.
+                rollback_errors.append(f"{rel}: {rollback_error}")
         # Remove only directories created by this specific deployment, and
         # only if empty after file rollback. Never remove pre-existing data.
         for folder in reversed(created_dirs):
             try:
-                folder.rmdir()
+                if not folder.is_symlink() and not folder.is_junction():
+                    folder.rmdir()
             except OSError:
                 pass
+        if rollback_errors:
+            raise RuntimeError(
+                f"Deployment failed: {error}; rollback incomplete: "
+                + "; ".join(rollback_errors)
+                + f"; retained backups: {backup_dir}"
+            ) from error
         raise
     return {"changed": [str(rel) for rel in pending],
             "backups": str(backup_dir), "rollback": False}
@@ -296,13 +371,7 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("Expected host does not match the verified machine")
         if args.apply and not args.expect_host:
             raise ValueError("Apply requires --expect-host matching the verified machine")
-        if args.target:
-            target = args.target
-        else:
-            choices = discover_targets(Path.home(), os.environ)
-            if len(choices) != 1:
-                raise ValueError(f"Expected exactly one verified installation, found {len(choices)}")
-            target = choices[0]
+        target = select_target(args.target, Path.home(), os.environ)
         plan = preflight(source, target)
         changes = [str(x) for x in plan["changed"]]
         result = {
@@ -323,6 +392,11 @@ def main(argv: list[str] | None = None) -> int:
             result["reloadUiRequired"] = bool(live_pids and changes)
             result["reloadUiCommand"] = "/reloadui" if live_pids and changes else None
             result["runtimeReloadVerified"] = False
+            # The process query may take several seconds. Re-read the client
+            # configuration before touching the target; a changed selection
+            # invalidates the plan even if the old package hashes still match.
+            if select_target(args.target, Path.home(), os.environ) != target:
+                raise RuntimeError("Deployment target selection changed since preflight")
             result.update(apply_copy(source, target, plan, project))
             result["hashVerified"] = all(
                 sha256(source / rel) == sha256(target / rel) for rel in plan["files"]

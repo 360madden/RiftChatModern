@@ -58,16 +58,16 @@ def _input_plan(command: str, recover_two_stars: bool = False):
     return plan
 
 
-def _keyboard_event(kind: str, value: int, *, release: bool):
-    # Reuse the validated 64-bit Win32 INPUT layout from the existing helper.
-    backend_folder = str(focused.FOCUS_BACKEND.parent)
-    if backend_folder not in sys.path:
-        sys.path.insert(0, backend_folder)
-    from python_win32_input import INPUT, INPUTUNION, KEYBDINPUT, INPUT_KEYBOARD
+def _keyboard_event(backend, kind: str, value: int, *, release: bool):
+    # Allocate through the chosen backend so the native INPUT layout and
+    # ctypes identity remain owned by its validated Win32Input factory.
+    # Injected fixture backends likewise own their inert event records.
+    event = backend._key(0, release=release)
     flags = (UNICODE_FLAG if kind == "unicode" else 0) | (KEYUP_FLAG if release else 0)
-    return INPUT(type=INPUT_KEYBOARD, u=INPUTUNION(
-        ki=KEYBDINPUT(0 if kind == "unicode" else value,
-                      value if kind == "unicode" else 0, flags, 0, 0)))
+    event.u.ki.wVk = 0 if kind == "unicode" else value
+    event.u.ki.wScan = value if kind == "unicode" else 0
+    event.u.ki.dwFlags = flags
+    return event
 
 
 def run(argv=None, *, inspection=None, backend=None, keyscan=None,
@@ -137,6 +137,11 @@ def run(argv=None, *, inspection=None, backend=None, keyscan=None,
         plan = _input_plan(command, args.recover_two_stars)
         check_modifiers = modifiers or _modifier_guard
         check_modifiers()
+        # Build the bounded, inert event plan before changing foreground.
+        # A missing or broken event factory is a no-input prerequisite error.
+        event_plan = [(_keyboard_event(focus, kind, value, release=False),
+                       _keyboard_event(focus, kind, value, release=True))
+                      for kind, value in plan]
     except Exception as exc:
         return 2, {"schema": SCHEMA, "status": "input_plan_refused",
                    "reason": str(exc), "gameInputSent": False}
@@ -159,18 +164,18 @@ def run(argv=None, *, inspection=None, backend=None, keyscan=None,
         previous = int(focus.get_foreground() or 0)
         began_focus = True  # restoration also required if _focus itself raises
         focus._focus(hwnd, pid, 1250 if before_iconic else 250)
-        for index, (kind, value) in enumerate(plan):
+        for index, (key_down, key_up) in enumerate(event_plan):
             focus._assert_exact_foreground(target, hwnd, pid)
             check_modifiers()
             attempted_down = True
             try:
-                focus._insert(_keyboard_event(kind, value, release=False))
+                focus._insert(key_down)
                 events += 1
             finally:
                 if attempted_down:
                     # Release key only when the exact game remains foreground.
                     focus._assert_exact_foreground(target, hwnd, pid)
-                    focus._insert(_keyboard_event(kind, value, release=True))
+                    focus._insert(key_up)
                     events += 1
                     attempted_down = False
             # A rendered chat input may need a frame to acquire focus after

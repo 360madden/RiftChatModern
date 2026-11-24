@@ -11,7 +11,12 @@ as [the complete engineering archive](ENGINEERING_ARCHIVE_README_THROUGH_2026112
 
 - **[Authoritative living development roadmap](../ROADMAP.md)** — prioritized milestones, evidence levels, acceptance gates, risks and next work
 - **[November 24 patch recovery playbook](PATCH_RECOVERY_20261124.md)** — verified LEGION baseline, private rollback snapshot, and staged post-patch acceptance
-- **[Latest development handoff](HANDOFF_20261123_MONDAY_CLOSEOUT.md)** — Monday closeout, five development commits, 497-test checkpoint and precise next-session plan
+- **[Latest development handoff](HANDOFF_20261124_TUESDAY_RECOVERY.md)** — Tuesday fixes, **531 Windows tests passed**, clean builds and the pending physical patch gate
+- **[Windows offline qualification](OFFLINE_CI.md)** — pinned companion dependency, three Release builds and complete no-skip suites
+- **[Tuesday deployment target guard](PATCH_RECOVERY_TARGET_GUARD_20261124.md)** — original explicit-target defect and initial isolated checks; see the Tuesday handoff for later integrated results
+- **[Tuesday configuration guard](PATCH_RECOVERY_CONFIG_GUARD_20261124.md)** — invalid overrides and stale-log selection; original report preserved
+- **[Pre-patch recovery bug hunt](PATCH_RECOVERY_BUGHUNT_20261124.md)** — five earlier fixes, retained-backup verification and historical LEGION 511-test baseline
+- **[Monday development closeout](HANDOFF_20261123_MONDAY_CLOSEOUT.md)** — preserved API/palette work and historical 497-test checkpoint
 - **[Current addon API v2 reference](ADDON_API_V2.md)** — complete source contract and runnable consumer
 - **[Companion health CLI V1](COMPANION_HEALTH_20261123.md)** — read-only aggregate dependency, queue, lock and cross-profile inspection
 - **[v0.2.26 API integration verification](V0_2_26_API_INTEGRATION_20261123.md)** — callback lifecycle, query validation and readiness fixes
