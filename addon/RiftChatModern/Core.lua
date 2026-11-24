@@ -78,6 +78,26 @@ local function sanitizePalette(saved)
     return changed
 end
 
+-- Visibility is an optional UI preference, independent of retained history.
+-- Store only explicit hidden=true keys; repair malformed preference data
+-- without deleting messages, tokens, colors, or any unrelated save fields.
+local function sanitizeVisibility(saved)
+    local raw=saved.hiddenChannels
+    if raw==nil then return false end
+    local clean,changed={},type(raw)~="table"
+    if type(raw)=="table" then
+        for _,key in ipairs(paletteKeys) do
+            if raw[key]==true then clean[key]=true end
+        end
+        for key,value in pairs(raw) do
+            if clean[key]~=value then changed=true;break end
+        end
+        if next(raw)==nil then changed=true end
+    end
+    if changed then saved.hiddenChannels=next(clean) and clean or nil end
+    return changed
+end
+
 local originLabels = {host_manual="HOST IMPORT",legacy_unknown="UNVERIFIED",
     external_api="EXTERNAL",local_addon="LOCAL",game_event="GAME EVENT",
     addon_data="ADDON DATA"}
@@ -252,7 +272,8 @@ function Core.new(saved)
     -- Migration and missing nextId repair mutate character SavedVariables.
     -- They must remain marked as unsaved until an actual RIFT Save.Begin.
     local paletteRepaired=sanitizePalette(saved)
-    local initializedSavedState=migrating or saved.nextId==nil or paletteRepaired
+    local visibilityRepaired=sanitizeVisibility(saved)
+    local initializedSavedState=migrating or saved.nextId==nil or paletteRepaired or visibilityRepaired
     local self=setmetatable({saved=saved, handlers={}, listeners={},
         filter="all", search="", onChange=nil, onCommand=nil,
         revision=initializedSavedState and 1 or 0}, Model)
@@ -309,7 +330,9 @@ function Model:publish(kind, text, source, at, metadata)
     end
     return copyRow(row)
 end
-function Model:getHistory(filter, search, limit, offset)
+-- visibleOnly is opt-in. Existing addon API/history and receipt lookups
+-- retain their full semantics even when the player hides a category in RCM.
+function Model:getHistory(filter, search, limit, offset, visibleOnly)
     filter=filter or self.filter
     search=search or self.search
     if not filters[filter] or type(search)~="string" or #search>60
@@ -318,7 +341,9 @@ function Model:getHistory(filter, search, limit, offset)
         or offset%1~=0 then return nil,"invalid_query" end
     local all={}
     for _,row in ipairs(self.saved.history) do
-        if match(row,filter,search) then all[#all+1]=row end
+        if match(row,filter,search) and (not visibleOnly or self:isRowVisible(row)) then
+            all[#all+1]=row
+        end
     end
     local total=#all
     local result={}
@@ -395,18 +420,57 @@ function Model:resetChannelColor(key)
     self:_changed()
     return true
 end
+-- Shared RGB conversion keeps UI draft previews and actual rows identical.
+local function colorComponents(hex)
+    return {tonumber(hex:sub(1,2),16)/255,tonumber(hex:sub(3,4),16)/255,
+        tonumber(hex:sub(5,6),16)/255,1}
+end
 function Model:getRowColor(row)
     local key=paletteKey(row)
-    local hex=self:getChannelColor(key)
-    return {tonumber(hex:sub(1,2),16)/255,tonumber(hex:sub(3,4),16)/255,
-        tonumber(hex:sub(5,6),16)/255,1},key
+    return colorComponents(self:getChannelColor(key)),key
+end
+function Model:previewChannelColor(value)
+    local hex,err=normalizeColor(value)
+    if not hex then return nil,err end
+    return colorComponents(hex),hex
+end
+function Model:getChannelKeys()
+    local result={}
+    for i,key in ipairs(paletteKeys) do result[i]=key end
+    return result
+end
+function Model:getChannelVisibility()
+    local result={}
+    for _,key in ipairs(paletteKeys) do
+        result[key]=not ((self.saved.hiddenChannels or {})[key]==true)
+    end
+    return result
+end
+function Model:isRowVisible(row)
+    return (self.saved.hiddenChannels or {})[paletteKey(row)]~=true
+end
+function Model:setChannelVisible(key,visible)
+    if not paletteDefaults[key] then return nil,"invalid_color_key" end
+    if type(visible)~="boolean" then return nil,"invalid_visibility" end
+    local hidden=self.saved.hiddenChannels or {}
+    if (hidden[key]~=true)==visible then return true end
+    hidden[key]=not visible and true or nil
+    self.saved.hiddenChannels=next(hidden) and hidden or nil
+    self:_changed()
+    return true
+end
+function Model:resetChannelVisibility()
+    if self.saved.hiddenChannels==nil then return true end
+    self.saved.hiddenChannels=nil
+    self:_changed()
+    return true
 end
 -- Configuration commands deliberately do not publish history rows. This keeps
 -- queries and no-op changes from consuming the bounded history/save revision.
 function Model:paletteCommand(args)
     local verb,rest=args:match("^%s*(%S*)%s*(.-)%s*$")
     if verb=="" or verb=="help" then
-        return true,":color list | show KEY | set KEY #RRGGBB | reset KEY/all"
+        return true,":color panel | list | show KEY | set KEY #RRGGBB | reset KEY/all | visible KEY on/off | showall"
     elseif verb=="list" and rest=="" then
         local items={}
         for _,key in ipairs(paletteKeys) do
@@ -423,6 +487,15 @@ function Model:paletteCommand(args)
         local ok,err=self:setChannelColor(key,value)
         if not ok then return nil,err end
         return true,key.." = #"..self:getChannelColor(key)
+    elseif verb=="visible" then
+        local key,state=rest:match("^(%S+)%s+(%S+)$")
+        if not key or (state~="on" and state~="off") then return nil,"visibility_usage" end
+        local ok,err=self:setChannelVisible(key,state=="on")
+        if not ok then return nil,err end
+        return true,key.." visibility: "..state
+    elseif verb=="showall" and rest=="" then
+        self:resetChannelVisibility()
+        return true,"All RCM categories visible."
     elseif verb=="reset" then
         local ok,err=self:resetChannelColor(rest)
         if not ok then return nil,err end
@@ -438,14 +511,14 @@ function Model:clear()
     self:_changed()
     return true
 end
-function Model:exportText(filter, search, maximum)
+function Model:exportText(filter, search, maximum, visibleOnly)
     maximum=maximum or 48000
     if type(maximum)~="number" or maximum~=maximum
         or maximum<=-math.huge or maximum>=math.huge
         or maximum%1~=0 or maximum<512 or maximum>120000 then
         return nil,"invalid_limit"
     end
-    local rows,total=self:getHistory(filter,search,MAX_HISTORY,0)
+    local rows,total=self:getHistory(filter,search,MAX_HISTORY,0,visibleOnly)
     if not rows then return nil,total end
     local result={"RiftChatModern export v2 | filtered messages: "..total}
     local size=#result[1]
@@ -540,7 +613,7 @@ function Model:commandCount()
     return count
 end
 function Model:status()
-    return {version="0.2.24",schemaVersion=2,
+    return {version="0.2.25",schemaVersion=2,
         provenanceRequired=true,historyCount=#self.saved.history,
         filter=self.filter,search=self.search,revision=self.revision,
         commandCount=self:commandCount(),nativeSocialSendAvailable=false,

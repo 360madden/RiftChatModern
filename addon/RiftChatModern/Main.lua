@@ -2,7 +2,7 @@
 -- Native player say/tell/guild transmit and full native chat interception are NOT
 -- exposed by the verified addon APIs. This UI never pretends to send those.
 local info = ...
-local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.24"
+local ADDON, VERSION = "RiftChatModern", (type(info)=="table" and info.version) or "0.2.25"
 local Core = _G.RiftChatModernCore
 local MessageBridge = _G.RiftChatModernAddonMessages
 local NativeProbe = _G.RiftChatModernNativeProbe
@@ -130,6 +130,7 @@ controls=controls or {}
 controls._skin={}
 controls._categories=_G.RiftChatModernConsoleCategories
 controls._native={active=false,group="game",sourceIndex=nil,page=0,snapshot=nil,lines={}}
+controls._palette={active=false,available=false,page=1,selected="system"}
 controls._commandActions={
     recall=recallCommand,
     changed=function(current)
@@ -291,6 +292,14 @@ local function placeButton(name,parent,x,y,w,h)
 end
 local function focusState()
     if not panel or not panel:GetVisible() then return "hidden" end
+    local palette=controls._palette
+    if palette.active then
+        local ok,focused=false,false
+        if palette.hex and type(palette.hex.GetKeyFocus)=="function" then
+            ok,focused=pcall(palette.hex.GetKeyFocus,palette.hex)
+        end
+        return ok and focused==true and "palette" or "palette_open"
+    end
     if not editor or type(editor.GetKeyFocus)~="function" then return "unavailable" end
     local ok,focused=pcall(editor.GetKeyFocus,editor)
     if not ok or type(focused)~="boolean" then return "unavailable" end
@@ -307,12 +316,14 @@ local function updateFocusIndicator(force)
     if focusIndicator and (force or previous~=state) then
         local label=state=="focused" and "INPUT  ●  FOCUSED"
             or state=="search" and "SEARCH  ●  FOCUSED"
+            or state=="palette" and "COLOR  ●  FOCUSED"
+            or state=="palette_open" and "COLOR  •  SETTINGS"
             or state=="hidden" and "INPUT  •  HIDDEN"
             or state=="unfocused" and "INPUT  •  NOT FOCUSED"
             or "INPUT  ?  UNAVAILABLE"
         focusIndicator:SetText(label)
         ink(focusIndicator,state=="focused" and C.good
-            or state=="search" and C.accent
+            or (state=="search" or state=="palette") and C.accent
             or state=="unavailable" and C.warning or C.muted)
     end
     -- The footer is shared by import receipts, command results and focus
@@ -325,6 +336,8 @@ local function updateFocusIndicator(force)
             and message:sub(1,7)=="FOCUS: " then
             local current=state=="focused" and "FOCUS: Editor focused • local commands start with :"
                 or state=="search" and "FOCUS: SEARCH FOCUSED"
+                or state=="palette" and "FOCUS: COLOR INPUT FOCUSED"
+                or state=="palette_open" and "FOCUS: COLOR SETTINGS OPEN"
                 or state=="hidden" and "FOCUS: WINDOW HIDDEN"
                 or state=="unfocused" and "FOCUS: INPUT NOT FOCUSED • click FOCUS INPUT"
                 or "FOCUS: Input focus unavailable"
@@ -338,6 +351,7 @@ local function focusEditor()
     if not editor or not panel or not panel:GetVisible() then
         return nil,"editor_hidden"
     end
+    if controls._palette.active then controls._palette.close(true) end
     if type(editor.SetKeyFocus)~="function" or type(editor.GetKeyFocus)~="function" then
         return nil,"focus_api_unavailable"
     end
@@ -353,6 +367,7 @@ local function focusEditor()
 end
 local function focusSearch()
     if not searchField or not panel or not panel:GetVisible() then return nil,"search_hidden" end
+    if controls._palette.active then controls._palette.close(true) end
     if type(searchField.SetKeyFocus)~="function" then return nil,"focus_api_unavailable" end
     local ok=pcall(searchField.SetKeyFocus,searchField,true)
     if not ok then return nil,"focus_request_failed" end
@@ -385,7 +400,7 @@ local function closeDetails()
     selectedId=nil
     detailPageIndex=1
     if detailOverlay then detailOverlay:SetVisible(false) end
-    showHistoryRows(true)
+    showHistoryRows(not controls._native.active and not controls._palette.active)
     return true
 end
 local function copyMessage()
@@ -438,6 +453,7 @@ local function detailPageStep(amount)
 end
 local function openMessage(id)
     if not model then return nil,"not_ready" end
+    if controls._palette.active then return nil,"palette_active" end
     local row,err=model:getMessage(id)
     if not row then return nil,err end
     selectedId=id
@@ -451,6 +467,208 @@ local function openMessage(id)
     end
     return true
 end
+-- Palette settings form a third, mutually exclusive history-card view.
+-- Store helpers on the existing controls table to respect Lua 5.1's 60
+-- upvalue limit in makeUi. Draft text is not persisted until APPLY.
+controls._palette.release=function()
+    local view=controls._palette
+    if view.hex and type(view.hex.SetKeyFocus)=="function" then
+        pcall(view.hex.SetKeyFocus,view.hex,false)
+    end
+end
+controls._palette.close=function(repaint)
+    local view=controls._palette
+    if not view.active then return true end
+    controls._palette.release()
+    view.active=false
+    if view.panel then view.panel:SetVisible(false) end
+    if repaint and render then render() end
+    updateFocusIndicator(true)
+    return true
+end
+controls._palette.preview=function()
+    local view=controls._palette
+    if not view.active or not view.hex then return end
+    local rgb,detail=model:previewChannelColor(view.hex:GetText() or "")
+    rgba(view.previewSwatch,rgb or C.control)
+    ink(view.previewNote,rgb and C.good or C.warning)
+    view.previewNote:SetText(rgb and ("Preview  #"..detail)
+        or (detail=="color_too_dark" and "Too dark — choose a brighter color"
+            or "Enter six hex digits"))
+end
+controls._palette.choose=function(key)
+    local view=controls._palette
+    local hex=model:getChannelColor(key)
+    if not hex then return end
+    view.selected=key
+    view.hex:SetText("#"..hex)
+    if view.paint then view.paint() end
+end
+controls._palette.paint=function()
+    local view=controls._palette
+    if not view.active or not view.panel then return end
+    local keys=model:getChannelKeys()
+    local colors=model:getChannelColors()
+    local visibility=model:getChannelVisibility()
+    local pages=math.max(1,math.ceil(#keys/6))
+    view.page=math.max(1,math.min(view.page,pages))
+    view.title:SetText("CHANNEL COLORS  "..view.page.."/"..pages)
+    for i=1,6 do
+        local item=view.items[i]
+        local key=keys[(view.page-1)*6+i]
+        item.key=key
+        item.frame:SetVisible(key~=nil)
+        if key then
+            local rgb=model:previewChannelColor(colors[key])
+            rgba(item.swatch,rgb)
+            local caption=key:gsub("_"," "):upper()
+            item.label:SetText((key==view.selected and "> " or "")..caption
+                ..(visibility[key] and "" or " / OFF"))
+            ink(item.label,key==view.selected and C.good or C.text)
+        end
+    end
+    view.selection:SetText(view.selected:gsub("_"," "):upper())
+    controls.PaletteVisibility.label:SetText(visibility[view.selected] and "HIDE ROWS" or "SHOW ROWS")
+    view.preview()
+end
+controls._palette.step=function(amount)
+    local view=controls._palette
+    if not view.active then return end
+    local keys=model:getChannelKeys()
+    local nextPage=math.max(1,math.min(view.page+amount,math.ceil(#keys/6)))
+    if nextPage~=view.page then
+        view.page=nextPage
+        view.choose(keys[(nextPage-1)*6+1])
+    end
+end
+controls._palette.open=function()
+    local view=controls._palette
+    if not model or not panel or not panel:GetVisible() then return nil,"window_hidden" end
+    if not view.available or not view.panel then return nil,"palette_viewport_too_small" end
+    if view.active then return view.close(true) end
+    closeDetails()
+    controls._native.active=false
+    for _,field in ipairs({editor,searchField}) do
+        if field and type(field.SetKeyFocus)=="function" then pcall(field.SetKeyFocus,field,false) end
+    end
+    view.active=true
+    view.choose(view.selected)
+    render()
+    updateFocusIndicator(true)
+    return true
+end
+-- The initializer captures controls only, not this handler's extra locals.
+controls._palette.toggleButton=function()
+    local ok,err=controls._palette.open()
+    if not ok then notifyUi("Colors unavailable: "..tostring(err)) end
+end
+controls._palette.apply=function()
+    local view=controls._palette
+    if not view.active then return end
+    local ok,err=model:setChannelColor(view.selected,view.hex:GetText() or "")
+    if not ok then
+        view.preview()
+        notifyUi("Color rejected: "..tostring(err))
+        return
+    end
+    view.choose(view.selected)
+    notifyUi("Applied color for "..view.selected.." (pending game save)")
+end
+controls._palette.build=function(parent)
+    local view=controls._palette
+    view.panel=frame("PalettePanel",parent,4,4,578,180,C.header)
+    view.panel:SetMouseMasking("full")
+    view.title=text("PaletteTitle",view.panel,"CHANNEL COLORS",10,6,260,23,15,C.accent,true)
+    button("PaletteClose","CLOSE",view.panel,488,4,80,27,function() view.close(true) end)
+    view.items={}
+    for i=1,6 do
+        local index=i
+        local b,label=button("PaletteCategory"..i,"",view.panel,10,36,170,27,function()
+            if not view.active then return end
+            local item=view.items[index]
+            if item.key then view.choose(item.key) end
+        end)
+        label:SetFontSize(13)
+        local swatch=frame("PaletteSwatch"..i,b,8,6,13,15,C.accent)
+        swatch:SetMouseMasking("limited")
+        view.items[i]={frame=b,label=label,swatch=swatch}
+    end
+    view.selection=text("PaletteSelection",view.panel,"SYSTEM",10,103,144,24,14,C.text,true)
+    view.hex=UI.CreateFrame("RiftTextfield","RCMPaletteHex",view.panel)
+    place(view.hex,view.panel,160,99,103,30)
+    pcall(view.hex.SetFontSize,view.hex,16)
+    rgba(view.hex,C.control)
+    view.hex:SetText("#FFFFFF")
+    view.previewSwatch=frame("PalettePreviewSwatch",view.panel,274,102,24,24,C.text)
+    view.previewNote=text("PalettePreviewNote",view.panel,"",308,104,260,24,13,C.muted)
+    if Event.UI.Textfield and Event.UI.Textfield.Change then
+        view.hex:EventAttach(Event.UI.Textfield.Change,view.preview,ADDON.." palette preview")
+    end
+    view.hex:EventAttach(Event.UI.Input.Mouse.Left.Click,function()
+        if not view.active then return end
+        if type(view.hex.SetKeyFocus)=="function" then pcall(view.hex.SetKeyFocus,view.hex,true) end
+        updateFocusIndicator(true)
+    end,ADDON.." palette input focus")
+    if view.hex.Event then
+        function view.hex.Event:KeyDown(key)
+            if not view.active or type(key)~="string" then return end
+            if type(view.hex.GetKeyFocus)~="function" then return end
+            local ok,focused=pcall(view.hex.GetKeyFocus,view.hex)
+            if not ok or focused~=true then return end
+            if key:byte(1)==13 or key:byte(1)==10 or key:lower()=="enter" or key:lower()=="return" then
+                view.apply()
+            end
+        end
+    end
+    button("PaletteApply","APPLY",view.panel,10,137,78,30,view.apply,true)
+    button("PaletteReset","DEFAULT",view.panel,94,137,82,30,function()
+        if view.active then model:resetChannelColor(view.selected);view.choose(view.selected) end
+    end)
+    button("PaletteVisibility","HIDE ROWS",view.panel,182,137,115,30,function()
+        if view.active then
+            local visible=model:getChannelVisibility()[view.selected]
+            model:setChannelVisible(view.selected,not visible)
+            view.paint()
+        end
+    end)
+    button("PaletteShowAll","SHOW ALL",view.panel,303,137,100,30,function()
+        if view.active then model:resetChannelVisibility();view.paint() end
+    end)
+    button("PaletteResetAll","RESET COLORS",view.panel,409,137,136,30,function()
+        if view.active then model:resetChannelColor("all");view.choose(view.selected) end
+    end)
+    for _,name in ipairs({"PaletteApply","PaletteReset","PaletteVisibility","PaletteShowAll","PaletteResetAll"}) do
+        controls[name].label:SetFontSize(13)
+    end
+    view.panel:SetVisible(false)
+end
+controls._palette.layout=function(parent,w,h)
+    local view=controls._palette
+    if not view.panel then return end
+    -- At the normal 680x480 minimum the card is 578x180. For a
+    -- smaller viewport, close the editor and retain the command/API path.
+    view.available=w>=550 and h>=172
+    controls.PaletteOpen.frame:SetVisible(view.available)
+    if not view.available then view.close(false);return end
+    place(view.panel,parent,4,4,w,h)
+    place(view.title,view.panel,10,6,w-106,23)
+    placeButton("PaletteClose",view.panel,w-90,4,80,27)
+    local cw=math.floor((w-20-12)/3)
+    for i,item in ipairs(view.items) do
+        local x=10+((i-1)%3)*(cw+6)
+        local y=36+math.floor((i-1)/3)*31
+        placeButton("PaletteCategory"..i,view.panel,x,y,cw,27)
+        place(item.swatch,item.frame,8,6,13,15)
+        place(item.label,item.frame,27,3,cw-31,22)
+    end
+    place(view.selection,view.panel,10,103,144,24)
+    place(view.hex,view.panel,160,99,103,30)
+    place(view.previewSwatch,view.panel,274,102,24,24)
+    place(view.previewNote,view.panel,308,104,w-318,24)
+    -- Keep actions directly below the editor; extra height remains free.
+    view.panel:SetVisible(view.active)
+end
+
 render=function()
     if not model or not panel or not rows then return end
     -- :find and /rcm find can update the model independently of the textfield.
@@ -458,11 +676,11 @@ render=function()
     if searchField and searchField:GetText()~=model.search then
         searchField:SetText(model.search)
     end
-    local selection,total=model:getHistory(model.filter,model.search,LINES,visibleOffset)
+    local selection,total=model:getHistory(model.filter,model.search,LINES,visibleOffset,true)
     local oldestOffset=total>0 and math.floor((total-1)/LINES)*LINES or 0
     if visibleOffset>oldestOffset then
         visibleOffset=oldestOffset
-        selection,total=model:getHistory(model.filter,model.search,LINES,visibleOffset)
+        selection,total=model:getHistory(model.filter,model.search,LINES,visibleOffset,true)
     end
     -- Each row owns four independent text frames rather than one padded
     -- monolithic string. This keeps channel/source provenance visible while
@@ -502,11 +720,16 @@ render=function()
             item.marker:SetVisible(false)
         end
     end
-    local nativeActive=controls._native.active==true
+    local paletteActive=controls._palette.active==true
+    local nativeActive=not paletteActive and controls._native.active==true
     if controls._native.panel then
         controls._native.panel:SetVisible(nativeActive)
     end
-    if nativeActive then
+    if controls._palette.panel then controls._palette.panel:SetVisible(paletteActive) end
+    if paletteActive then
+        showHistoryRows(false)
+        controls._palette.paint()
+    elseif nativeActive then
         showHistoryRows(false)
         if controls._native.paint then controls._native.paint() end
     elseif not selectedId then
@@ -518,19 +741,21 @@ render=function()
         local current=model:getMessage(selectedId)
         if not current then closeDetails() end
     end
-    if nativeActive then
+    if paletteActive then
+        notifyUi("RCM history colors / visibility only; messages are retained")
+    elseif nativeActive then
         notifyUi("Read-only RIFT console subscriptions; no native player-chat transcript")
     else
         notifyUi(string.format("%d messages  •  showing %d–%d  •  %s  •  native chat separate",
             total,first,count,model.filter))
     end
     if controls.PageUp and controls.PageDown then
-        controls.PageUp.label:SetText(nativeActive and "PREV" or "OLDER")
-        controls.PageDown.label:SetText(nativeActive and "NEXT" or "NEWER")
+        controls.PageUp.label:SetText((nativeActive or paletteActive) and "PREV" or "OLDER")
+        controls.PageDown.label:SetText((nativeActive or paletteActive) and "NEXT" or "NEWER")
     end
     for key,label in pairs(tabLabels or {}) do
         local selected=nativeActive and key=="native"
-            or (not nativeActive and (key==model.filter
+            or (not nativeActive and not paletteActive and (key==model.filter
                 or key=="imports" and model.filter=="chat"))
         ink(label,selected and C.accent or C.muted)
         local item=controls and controls["Tab"..key]
@@ -545,7 +770,7 @@ local function copyHistory()
     if not Command or type(Command.CopyToClipboard)~="function" then
         notifyUi("Clipboard unavailable in this client");return nil,"clipboard_unavailable"
     end
-    local out,err=model:exportText(nil,nil,48000)
+    local out,err=model:exportText(nil,nil,48000,true)
     if not out then return nil,err end
     local ok,answer=pcall(Command.CopyToClipboard,out)
     if not ok or answer==false then
@@ -557,6 +782,9 @@ end
 local function executeLocal(value)
     if not model then return nil,"not_ready" end
     lastEditorImportReceipt=nil
+    if type(value)=="string" and value:match("^%s*:color%s+panel%s*$") then
+        return controls._palette.open()
+    end
     -- RCM editor has its own import route. Reuse the SAME bounded receiver
     -- as native /rcm import; no second decoder, persistent queue or file IO.
     local verb=type(value)=="string" and
@@ -646,6 +874,7 @@ local function mirrorCommand(args)
 end
 local function submit()
     if not model or not editor then return nil,"not_ready" end
+    if controls._palette.active then return nil,"palette_active" end
     local value=editor:GetText() or ""
     if #value==0 then return nil,"empty" end
     local ok,err=executeLocal(value)
@@ -705,6 +934,7 @@ layoutWindow=function()
     placeButton("FindReset",panel,w-155,111,75,33)
     placeButton("PageUp",panel,w-74,160,64,34)
     placeButton("PageDown",panel,w-74,205,64,34)
+    placeButton("PaletteOpen",panel,w-74,250,64,34)
     local cardW,cardH=w-94,h-292
     place(list,panel,14,154,cardW,cardH)
     if controls._skin.history then place(controls._skin.history,list,0,0,cardW,cardH) end
@@ -732,6 +962,7 @@ layoutWindow=function()
     end
     local overlayW,overlayH=cardW-8,cardH-8
     place(detailOverlay,list,4,4,overlayW,overlayH)
+    controls._palette.layout(list,overlayW,overlayH)
     local native=controls._native
     if native.panel then
         place(native.panel,list,4,4,overlayW,overlayH)
@@ -817,6 +1048,36 @@ local function stopResize()
     resize=nil
     if resizeGrip then rgba(resizeGrip,C.control) end
 end
+-- Split the detail reader out of the large initializer. Lua 5.1 permits
+-- at most 60 captured locals per function; grouping modal construction
+-- keeps makeUi below that limit as independent settings views are added.
+controls._buildDetailReader=function()
+    -- Complete-message reader overlays only the message list, not the controls.
+    -- The regular rows remain available immediately after CLOSE.
+    detailOverlay=frame("DetailOverlay",list,4,4,658,318,C.header)
+    -- The detail reader is a modal: backing history siblings are hidden
+    -- while open. Preserve the RIFT-tested child/texture layer relationship
+    -- (negative-layer background, default-layer text/buttons) rather than
+    -- moving the parent above its own children.
+    controls._skin.detail=controls._skinTexture("DetailPlate",detailOverlay,"glass_detail")
+    rgba(detailOverlay,C.header)
+    detailOverlay:SetMouseMasking("full")
+    detailTitle=text("DetailTitle",detailOverlay,"MESSAGE DETAILS",
+        14,13,520,25,18,C.accent,true)
+    detailBody=text("DetailBody",detailOverlay,"",
+        14,51,630,194,16,C.text)
+    detailBody:SetWordwrap(true)
+    button("DetailCopy","COPY MESSAGE",detailOverlay,14,267,162,36,
+        copyMessage,true)
+    button("DetailPrev","PREV",detailOverlay,185,267,74,36,
+        function() detailPageStep(-1) end)
+    button("DetailNext","NEXT",detailOverlay,269,267,74,36,
+        function() detailPageStep(1) end)
+    detailPageStatus=text("DetailPageStatus",detailOverlay,"PAGE 1/1",
+        352,275,100,22,14,C.muted,true)
+    button("DetailClose","CLOSE",detailOverlay,551,267,94,36,closeDetails)
+    detailOverlay:SetVisible(false)
+end
 local function makeUi()
     if panel then return end
     context=UI.CreateContext("RiftChatModernContext")
@@ -850,6 +1111,7 @@ local function makeUi()
         383,20,188,24,14,C.muted,true)
     versionFrame=text("Version",header,"v"..VERSION,579,19,118,22,16,C.accent,true)
     button("Close","×",header,715,11,34,34,function()
+        controls._palette.close(false)
         if resize then stopResize() end
         drag=nil
         if editor and type(editor.SetKeyFocus)=="function" then
@@ -870,6 +1132,7 @@ local function makeUi()
         local name,display=tab[1],tab[2]
         local b,label=button("Tab"..name,display,panel,16+(i-1)*122,69,110,34,
             function()
+                controls._palette.close(false)
                 if name=="native" then
                     closeDetails()
                     controls._native.active=true
@@ -902,52 +1165,33 @@ local function makeUi()
         searchField:SetText(""); model:setSearch("");visibleOffset=0;render()
     end)
     button("PageUp","OLDER",panel,686,160,64,34,function()
+        if controls._palette.active then controls._palette.step(-1);return end
         if controls._native.active then
             controls._native.page=math.max(0,controls._native.page-1)
             render();return
         end
-        local _,total=model:getHistory(model.filter,model.search,1,0)
+        local _,total=model:getHistory(model.filter,model.search,1,0,true)
         local oldestOffset=total>0 and math.floor((total-1)/LINES)*LINES or 0
         visibleOffset=math.min(oldestOffset,visibleOffset+LINES)
         render()
     end)
     button("PageDown","NEWER",panel,686,205,64,34,function()
+        if controls._palette.active then controls._palette.step(1);return end
         if controls._native.active then
             controls._native.page=controls._native.page+1
             render();return
         end
         visibleOffset=math.max(0,visibleOffset-LINES);render()
     end)
+    button("PaletteOpen","COLORS",panel,686,250,64,34,controls._palette.toggleButton)
+    controls.PaletteOpen.label:SetFontSize(12)
     rows={}
     list=frame("MessageCard",panel,14,154,666,326,C.card)
+    controls._palette.build(list)
     controls._skin.history=controls._skinTexture("HistoryPlate",list,"glass_history")
     if controls._skin.history then rgba(list,C.clear) end
     -- Actual message rows are created lazily by layoutWindow().
-    -- Complete-message reader overlays only the message list, not the controls.
-    -- The regular rows remain available immediately after CLOSE.
-    detailOverlay=frame("DetailOverlay",list,4,4,658,318,C.header)
-    -- The detail reader is a modal: backing history siblings are hidden
-    -- while open. Preserve the RIFT-tested child/texture layer relationship
-    -- (negative-layer background, default-layer text/buttons) rather than
-    -- moving the parent above its own children.
-    controls._skin.detail=controls._skinTexture("DetailPlate",detailOverlay,"glass_detail")
-    rgba(detailOverlay,C.header)
-    detailOverlay:SetMouseMasking("full")
-    detailTitle=text("DetailTitle",detailOverlay,"MESSAGE DETAILS",
-        14,13,520,25,18,C.accent,true)
-    detailBody=text("DetailBody",detailOverlay,"",
-        14,51,630,194,16,C.text)
-    detailBody:SetWordwrap(true)
-    button("DetailCopy","COPY MESSAGE",detailOverlay,14,267,162,36,
-        copyMessage,true)
-    button("DetailPrev","PREV",detailOverlay,185,267,74,36,
-        function() detailPageStep(-1) end)
-    button("DetailNext","NEXT",detailOverlay,269,267,74,36,
-        function() detailPageStep(1) end)
-    detailPageStatus=text("DetailPageStatus",detailOverlay,"PAGE 1/1",
-        352,275,100,22,14,C.muted,true)
-    button("DetailClose","CLOSE",detailOverlay,551,267,94,36,closeDetails)
-    detailOverlay:SetVisible(false)
+    controls._buildDetailReader()
     -- Read-only native RIFT console inspector. These are configured
     -- subscriptions from Inspect.Console.Detail, not received social text.
     local native=controls._native
@@ -992,6 +1236,10 @@ local function makeUi()
     native.panel:SetVisible(false)
     button("Copy","COPY HISTORY",panel,14,490,170,35,copyHistory,true)
     button("Clear","CLEAR",panel,195,490,98,35,function()
+        if controls._palette.active then
+            if statusField then statusField:SetText("History CLEAR is disabled in COLORS view") end
+            return
+        end
         if controls._native.active then
             if statusField then
                 statusField:SetText("History CLEAR is disabled in read-only CONSOLE view")
@@ -1015,7 +1263,8 @@ local function makeUi()
     if editor.Event then
         -- RIFT Textfield's native KeyDown is the proven input path (LuaPadModern).
         function editor.Event:KeyDown(key)
-            if not panel or not panel:GetVisible() or type(key)~="string" then return end
+            if not panel or not panel:GetVisible() or controls._palette.active
+                or type(key)~="string" then return end
             local normalized=key:lower()
             if key:byte(1)==13 or key:byte(1)==10
                 or normalized=="enter" or normalized=="return" then
@@ -1088,6 +1337,7 @@ local function show(yes)
     if not model then return nil,"not_ready" end
     makeUi()
     if not yes then
+        controls._palette.close(false)
         closeDetails()
         if resize then stopResize() end
         if drag then
@@ -1183,7 +1433,10 @@ local function parseSlash(_,args)
             notice(ok and ("Window size "..W.."x"..H) or ("Size failed: "..tostring(err)))
         end
     elseif verb=="color" and model then
-        local ok,result=model:paletteCommand(rest)
+        local ok,result
+        if rest=="panel" then show(true);ok,result=controls._palette.open()
+        else ok,result=model:paletteCommand(rest) end
+        if ok and result==nil then result="Color settings toggled." end
         notice(ok and result or ("Color rejected: "..tostring(result)))
     elseif verb=="checkpoint" then notice(checkpointSummary())
     elseif verb=="import" then
@@ -1338,6 +1591,7 @@ local function nativeProbeCommand(args)
     if args=="help" then
         return ":native view | groups | game | loot | player | public | combat | channels | copy (subscriptions, NOT messages)"
     elseif args=="view" then
+        controls._palette.close(false)
         closeDetails()
         controls._native.active=true
         controls._native.group="game"
@@ -1622,7 +1876,9 @@ _G.RiftChatModernAPI={
         data.windowWidth=W;data.windowHeight=H
         data.minimumWindowWidth=MIN_W;data.minimumWindowHeight=MIN_H
         data.visibleRows=LINES
-        data.displayMode=controls._native.active and "native_subscriptions" or "history"
+        data.displayMode=controls._palette.active and "palette"
+            or controls._native.active and "native_subscriptions" or "history"
+        data.paletteInputFocused=state=="palette"
         data.nativeSubscriptionsReadOnly=true
         data.nativeTranscriptReadable=false
         data.nativeSourceGroup=controls._native.active and controls._native.group or nil
@@ -1652,6 +1908,18 @@ _G.RiftChatModernAPI={
     ResetChannelColor=function(key)
         if not model then return nil,"not_ready" end
         return model:resetChannelColor(key)
+    end,
+    GetChannelVisibility=function()
+        if not model then return nil,"not_ready" end
+        return model:getChannelVisibility()
+    end,
+    SetChannelVisible=function(key,visible)
+        if not model then return nil,"not_ready" end
+        return model:setChannelVisible(key,visible)
+    end,
+    ResetChannelVisibility=function()
+        if not model then return nil,"not_ready" end
+        return model:resetChannelVisibility()
     end,
     OpenMessage=openMessage,
     GetSelectedMessage=selectedMessage,

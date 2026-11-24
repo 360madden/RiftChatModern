@@ -10,6 +10,7 @@ as [the complete engineering archive](ENGINEERING_ARCHIVE_README_THROUGH_2026112
 ## Getting started and architecture
 
 - **[Authoritative living development roadmap](../ROADMAP.md)** — prioritized milestones, evidence levels, acceptance gates, risks and next work
+- **[v0.2.25 graphical palette and visibility](V0_2_25_PALETTE_PANEL_20261123.md)** — settings controls, view-only filters and Lua 5.1 acceptance
 - **[v0.2.24 persistent channel palette](V0_2_24_CHANNEL_PALETTE_20261123.md)** — command/API controls, validation and offline acceptance
 - **[Monday LEGION toolchain qualification](M0_LEGION_TOOLCHAIN_20261123.md)** — reproducible environment, sender portability and verified full offline suites
 - **[Latest Sunday development handoff](HANDOFF_20261122_SUNDAY_CLOSEOUT.md)** — exact next-session resume steps, evidence status, test blockers and P0 public-chat acceptance gate
