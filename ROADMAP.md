@@ -2,7 +2,7 @@
 
 > **Living plan · Established Sunday, 2026-11-22 (America/New_York) · Maintained in Git**
 >
-> **Canonical source:** `ROADMAP.md` at repository root. **Repository:** [360madden/RiftChatModern](https://github.com/360madden/RiftChatModern) · **Development folder:** `C:\work\RiftChatModern` · **Physical RIFT qualification machine:** AMD-DESKTOP.
+> **Canonical source:** `ROADMAP.md` at repository root. **Repository:** [360madden/RiftChatModern](https://github.com/360madden/RiftChatModern) · **Development folder:** `C:\work\RiftChatModern` · **Physical RIFT qualification:** AMD-DESKTOP (historical acceptance); LEGION (current patch recovery candidate, fresh physical qualification required). See [November 24 recovery playbook](docs/PATCH_RECOVERY_20261124.md).
 >
 > **Baseline when this roadmap was written:** Git `main` at `29941242778de4026dc32b9a806e88538c6a6ebe`, in-game addon **v0.2.23**. LEGION has a freshly cloned development copy, **not** a verified RIFT client/deployment. The last *recorded* complete suite (November 21 on AMD-DESKTOP) passed **315 Python/Lua + 119 Node = 434 tests** and a .NET 10 Release build. These results have **not been rerun merely by creating this roadmap**.
 
@@ -92,7 +92,7 @@ UX1 UI polish & configuration -> API1 addon integration -> REL1 release quality
 - [ ] **RCM-001 · Host and repo qualification:** Record hostname, verified `C:\work\RiftChatModern` root, remote URL, branch, local HEAD, `origin/main` SHA, untracked/modified files and whether AMD-DESKTOP is reachable. Never conflate LEGION with AMD-DESKTOP. Preserve any pre-existing local changes.
 - [x] **RCM-002 · Toolchain (LEGION qualified 2026-11-23):** Check Python environment with Lua 5.1 via Lupa, Node, and .NET 10 SDK. Execute the full existing tests and Release sender build; write counts, failures, versions and date to a new dated verification note. If unavailable on LEGION, label tests blocked rather than pretending the old AMD result is current.
 - [ ] **RCM-003 · Evidence index:** Keep one latest-session evidence matrix (source format → test → real-game screenshot → save token → commit) with links to dated `docs/` reports. Preserve original reports as immutable historical records.
-- [ ] **RCM-004 · Client preflight, AMD only:** Verify exact game PID/HWND/start ticks/EXE SHA and current `Rift.cfg` DocumentsDirectory, active addon location, `Log.txt` path and actual noncombat logging state. Never reuse the historical pins in documents.
+- [ ] **RCM-004 · Client preflight, machine-bound:** Verify exact game PID/HWND/start ticks/EXE SHA and current `Rift.cfg` DocumentsDirectory, active addon location, `Log.txt` path and actual noncombat logging state. Never reuse the historical pins in documents.
 
 **Exit gate:** current machine and Git state are known, full available regression results are recorded without exaggeration, and a reproducible live-game preflight is possible on AMD (or the live milestone remains explicitly `BLOCKED`). **No Lua version bump** is needed for a documentation-only change.
 
@@ -193,7 +193,7 @@ UX1 UI polish & configuration -> API1 addon integration -> REL1 release quality
 - [ ] **RCM-082 · Compatibility matrix:** Test clean install, upgrade from v0.2.23, addon absent/disabled, unexpected SavedVariables data, host disconnected, RIFT minimized, console settings unavailable, and client updates.
 - [ ] **RCM-083 · Observability & support:** Redacted bug-report template, failure signatures, supported channel/version matrix, complete known limitations and recovery steps; publish authentic privacy-cropped screenshots.
 - [ ] **RCM-084 · Shipping:** Prepare an honest release tier (`Core` or `Core + Companion`), changelog, versioned source tag and distributable addon package. Do not mix host helper binaries into the Lua addon without a documented opt-in path. CurseForge publication and licensing decisions are separate owner approvals.
-- [ ] **RCM-085 · Post-update recovery:** On each RIFT patch, reverify API presence, source line grammars, native window/process identity policy, log path and deployment; compare source evidence before changing adapters. Maintain known-good rollback.
+- [ ] **RCM-085 · Post-update recovery:** On each RIFT patch, reverify API presence, source line grammars, native window/process identity policy, log path and deployment; compare source evidence before changing adapters. Maintain known-good rollback. **PREPARED 2026-11-23:** [November 24 playbook](docs/PATCH_RECOVERY_20261124.md), shared LEGION baseline verified, private installed-v0.2.23/addon-save snapshot captured and offline checks passed; post-patch runtime qualification pending.
 
 **Exit gate:** a new installation and upgrade pass actual game smoke tests; artifacts match committed code; no unresolved P0 defects; release notes state exactly which social channels are supported and how.
 
@@ -283,11 +283,11 @@ The `deploy_rcm.py` invocation above is **dry-run by default**; on a host not ma
 | Work item / milestone | Status on 2026-11-23 | Owner environment | Next action |
 |---|---|---|---|
 | Core v0.2.23 UI and Say coordinator | `VERIFIED-LIVE` / `VERIFIED-DISK` (as recorded Nov 21) | AMD-DESKTOP | Preserve working baseline |
-| M0 Git checkout and toolchain | `TESTED-OFFLINE` on LEGION (321 Python/Lua + 129 Node; clean .NET build); `BLOCKED` for current AMD status check | LEGION / AMD-DESKTOP | Reconnect AMD for live preflight; preserve dependency provenance |
-| M1 Level 1–29 import | `TESTED-OFFLINE` only; live pending | AMD-DESKTOP | Recover foregroundable client; complete exact-source → RCM → disk proof |
-| M2 additional social formats | `RESEARCH` | AMD-DESKTOP | Obtain current real log examples after M1 |
+| M0 Git checkout and toolchain | `TESTED-OFFLINE` on LEGION (321 Python/Lua + 129 Node; clean .NET build); `BLOCKED` for current AMD status check | LEGION / AMD-DESKTOP | Qualify LEGION's current session; preserve AMD historical evidence and dependency provenance |
+| M1 Level 1–29 import | `TESTED-OFFLINE` only; live pending | LEGION (qualification pending) | Recover foregroundable client; complete exact-source → RCM → disk proof |
+| M2 additional social formats | `RESEARCH` | Qualified live host | Obtain current real log examples after M1 |
 | M3 queue/recovery extension | `PLANNED` (foundations implemented) | Any dev host with tests | Start after M1 |
-| M4 continuous companion | `PLANNED` | AMD-DESKTOP qualification | Start after M3 |
+| M4 continuous companion | `PLANNED` | Qualified live host | Start after M3 |
 | UX1 improvements | `TESTED-OFFLINE` v0.2.25 graphical palette and visibility implemented; physical acceptance pending | Any dev host; AMD for acceptance | Verify live color/visibility, reload/relogin persistence; continue UX1/API1 offline |
 | API1 integration | `TESTED-OFFLINE` RCM-060 API/consumer + RCM-062 redacted companion health | Any dev host; AMD for acceptance | RCM-061 physical roundtrip; RCM-063 compatibility and RCM-064 operator workflow |
 | GATE B full replacement | `RESEARCH`, no GO decision | Physical current client required | After incoming coverage/source feasibility |
