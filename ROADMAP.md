@@ -6,7 +6,7 @@
 >
 > **Baseline when this roadmap was written:** Git `main` at `29941242778de4026dc32b9a806e88538c6a6ebe`, in-game addon **v0.2.23**. LEGION has a freshly cloned development copy, **not** a verified RIFT client/deployment. The last *recorded* complete suite (November 21 on AMD-DESKTOP) passed **315 Python/Lua + 119 Node = 434 tests** and a .NET 10 Release build. These results have **not been rerun merely by creating this roadmap**.
 
-> **Current checkpoint — Tuesday, 2026-11-24 (America/New_York):** **387 Python/Lua + 144 Node = 531 Windows tests passed**, zero failures/skips and three clean Release builds at code commit `bd8d40a`; both PR and push CI succeeded. See [PR #1](https://github.com/360madden/RiftChatModern/pull/1) and the [Tuesday handoff](docs/HANDOFF_20261124_TUESDAY_RECOVERY.md). Source **v0.2.26**, last verified installed version **v0.2.23**. **Physical recovery remains blocked:** AMD-DESKTOP is unavailable, and LEGION bridge access returned `Session terminated`. Fresh game patch acceptance is pending.
+> **Current checkpoint — Saturday, 2026-11-28 (PHT):** LEGION access restored; **387 Python/Lua + 144 Node = 531 tests passed** locally at merged `e966259`, all three builds passed, and post-merge CI succeeded. Installed **v0.2.23** startup and normal save checkpoint verified on the current game; source **v0.2.26** unchanged. RCM-085 is partially accepted, but fresh log capture remains blocked by Windows cloud-file error **0x8007016A**. See [Saturday handoff](docs/HANDOFF_20261128_SATURDAY_LEGION.md).
 
 ## 1. Mission, success, and the central feasibility constraint
 
@@ -199,7 +199,7 @@ UX1 UI polish & configuration -> API1 addon integration -> REL1 release quality
 - [ ] **RCM-082 · Compatibility matrix:** Test clean install, upgrade from v0.2.23, addon absent/disabled, unexpected SavedVariables data, host disconnected, RIFT minimized, console settings unavailable, and client updates.
 - [ ] **RCM-083 · Observability & support:** Redacted bug-report template, failure signatures, supported channel/version matrix, complete known limitations and recovery steps; publish authentic privacy-cropped screenshots.
 - [ ] **RCM-084 · Shipping:** Prepare an honest release tier (`Core` or `Core + Companion`), changelog, versioned source tag and distributable addon package. Do not mix host helper binaries into the Lua addon without a documented opt-in path. CurseForge publication and licensing decisions are separate owner approvals.
-- [ ] **RCM-085 · Post-update recovery:** On each RIFT patch, reverify API presence, source line grammars, native window/process identity policy, log path and deployment; compare source evidence before changing adapters. Maintain known-good rollback. **BLOCKED 2026-11-24:** [recovery playbook](docs/PATCH_RECOVERY_20261124.md) and historical LEGION before-snapshot exist; current host access and actual patch-only runtime qualification are pending. Preserve installed v0.2.23 until that gate passes. The [Tuesday recovery branch](docs/HANDOFF_20261124_TUESDAY_RECOVERY.md) adds deployment/config guards and Windows CI; offline fixes do not complete physical recovery.
+- [ ] **RCM-085 · Post-update recovery:** On each RIFT patch, reverify API presence, source line grammars, native window/process identity policy, log path and deployment; compare source evidence before changing adapters. Maintain known-good rollback. **PARTIAL 2026-11-28:** [Saturday handoff](docs/HANDOFF_20261128_SATURDAY_LEGION.md) establishes LEGION access, unchanged executable, installed v0.2.23 live startup and verified save checkpoint. Current log access is blocked; remaining runtime API/console/interaction and live Say receipt are pending. Preserve installed v0.2.23 until that gate passes. The [Tuesday recovery branch](docs/HANDOFF_20261124_TUESDAY_RECOVERY.md) adds deployment/config guards and Windows CI; offline fixes do not complete physical recovery.
 
 **Exit gate:** a new installation and upgrade pass actual game smoke tests; artifacts match committed code; no unresolved P0 defects; release notes state exactly which social channels are supported and how.
 
@@ -284,12 +284,12 @@ Use the [Windows qualification setup](docs/OFFLINE_CI.md), including the sibling
 
 ## 9. Current project board and next move
 
-| Work item / milestone | Status on 2026-11-24 | Owner environment | Next action |
+| Work item / milestone | Status on 2026-11-28 PHT | Owner environment | Next action |
 |---|---|---|---|
 | Core v0.2.23 UI and Say coordinator | `VERIFIED-LIVE` / `VERIFIED-DISK` (as recorded Nov 21) | AMD-DESKTOP | Preserve working baseline |
-| M0 Git checkout and toolchain | `TESTED-OFFLINE`: **531 Windows tests passed**, all three builds clean at `bd8d40a` | GitHub Windows Server 2025 runner | Preserve passing gate for subsequent code changes; verify actual game host separately |
-| RCM-085 patch recovery | `BLOCKED` for physical acceptance; deployment/config/rollback fixes and Windows CI qualified offline | LEGION candidate; bridge returned `Session terminated` | Restore access, verify actual updater/build state and qualify installed v0.2.23 before deployment |
-| M1 Level 1–29 import | `TESTED-OFFLINE` only; live pending after RCM-085 | Freshly verified game host | After patch-only baseline, complete exact new source → RCM → disk proof |
+| M0 Git checkout and toolchain | `TESTED-OFFLINE`: **531 passed** on LEGION at merged `e966259`; three builds passed; post-merge CI green | LEGION and GitHub Windows runner | Preserve passing gate for subsequent code changes |
+| RCM-085 patch recovery | PARTIAL: v0.2.23 startup and save `VERIFIED-LIVE` / `VERIFIED-DISK`; fresh log access blocked | LEGION | Resolve cloud-file access; finish runtime and Say acceptance before deployment |
+| M1 Level 1–29 import | `TESTED-OFFLINE`; first LEGION capture failed before EOF baseline, no queue/dispatch; 0x8007016A | LEGION | Restore actual log readability, then complete exact new source → RCM → disk proof after RCM-085 |
 | M2 additional social formats | `RESEARCH` | Qualified live host | Obtain current real log examples after M1 |
 | M3 queue/recovery extension | `PLANNED` (foundations implemented) | Any dev host with tests | Start after M1 |
 | M4 continuous companion | `PLANNED` | Qualified live host | Start after M3 |
@@ -298,7 +298,7 @@ Use the [Windows qualification setup](docs/OFFLINE_CI.md), including the sibling
 | GATE B full replacement | `RESEARCH`, no GO decision | Physical current client required | After incoming coverage/source feasibility |
 | REL1 release | `PLANNED` | Verified game host | After required gates |
 
-**Immediate P0:** **RCM-085 → RCM-010 → RCM-015** on the freshly verified game host. Establish the actual patch/build and existing installed-v0.2.23 baseline first. Only then capture one *new authentic* Level 1–29 message, prove one RCM-host row and one saved transfer token, and restore the original logging state. The Windows offline gate has passed. AMD-DESKTOP is unavailable and current LEGION access failed; continue evidence-backed offline work without marking the physical gate complete.
+**Immediate P0:** **RCM-085 → RCM-010 → RCM-015** on LEGION. Restore readable, current bytes from the configured Log.txt (cloud-file provider error 0x8007016A); do not change sync settings or migrate the documents root blindly. Requalify the remaining installed-v0.2.23 baseline before capturing a *new authentic* Level 1–29 message, proving a visible RCM row and saved transfer token, and restoring logging. See [Saturday handoff](docs/HANDOFF_20261128_SATURDAY_LEGION.md). If source access remains unavailable, advance independent RCM-063 work without claiming live acceptance.
 
 **Tuesday recovery checkpoint:** [PR #1](https://github.com/360madden/RiftChatModern/pull/1) contains explicit deployment-target, malformed-config/stale-log and rollback guards plus the native-slash backend correction and Windows qualification runner. At **`bd8d40a1ee4ed71b4b676b01e085e1db77ccc8cd`**, [PR CI](https://github.com/360madden/RiftChatModern/actions/runs/45496085182) and [push CI](https://github.com/360madden/RiftChatModern/actions/runs/45496076722) both completed successfully: **387 Python/Lua + 144 Node = 531 passed**, no failures/skips/todo, and three Release builds with zero warnings/errors. Five rollback regressions and the six original native-slash failures were reproduced before their fixes. The [Tuesday handoff](docs/HANDOFF_20261124_TUESDAY_RECOVERY.md) preserves the initial YAML failure, first Windows failures, corrective work and exact toolchain. No live deployment or patch acceptance occurred.
 

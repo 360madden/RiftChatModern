@@ -10,7 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 ROADMAP = ROOT / "ROADMAP.md"
 README = ROOT / "README.md"
 DOCS_INDEX = ROOT / "docs" / "README.md"
-LATEST_HANDOFF = ROOT / "docs" / "HANDOFF_20261124_TUESDAY_RECOVERY.md"
+LATEST_HANDOFF = ROOT / "docs" / "HANDOFF_20261128_SATURDAY_LEGION.md"
+TUESDAY_HANDOFF = ROOT / "docs" / "HANDOFF_20261124_TUESDAY_RECOVERY.md"
 MONDAY_HANDOFF = ROOT / "docs" / "HANDOFF_20261123_MONDAY_CLOSEOUT.md"
 SUNDAY_HANDOFF = ROOT / "docs" / "HANDOFF_20261122_SUNDAY_CLOSEOUT.md"
 
@@ -72,6 +73,7 @@ class RoadmapContractTests(unittest.TestCase):
         self.assertIn("docs/" + LATEST_HANDOFF.name, README.read_text(encoding="utf-8"))
         self.assertTrue(SUNDAY_HANDOFF.is_file(), "Preserve historical handoff")
         self.assertTrue(MONDAY_HANDOFF.is_file(), "Preserve historical handoff")
+        self.assertTrue(TUESDAY_HANDOFF.is_file(), "Preserve historical handoff")
         handoff = LATEST_HANDOFF.read_text(encoding="utf-8")
         for link in local_markdown_links(handoff):
             with self.subTest(link=link):

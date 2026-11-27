@@ -153,7 +153,7 @@ The API also provides history retrieval, subscriptions, UI controls, copy helper
 
 ## Project status
 
-**November 24 checkpoint:** **531 Windows tests passed**, with all three Release builds clean. Physical patch recovery remains **blocked** pending fresh access and game acceptance on LEGION.
+**November 28 checkpoint (PHT):** **531 tests passed on LEGION**, all three Release builds passed, and the merged GitHub CI is green. Live v0.2.23 startup and save checkpoint are verified on LEGION; current public-log access remains blocked by Windows cloud-file error 0x8007016A.
 
 | Area | Current evidence |
 |---|---|
@@ -161,13 +161,13 @@ The API also provides history retrieval, subscriptions, UI controls, copy helper
 | **Physical RIFT evidence** | v0.2.22 General, Loot and named public-channel subscriptions confirmed in native screenshots; v0.2.21 drag/resize, focus, details, message columns previously accepted |
 | **Current Windows regression result** | **387 Python/Lua + 144 Node = 531 passed**, zero failures/skips, all three .NET Release builds clean at code commit `bd8d40a`. Both [PR CI](https://github.com/360madden/RiftChatModern/actions/runs/45496085182) and [push CI](https://github.com/360madden/RiftChatModern/actions/runs/45496076722) succeeded. See [Tuesday handoff](docs/HANDOFF_20261124_TUESDAY_RECOVERY.md) and [PR #1](https://github.com/360madden/RiftChatModern/pull/1). |
 | **Historical regression baseline** | **511 passed** on LEGION before the recovery branch (367 Python/Lua + 144 Node; zero failures/skips), at main `d2e280a`. See [pre-patch bug hunt](docs/PATCH_RECOVERY_BUGHUNT_20261124.md). |
-| **Current physical access** | AMD-DESKTOP unavailable; LEGION is the recovery candidate, but its bridge returned `Session terminated` on November 24. Fresh game patch, startup, log and save acceptance remain pending. |
+| **Current physical access** | LEGION restored November 28 PHT; actual running executable hash unchanged, v0.2.23 startup and fresh save verified. Remaining physical recovery and fresh log receipt pending. |
 | **Persistence** | Window position and size survived `/reloadui`; exact UI geometry and local DEV test entry independently found in the on-disk SavedVariables file |
 | **Windows host tooling** | Existing .NET 10 editor batch validator, exact-candidate gate; temporary RIFT foreground capture/return physically verified |
 | **Native player social chat** | Two supervised real **Say** imports accepted; 20 game-created numbered public-channel log lines establish one additional parser format, but public import and Guild/Party/Tell remain unverified |
 | **Bounded host Say monitoring** | New-only follower physically captured one real Say during a bounded, supervised session; not unattended continuous reception |
 | **Serialized host delivery** | **Physical P0 pass:** exactly one real Say transferred through coordinator to RCM and independently verified on disk under matching token |
-| **Public-channel host delivery** | New Level 1-29 / slot 4 queue, bounded follower, .NET sender preflight and disk-auditor integration **offline tested**; live delivery is pending after a foreground-refused no-input log activation attempt |
+| **Public-channel host delivery** | Level 1-29 / slot 4 pipeline **offline tested**. LEGION capture refused before EOF because the configured cloud file is unavailable (0x8007016A); zero queued or dispatched. Native logging state restored. |
 | **Continuous unattended in-game import** | **Not yet implemented**; both verified Say transfers required explicit, supervised host actions |
 
 RCM is under active development. The main engineering priority is proving a reliable real-game social chat source, without mislabeling host-imported records or RIFT console configuration as a native chat transcript.
@@ -179,7 +179,8 @@ The homepage is intentionally concise. The complete development history—includ
 | Start here | Purpose |
 |---|---|
 | 🧭 [Current development roadmap](ROADMAP.md) | Canonical priorities, dependency gates, measurable acceptance criteria and current project board |
-| 📋 [Latest development handoff](docs/HANDOFF_20261124_TUESDAY_RECOVERY.md) | Tuesday fixes, verified 531-test Windows result and pending physical patch gate |
+| 📋 [Latest development handoff](docs/HANDOFF_20261128_SATURDAY_LEGION.md) | LEGION live recovery, 531-test result, verified startup/save and confirmed log-access blocker |
+| 📋 [Tuesday recovery handoff](docs/HANDOFF_20261124_TUESDAY_RECOVERY.md) | Recovery guards and passing Windows CI |
 | 🧪 [Windows offline qualification](docs/OFFLINE_CI.md) | Reproducible toolchain, pinned companion dependency, all three builds and no-skip suite gate |
 | 📋 [Monday development closeout](docs/HANDOFF_20261123_MONDAY_CLOSEOUT.md) | Preserved v0.2.26 API/palette work and historical 497-test checkpoint |
 | 🎨 [v0.2.20 Glass UI](docs/V0_2_20_GLASS_UI_20261121.md) | Original PNG skin, interactive Lua styling, compatibility tests, and physical acceptance checklist |
