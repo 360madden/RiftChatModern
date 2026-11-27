@@ -6,7 +6,7 @@
 >
 > **Baseline when this roadmap was written:** Git `main` at `29941242778de4026dc32b9a806e88538c6a6ebe`, in-game addon **v0.2.23**. LEGION has a freshly cloned development copy, **not** a verified RIFT client/deployment. The last *recorded* complete suite (November 21 on AMD-DESKTOP) passed **315 Python/Lua + 119 Node = 434 tests** and a .NET 10 Release build. These results have **not been rerun merely by creating this roadmap**.
 
-> **Current checkpoint — Saturday, 2026-11-28 (PHT):** LEGION access restored; **387 Python/Lua + 144 Node = 531 tests passed** locally at merged `e966259`, all three builds passed, and post-merge CI succeeded. Installed **v0.2.23** startup and normal save checkpoint verified on the current game; source **v0.2.26** unchanged. RCM-085 is partially accepted, but fresh log capture remains blocked by Windows cloud-file error **0x8007016A**. See [Saturday handoff](docs/HANDOFF_20261128_SATURDAY_LEGION.md).
+> **Current checkpoint — Saturday, 2026-11-28, 07:03 PHT:** **395 Python/Lua + 152 Node = 547 tests passed** on LEGION, zero failures/skips, all three builds clean. [Source-access guards](docs/LOG_SOURCE_ACCESS_20261128.md) now check actual log readability, preserve read-error diagnostics and enforce a parent capture deadline. Installed **v0.2.23** startup and normal save checkpoint remain verified; source **v0.2.26** unchanged. RCM-085 is partially accepted, while fresh log capture remains blocked by Windows error **0x8007016A**. The corrected preflight now explicitly blocks that source. See [Saturday handoff](docs/HANDOFF_20261128_SATURDAY_LEGION.md).
 
 ## 1. Mission, success, and the central feasibility constraint
 
@@ -46,8 +46,8 @@ A Git commit, a passing unit test, a successful Win32 SendInput call, a visible 
 | Public chat | 20 real lines of `[4. Level 1-29][Speaker@Shard]: message`; strict public-only parser and companion tests | **First new real public import → RCM → disk** is NOT YET accepted |
 | Guild/Party/Tell | Some historical guesses/fixtures | Exact current-client bytes and send/receive evidence still missing |
 | Windows companion | Separate Say/public journals; shared exclusive editor claim lock; .NET 10 pinned-window sender; read-only disk audit | Cross-session reliability/automatic operation, latencies, fault recovery |
-| Quality | Code commit `bd8d40a`: **531 Windows tests passed**, no failures/skips; three Release builds with zero warnings/errors | Keep future code commits green; offline acceptance does not qualify the physical game |
-| Current host / patch | AMD-DESKTOP unavailable; LEGION bridge returned `Session terminated` on November 24 | Fresh host identity, actual patch/build, installed addon, log and save qualification required |
+| Quality | November 28 source-access guards: **547 Windows tests passed** on LEGION, no failures/skips; three Release builds with zero warnings/errors | Keep future code commits green; offline acceptance does not qualify the physical game |
+| Current host / patch | AMD-DESKTOP unavailable; LEGION startup/save verified November 28; configured cloud log remains unreadable | Restore current source readability; finish runtime and channel acceptance |
 
 **Do not rewrite history:** Earlier per-version reports may record older intermediate failures or then-pending tasks. Prefer the latest dated acceptance or handoff that supersedes them.
 
@@ -287,7 +287,7 @@ Use the [Windows qualification setup](docs/OFFLINE_CI.md), including the sibling
 | Work item / milestone | Status on 2026-11-28 PHT | Owner environment | Next action |
 |---|---|---|---|
 | Core v0.2.23 UI and Say coordinator | `VERIFIED-LIVE` / `VERIFIED-DISK` (as recorded Nov 21) | AMD-DESKTOP | Preserve working baseline |
-| M0 Git checkout and toolchain | `TESTED-OFFLINE`: **531 passed** on LEGION at merged `e966259`; three builds passed; post-merge CI green | LEGION and GitHub Windows runner | Preserve passing gate for subsequent code changes |
+| M0 Git checkout and toolchain | `TESTED-OFFLINE`: **547 passed** on LEGION with source-access guards; three builds clean; [qualification](docs/OFFLINE_CI.md) | LEGION and GitHub Windows runner | Preserve passing gate for subsequent code changes |
 | RCM-085 patch recovery | PARTIAL: v0.2.23 startup and save `VERIFIED-LIVE` / `VERIFIED-DISK`; fresh log access blocked | LEGION | Resolve cloud-file access; finish runtime and Say acceptance before deployment |
 | M1 Level 1–29 import | `TESTED-OFFLINE`; first LEGION capture failed before EOF baseline, no queue/dispatch; 0x8007016A | LEGION | Restore actual log readability, then complete exact new source → RCM → disk proof after RCM-085 |
 | M2 additional social formats | `RESEARCH` | Qualified live host | Obtain current real log examples after M1 |

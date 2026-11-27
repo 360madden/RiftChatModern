@@ -11,7 +11,11 @@ const {spawn,spawnSync}=require("node:child_process");
 const {resolveDotnet}=require("./rcm-dotnet-host.cjs");
 const {validLogPath}=require("./rcm-chat-observer.cjs");
 const stateModule=require("./rcm-say-delivery-state.cjs");
-const followerProfiles=require("./rcm-live-social-follow-core.cjs").PROFILES;
+const {PROFILES:followerProfiles,isRefusedReceipt}=require("./rcm-live-social-follow-core.cjs");
+// The child uses synchronous file reads, which can stall before its own timer
+// starts or while polling. Keep an independent parent deadline through close.
+const FOLLOWER_STARTUP_EXIT_GRACE_MS=5000;
+const FOLLOWER_TERMINATION_GRACE_MS=2000;
 function createCoordinator(profileName="say"){
   const store=stateModule.createStore(profileName);
   const profile=store.profile;
@@ -110,7 +114,8 @@ async function capture(o,output=emit){
     const journal=store.readState(o.state);
     const sessionId=store.beginSession(journal);
     store.save(o.state,journal); // durable BEFORE starting the tailer
-    let initialized=false,observed=null,finished=null;
+    let initialized=false,observed=null,finished=null,refused=null;
+    let deadlineExpired=false,terminationConfirmed=false;
     let failure=null,lineBuffer="",totalBytes=0,stderrBytes=0;
     const argv=[FOLLOW,"--path",o.filePath,"--timeout-ms",String(o.timeoutMs),
       "--poll-ms",String(o.pollMs),"--max-messages",String(o.maxMessages),
@@ -124,7 +129,11 @@ async function capture(o,output=emit){
       if(!e||typeof e!=="object"||Array.isArray(e)||typeof e.event!=="string")
         fail("invalid_follower_event");
       if(finished)fail("follower_records_after_finished");
-      if(e.event==="started"){
+      if(refused)fail("follower_records_after_refused");
+      if(e.event==="refused"){
+        if(initialized||!isRefusedReceipt(e,profileName))fail("invalid_follower_refusal");
+        refused=e;
+      }else if(e.event==="started"){
         if(initialized||e.mode!==follower.mode||
            e.source!=="RIFT_Log.txt"||e.format!==profile.format||
            e.channel!==profile.channel || e.channelSlot!==profile.slot ||
@@ -164,6 +173,25 @@ async function capture(o,output=emit){
       }
     }
     const exitCode=await new Promise(resolve=>{
+      let settled=false,terminationTimer=null;
+      function settle(code){
+        if(settled)return;
+        settled=true;
+        clearTimeout(deadlineTimer);
+        if(terminationTimer!==null)clearTimeout(terminationTimer);
+        resolve(code);
+      }
+      const deadlineTimer=setTimeout(()=>{
+        deadlineExpired=true;
+        failure=failure||"follower_wall_clock_timeout";
+        try{child.kill("SIGKILL");}catch(_){}
+        terminationTimer=setTimeout(()=>{
+          // An unconfirmed OS termination is still a failed capture. Detach
+          // read-only child pipes so the journal can record that outcome.
+          child.stdout.destroy();child.stderr.destroy();child.unref();
+          settle(null);
+        },FOLLOWER_TERMINATION_GRACE_MS);
+      },o.timeoutMs+FOLLOWER_STARTUP_EXIT_GRACE_MS);
       child.stdout.on("data",chunk=>{
         if(failure)return;
         totalBytes+=chunk.length;
@@ -179,22 +207,25 @@ async function capture(o,output=emit){
       });
       child.stderr.on("data",chunk=>{
         stderrBytes+=chunk.length;
-        if(stderrBytes>16384){failure="follower_stderr_budget_exceeded";child.kill();}
+        if(stderrBytes>16384){failure=failure||"follower_stderr_budget_exceeded";child.kill();}
       });
-      child.once("error",()=>{failure="follower_process_failed";});
-      child.once("close",code=>resolve(code));
+      child.once("error",()=>{failure=failure||"follower_process_failed";});
+      child.once("close",code=>{terminationConfirmed=true;settle(code);});
     });
     if(lineBuffer.trim())failure=failure||"incomplete_follower_stream";
+    if(refused&&exitCode!==2)failure=failure||"follower_refused_exit_mismatch";
     const okay=!failure&&exitCode===0&&finished&&initialized&&
       ["timeout","message_limit_reached"].includes(finished.reason);
+    const reason=okay?finished.reason:(failure||refused?.reason||"follower_failed_or_interrupted");
     store.completeSession(journal,sessionId,!!okay,
-      okay?finished.reason:(failure||"follower_failed_or_interrupted"));
+      reason);
     store.save(o.state,journal);
     output({event:"capture_finished",sessionId,
       state:okay?"completed":"failed",
       queued:journal.entries.filter(e=>e.sessionId===sessionId&&e.status==="queued").length,
       quarantined:journal.entries.filter(e=>e.sessionId===sessionId&&e.status==="quarantined").length,
-      reason:okay?finished.reason:(failure||"follower_failed_or_interrupted"),
+      reason,...(!failure&&refused?{readErrorCode:refused.readErrorCode}:{}),
+      ...(deadlineExpired?{followerTerminationConfirmed:terminationConfirmed}:{}),
       gameInputSent:false});
     return okay?0:2;
   });

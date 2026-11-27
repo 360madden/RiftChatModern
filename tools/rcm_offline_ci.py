@@ -15,11 +15,11 @@ import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-# November 24 recovery baseline: 367 existing methods + 10 target/config
-# guards + 2 CI summaries + 5 rollback cases + 3 backend-factory cases.
+# November 28 source-access baseline: 387 recovery methods + 8 log-read
+# guards; 144 existing Node tests + 8 refusal/deadline regressions.
 # A silently skipped or missing suite must not qualify as a clean result.
-MIN_PYTHON_TESTS = 387
-MIN_NODE_TESTS = 144
+MIN_PYTHON_TESTS = 395
+MIN_NODE_TESTS = 152
 
 
 def node_summary_ok(output: str) -> bool:

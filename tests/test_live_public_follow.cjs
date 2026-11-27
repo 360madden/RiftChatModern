@@ -4,7 +4,7 @@ const assert=require("node:assert/strict");
 const fs=require("node:fs");
 const os=require("node:os");
 const path=require("node:path");
-const {spawn}=require("node:child_process");
+const {spawn,spawnSync}=require("node:child_process");
 const publicFollow=require("../tools/rcm-live-public-follow.cjs");
 const sayFollow=require("../tools/rcm-live-say-follow.cjs");
 const SCRIPT=path.resolve(__dirname,"../tools/rcm-live-public-follow.cjs");
@@ -110,4 +110,77 @@ test("other live public slot alone is not admitted to current profile",async()=>
   assert.equal(r.code,0,r.stderr);
   assert.equal(r.events.filter(e=>e.event==="public_observed").length,0);
   assert.equal(r.events.at(-1).reason,"timeout");
+});
+
+test("startup read failures preserve bounded codes without private error text",()=>{
+  const {dir,file}=fixture();
+  const preload=path.join(dir,"read-failure.cjs");
+  const secret="PRIVATE_ACCOUNT_AND_CHAT_FIXTURE";
+  try{
+    for(const profile of ["public","say"]){
+      for(const code of ["UNKNOWN","EACCES",secret]){
+        fs.writeFileSync(preload,
+          'const fs=require("node:fs");const original=fs.openSync;'+
+          'fs.openSync=function(file,...args){if(file==='+JSON.stringify(file)+')'+
+          '{const error=Error('+JSON.stringify(secret+" "+dir)+');'+
+          'error.code='+JSON.stringify(code)+';throw error;}'+
+          'return original.call(this,file,...args);};');
+        const script=path.resolve(__dirname,"../tools/rcm-live-"+profile+"-follow.cjs");
+        const result=spawnSync(process.execPath,["--require",preload,script,"--path",file],
+          {encoding:"utf8",timeout:5000,windowsHide:true,maxBuffer:16384});
+        assert.equal(result.status,2,result.stderr);
+        const events=result.stdout.trim().split("\n").filter(Boolean).map(JSON.parse);
+        assert.equal(events.length,1);
+        assert.equal(events[0].event,"refused");
+        assert.equal(events[0].reason,"log_baseline_read_error");
+        assert.equal(events[0].readErrorCode,code===secret?"UNAVAILABLE":code);
+        assert.equal(events[0].mode,profile==="public"?
+          "bounded_verified_public_follow":"bounded_verified_say_follow");
+        assert.equal(events[0].gameInputSent,false);
+        assert.equal(events[0].editorDeliveryVerified,false);
+        assert.equal(events[0].diskSavedVerified,false);
+        assert.ok(!(result.stdout+result.stderr).includes(secret));
+        assert.ok(!(result.stdout+result.stderr).includes(dir));
+      }
+    }
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test("missing log refuses startup without exposing the absolute path",()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),"rcm-missing-private-path-"));
+  try{
+    const result=spawnSync(process.execPath,[SCRIPT,"--path",path.join(dir,"Log.txt")],
+      {encoding:"utf8",timeout:5000,windowsHide:true,maxBuffer:16384});
+    assert.equal(result.status,2);
+    const receipt=JSON.parse(result.stdout);
+    assert.equal(receipt.event,"refused");
+    assert.equal(receipt.reason,"log_source_unavailable");
+    assert.equal(receipt.readErrorCode,"ENOENT");
+    assert.ok(!(result.stdout+result.stderr).includes(dir));
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test("baseline anchor failure closes the already opened tailer",()=>{
+  const {dir,file}=fixture();
+  const originalOpen=fs.openSync,originalClose=fs.closeSync;
+  const live=new Set();let opens=0;
+  try{
+    fs.openSync=function(name,...args){
+      if(name===file && ++opens===2){
+        const error=Error("private anchor failure");error.code="EIO";throw error;
+      }
+      const fd=originalOpen.call(this,name,...args);
+      if(name===file)live.add(fd);
+      return fd;
+    };
+    fs.closeSync=function(fd){live.delete(fd);return originalClose.call(this,fd);};
+    assert.throws(()=>publicFollow.follow({filePath:file,timeoutMs:1000,pollMs:25,
+      maxMessages:1},()=>{}),error=>
+        error.message==="log_baseline_read_error" && error.readErrorCode==="EIO");
+    assert.equal(live.size,0);
+  }finally{
+    fs.openSync=originalOpen;fs.closeSync=originalClose;
+    for(const fd of live)originalClose(fd);
+    fs.rmSync(dir,{recursive:true,force:true});
+  }
 });

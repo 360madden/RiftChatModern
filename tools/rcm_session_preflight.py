@@ -12,6 +12,7 @@ import csv
 import ctypes
 from ctypes import wintypes
 from datetime import datetime
+import errno
 import io
 import json
 import os
@@ -25,6 +26,14 @@ import sys
 GAME="rift_x64.exe"
 ERROR_HANDLER="rifterrorhandler_x64.exe"
 MAX_FILES=16
+LOG_READ_TIMEOUT_SECONDS=3
+_LOG_READ_ERRORS={"cloud_file_provider_not_running","permission_denied","missing",
+                  "not_regular_file","unavailable"}
+_LOG_PROBE_CODE=(
+    "import json,pathlib,runpy,sys; "
+    "probe=runpy.run_path(sys.argv[1])['_read_log_probe']; "
+    "print(json.dumps(probe(pathlib.Path(sys.argv[2]))))"
+)
 
 def parse_tasklist(output: str) -> list[dict]:
     """Parse quoted tasklist CSV, not locale-dependent table columns."""
@@ -219,6 +228,72 @@ def inspect_log_candidates(paths:list[Path]) -> list[dict]:
         rows.append(record)
     return rows
 
+def _read_log_probe(path:Path) -> dict:
+    """Child-only byte probe. Never return content or OS exception messages."""
+    try:
+        # Match the capture follower's leaf-file policy. Cloud placeholders may
+        # be regular files with reparse metadata; ordinary symlinks are not.
+        if not stat.S_ISREG(path.lstat().st_mode):
+            return {"readable":False,"readError":"not_regular_file"}
+        flags=(os.O_RDONLY|getattr(os,"O_BINARY",0)|getattr(os,"O_NONBLOCK",0)
+               |getattr(os,"O_NOFOLLOW",0))
+        descriptor=os.open(path,flags)
+        try:
+            # Recheck the opened object: the path may change after stat.
+            if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+                return {"readable":False,"readError":"not_regular_file"}
+            os.read(descriptor,1)  # Empty files are readable; bytes are discarded.
+        finally:
+            os.close(descriptor)
+        return {"readable":True}
+    except OSError as error:
+        result={"readable":False,"readError":"unavailable"}
+        for attribute,key in (("errno","readErrno"),("winerror","readWinerror")):
+            value=getattr(error,attribute,None)
+            if type(value) is int:
+                result[key]=value&0xffffffff
+        code=result.get("readWinerror")
+        if code in (362,0x8007016A):
+            result["readError"]="cloud_file_provider_not_running"
+        elif isinstance(error,FileNotFoundError) or error.errno==errno.ENOENT:
+            result["readError"]="missing"
+        elif isinstance(error,PermissionError) or error.errno in (errno.EACCES,errno.EPERM):
+            result["readError"]="permission_denied"
+        return result
+
+def probe_log_readability(path:Path) -> dict:
+    """Bound both content and wait time, including a stalled cloud-file open."""
+    try:
+        completed=subprocess.run(
+            [sys.executable,"-I","-S","-c",_LOG_PROBE_CODE,
+             str(Path(__file__).resolve()),str(path)],
+            stdin=subprocess.DEVNULL,capture_output=True,text=True,
+            encoding="utf-8",timeout=LOG_READ_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        return {"readable":False,"readError":"probe_timeout"}
+    except (OSError,ValueError):
+        return {"readable":False,"readError":"probe_failed"}
+    if completed.returncode!=0:
+        return {"readable":False,"readError":"probe_failed"}
+    try:
+        if not isinstance(completed.stdout,str) or len(completed.stdout)>1024:
+            raise ValueError("invalid_probe_response")
+        result=json.loads(completed.stdout)
+        if not isinstance(result,dict) or type(result.get("readable")) is not bool:
+            raise ValueError("invalid_probe_response")
+        if result["readable"]:
+            if result!={"readable":True}:
+                raise ValueError("invalid_probe_response")
+        elif (result.get("readError") not in _LOG_READ_ERRORS or
+              set(result)-{"readable","readError","readErrno","readWinerror"}):
+            raise ValueError("invalid_probe_response")
+        for key in ("readErrno","readWinerror"):
+            if key in result and (type(result[key]) is not int or not 0<=result[key]<=0xffffffff):
+                raise ValueError("invalid_probe_response")
+        return result
+    except (TypeError,ValueError):
+        return {"readable":False,"readError":"invalid_probe_response"}
+
 def make_report(processes:list[dict],host:str,docs:Path|None,
                 doc_source:str,candidates:list[Path],window:dict|None,
                 expected_pid:int|None,expected_host:str|None,
@@ -258,10 +333,24 @@ def make_report(processes:list[dict],host:str,docs:Path|None,
     configured=settings.get("DocumentsDirectory")
     if configured:
         expected=Path(configured)/"Log.txt"
-        if not any(x["exists"] and Path(x["path"])==expected for x in files):
+        eligible=[x for x in files if x["exists"] and Path(x["path"])==expected]
+        if not eligible:
             reasons.append("no_log_file_in_configured_documents_directory")
-    elif not any(x["exists"] and Path(x["path"]).name.casefold()=="log.txt" for x in files):
-        reasons.append("no_log_file_found_in_known_paths")
+        elif not (game_config or {}).get("readError"):
+            eligible[0].update(probe_log_readability(expected))
+            if not eligible[0]["readable"]:
+                reasons.append("configured_log_not_readable")
+    else:
+        eligible=[x for x in files if x["exists"] and Path(x["path"]).name.casefold()=="log.txt"]
+        if not eligible:
+            reasons.append("no_log_file_found_in_known_paths")
+        elif not (game_config or {}).get("readError"):
+            for candidate in eligible:
+                candidate.update(probe_log_readability(Path(candidate["path"])))
+                if candidate["readable"]:
+                    break
+            if not any(x.get("readable") for x in eligible):
+                reasons.append("no_readable_log_file_found_in_known_paths")
     return {
         "schema":"RCM_SESSION_PREFLIGHT_V1",
         "observedLocal":datetime.now().astimezone().isoformat(),

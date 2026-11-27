@@ -94,6 +94,67 @@ async function capture({lines=LINE,timeoutMs=1400,maxMessages=1}={}){
     fs.rmSync(fx.dir,{recursive:true,force:true});
   }
 }
+function captureDiagnosticFixture({readCode,events=[],hang=false,exitCode=2,
+                                   unconfirmedTermination=false}={}){
+  const fx=f(),launcher=path.join(fx.dir,"launch.cjs");
+  const auditFile=path.join(fx.dir,"termination.json");
+  fs.writeFileSync(fx.log,"Noncombat logging enabled\n"+LINE);
+  let replacement;
+  if(readCode!==undefined){
+    const preload=path.join(fx.dir,"read-failure.cjs");
+    fs.writeFileSync(preload,
+      'const fs=require("node:fs");const original=fs.openSync;'+
+      'fs.openSync=function(file,...args){if(file==='+JSON.stringify(fx.log)+')'+
+      '{const error=Error("PRIVATE_ACCOUNT_AND_CHAT_FIXTURE");'+
+      'error.code='+JSON.stringify(readCode)+';throw error;}'+
+      'return original.call(this,file,...args);};');
+    replacement='["--require",'+JSON.stringify(preload)+',...args]';
+  }else{
+    const script='process.stdout.write('+JSON.stringify(events.map(e=>JSON.stringify(e)).join("\n")+
+      (events.length?"\n":""))+');'+
+      (hang?'setInterval(()=>{},1000);':'process.exitCode='+exitCode+';');
+    replacement='["-e",'+JSON.stringify(script)+']';
+  }
+  let launch=
+    'const cp=require("node:child_process");const original=cp.spawn;'+
+    'cp.spawn=(exe,args,options)=>original(exe,'+replacement+',options);';
+  if(unconfirmedTermination){
+    launch='const cp=require("node:child_process"),fs=require("node:fs");'+
+      'const {EventEmitter}=require("node:events"),{PassThrough}=require("node:stream");'+
+      'cp.spawn=()=>{const child=new EventEmitter();let kills=0,signal=null;'+
+      'child.stdout=new PassThrough();child.stderr=new PassThrough();'+
+      'child.kill=value=>{kills++;signal=value;return false;};'+
+      'child.unref=()=>fs.writeFileSync('+JSON.stringify(auditFile)+','+
+      'JSON.stringify({kills,signal,unref:true,stdoutDestroyed:child.stdout.destroyed,'+
+      'stderrDestroyed:child.stderr.destroyed}));'+
+      'setImmediate(()=>child.stdout.write('+JSON.stringify(events.map(e=>JSON.stringify(e)).join("\n")+"\n")+'));'+
+      'return child;};';
+  }
+  fs.writeFileSync(launcher,launch+
+    'require('+JSON.stringify(CLI)+').main(process.argv.slice(2));');
+  try{
+    const result=spawnSync(process.execPath,[launcher,"capture","--path",fx.log,
+      "--state",fx.state,"--timeout-ms","1000","--poll-ms","25","--max-messages","1"],
+      {encoding:"utf8",timeout:11000,windowsHide:true,maxBuffer:65536});
+    const journal=pub.readState(fx.state);
+    return {...result,journal,
+      lockReleased:!fs.existsSync(fx.state+".lock"),
+      terminationAudit:fs.existsSync(auditFile)?JSON.parse(fs.readFileSync(auditFile,"utf8")):null,
+      events:result.stdout.trim().split("\n").filter(Boolean).map(JSON.parse),
+      sourcePath:fx.log};
+  }finally{fs.rmSync(fx.dir,{recursive:true,force:true});}
+}
+function refused(overrides={}){
+  return {event:"refused",mode:"bounded_verified_public_follow",source:"RIFT_Log.txt",
+    reason:"log_baseline_read_error",readErrorCode:"UNKNOWN",gameInputSent:false,
+    editorDeliveryVerified:false,diskSavedVerified:false,...overrides};
+}
+function started(){
+  return {event:"started",mode:"bounded_verified_public_follow",source:"RIFT_Log.txt",
+    format:"rift-live-2026-numbered-public",channel:"Level 1-29",channelSlot:4,
+    kind:"public",prepareImport:true,oldHistoryReplayed:false,
+    gameInputSent:false,editorDeliveryVerified:false};
+}
 test("strict distinct public profile, defaults, and cross-journal paths",()=>{
   assert.equal(pub.SCHEMA,"RCM_PUBLIC_DELIVERY_V1");
   assert.equal(say.SCHEMA,"RCM_SAY_DELIVERY_V1");
@@ -151,6 +212,94 @@ test("public coordinator ignores other slots and Say and does not fabricate queu
   assert.equal(r.state.sessions[0].state,"completed");
   assert.equal(r.state.entries.length,0);
   assert.equal(r.events.at(-1).reason,"timeout");
+});
+
+test("capture preserves a sanitized follower read failure without queued transfers",()=>{
+  for(const code of ["UNKNOWN","EACCES","PRIVATE_ACCOUNT_AND_CHAT_FIXTURE"]){
+    const r=captureDiagnosticFixture({readCode:code});
+    assert.equal(r.status,2,r.stderr);
+    assert.equal(r.events.length,1);
+    assert.equal(r.events[0].event,"capture_finished");
+    assert.equal(r.events[0].state,"failed");
+    assert.equal(r.events[0].reason,"log_baseline_read_error");
+    assert.equal(r.events[0].readErrorCode,code.startsWith("PRIVATE_")?"UNAVAILABLE":code);
+    assert.equal(r.events[0].queued,0);
+    assert.equal(r.events[0].quarantined,0);
+    assert.equal(r.journal.sessions[0].reason,"log_baseline_read_error");
+    assert.equal(r.journal.entries.length,0);
+    assert.throws(()=>pub.claimNext(r.journal),/no_eligible/);
+    assert.ok(!(r.stdout+r.stderr).includes("PRIVATE_ACCOUNT_AND_CHAT_FIXTURE"));
+    assert.ok(!(r.stdout+r.stderr).includes(r.sourcePath));
+  }
+});
+
+test("malformed, duplicate, or out-of-order refusal receipts fail closed",()=>{
+  const cases=[
+    [refused({readErrorCode:"PRIVATE_ACCOUNT_AND_CHAT_FIXTURE"})],
+    [refused({reason:"PRIVATE_ACCOUNT_AND_CHAT_FIXTURE"})],
+    [refused({mode:"bounded_verified_say_follow"})],
+    [refused({gameInputSent:true})],
+    [refused({privateText:"PRIVATE_ACCOUNT_AND_CHAT_FIXTURE"})],
+    [refused(),refused()],
+    [refused(),started()],
+    [started(),refused()],
+    [refused(),batch()]
+  ];
+  for(const events of cases){
+    const r=captureDiagnosticFixture({events});
+    assert.equal(r.status,2,r.stderr);
+    assert.equal(r.events.at(-1).state,"failed");
+    assert.notEqual(r.events.at(-1).reason,"log_baseline_read_error");
+    assert.equal(r.events.at(-1).readErrorCode,undefined);
+    assert.equal(r.journal.entries.length,0);
+    assert.ok(!(r.stdout+r.stderr).includes("PRIVATE_ACCOUNT_AND_CHAT_FIXTURE"));
+  }
+  const wrongExit=captureDiagnosticFixture({events:[refused()],exitCode:0});
+  assert.equal(wrongExit.status,2);
+  assert.equal(wrongExit.events.at(-1).reason,"follower_refused_exit_mismatch");
+});
+
+test("parent deadline bounds a child stalled before baseline",()=>{
+  const r=captureDiagnosticFixture({hang:true});
+  assert.equal(r.status,2,r.stderr);
+  assert.equal(r.error,undefined);
+  assert.equal(r.events.length,1);
+  assert.equal(r.events[0].reason,"follower_wall_clock_timeout");
+  assert.equal(r.events[0].state,"failed");
+  assert.equal(r.events[0].followerTerminationConfirmed,true);
+  assert.equal(r.journal.entries.length,0);
+});
+
+test("parent deadline quarantines a batch even after finished if child never exits",()=>{
+  const finished={event:"finished",reason:"message_limit_reached",delivered:1,
+    gameInputSent:false,editorDeliveryVerified:false,diskSavedVerified:false};
+  const r=captureDiagnosticFixture({events:[started(),observation(),batch(),finished],hang:true});
+  assert.equal(r.status,2,r.stderr);
+  assert.equal(r.error,undefined);
+  assert.equal(r.events.at(-1).reason,"follower_wall_clock_timeout");
+  assert.equal(r.events.at(-1).state,"failed");
+  assert.equal(r.events.at(-1).queued,0);
+  assert.equal(r.events.at(-1).quarantined,1);
+  assert.equal(r.journal.entries[0].status,"quarantined");
+  assert.throws(()=>pub.claimNext(r.journal),/no_eligible/);
+});
+
+test("unconfirmed child termination returns failed, detaches pipes and quarantines the batch",()=>{
+  const r=captureDiagnosticFixture({events:[started(),observation(),batch()],
+    unconfirmedTermination:true});
+  assert.equal(r.status,2,r.stderr);
+  assert.equal(r.error,undefined);
+  assert.equal(r.events.at(-1).reason,"follower_wall_clock_timeout");
+  assert.equal(r.events.at(-1).state,"failed");
+  assert.equal(r.events.at(-1).followerTerminationConfirmed,false);
+  assert.equal(r.events.at(-1).queued,0);
+  assert.equal(r.events.at(-1).quarantined,1);
+  assert.equal(r.journal.entries[0].status,"quarantined");
+  assert.equal(r.journal.sessions[0].state,"failed");
+  assert.equal(r.lockReleased,true);
+  assert.throws(()=>pub.claimNext(r.journal),/no_eligible/);
+  assert.deepEqual(r.terminationAudit,{kills:1,signal:"SIGKILL",unref:true,
+    stdoutDestroyed:true,stderrDestroyed:true});
 });
 test("public queue claim is single-inflight, durable, private in status",()=>{
   const fx=f();

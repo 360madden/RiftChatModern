@@ -1,5 +1,5 @@
 """RCM read-only Windows session/log preflight; all tests use local fixtures."""
-import contextlib, csv, io, json, os
+import contextlib, csv, errno, io, json, os, stat
 from pathlib import Path
 import sys, tempfile, unittest
 from unittest import mock
@@ -287,6 +287,162 @@ class SessionPreflightTests(unittest.TestCase):
             {"settings":{},"readError":"unavailable"})
         self.assertIn("rift_config_unreadable",report["blockers"])
         self.assertFalse(report["canAttemptSupervisedLogTest"])
+
+    def test_unreadable_configured_log_cannot_fall_back_to_readable_old_log(self):
+        current=self.root/"configured"
+        current.mkdir()
+        active=current/"Log.txt"
+        active.write_bytes(b"private current log")
+        stale=self.docs/"RIFT"/"Log.txt"
+        stale.write_bytes(b"readable stale log")
+        denied={"readable":False,"readError":"cloud_file_provider_not_running",
+                "readErrno":22,"readWinerror":362}
+        completed=p.subprocess.CompletedProcess([],0,json.dumps(denied),"")
+        with mock.patch.object(p.subprocess,"run",return_value=completed) as probe:
+            report=p.make_report([{"name":p.GAME,"pid":30000}],"LEGION",
+                self.docs,"fixture",[active,stale],None,None,"LEGION",
+                {"settings":{"DocumentsDirectory":str(current)}})
+        self.assertFalse(report["canAttemptSupervisedLogTest"])
+        self.assertIn("configured_log_not_readable",report["blockers"])
+        self.assertEqual(probe.call_count,1)
+        self.assertEqual(probe.call_args.args[0][-1],str(active))
+        self.assertEqual(report["logCandidates"][0]["readWinerror"],362)
+        self.assertNotIn("readable",report["logCandidates"][1])
+        self.assertNotIn("private current log",json.dumps(report))
+
+    def test_log_read_probe_timeout_blocks_supervised_test(self):
+        log=self.docs/"RIFT"/"Log.txt"
+        log.write_bytes(b"fixture")
+        with mock.patch.object(p.subprocess,"run",side_effect=p.subprocess.TimeoutExpired(
+                ["private path must not be output"],3,output=b"private log")):
+            report=p.make_report([{"name":p.GAME,"pid":30000}],"LEGION",
+                self.docs,"fixture",[log],None,None,"LEGION",
+                {"settings":{"DocumentsDirectory":str(log.parent)}})
+        self.assertFalse(report["canAttemptSupervisedLogTest"])
+        self.assertEqual(report["logCandidates"][0]["readError"],"probe_timeout")
+        self.assertNotIn("private",json.dumps(report))
+
+    def test_log_read_probe_failure_or_bad_response_cannot_qualify(self):
+        log=self.docs/"RIFT"/"Log.txt"
+        log.write_bytes(b"fixture")
+        cases=[(1,'{"readable": true}'),(0,"not json"),
+               (0,'{"readable": "true"}'),(0,'{"readable": true, "chat": "secret"}'),
+               (0,'{"readable": true, "readError": "unavailable"}'),
+               (0,'{"readable":false,"readError":[]}'),
+               (0,'{"readable":false,"readError":"unavailable","readWinerror":"private"}'),
+               (0,"x"*5000)]
+        for exit_code,stdout in cases:
+            with self.subTest(exit_code=exit_code,stdout=stdout[:80]), mock.patch.object(
+                    p.subprocess,"run",return_value=p.subprocess.CompletedProcess(
+                        [],exit_code,stdout,"private stderr")):
+                report=p.make_report([{"name":p.GAME,"pid":30000}],"LEGION",
+                    self.docs,"fixture",[log],None,None,"LEGION",
+                    {"settings":{"DocumentsDirectory":str(log.parent)}})
+            self.assertFalse(report["canAttemptSupervisedLogTest"])
+            self.assertIn("configured_log_not_readable",report["blockers"])
+            self.assertNotIn("secret",json.dumps(report))
+            self.assertNotIn("private stderr",json.dumps(report))
+
+    def test_existing_but_unreadable_logs_without_override_do_not_qualify(self):
+        log=self.docs/"RIFT"/"Log.txt"
+        log.write_bytes(b"fixture")
+        completed=p.subprocess.CompletedProcess([],0,
+            '{"readable":false,"readError":"permission_denied","readErrno":13}',"")
+        with mock.patch.object(p.subprocess,"run",return_value=completed):
+            report=p.make_report([{"name":p.GAME,"pid":30000}],"LEGION",
+                self.docs,"fixture",[log],None,None,"LEGION")
+        self.assertFalse(report["canAttemptSupervisedLogTest"])
+        self.assertIn("no_readable_log_file_found_in_known_paths",report["blockers"])
+
+    def test_probe_reads_only_one_byte_and_empty_log_is_readable(self):
+        log=self.docs/"RIFT"/"Log.txt"
+        original=b"private contents\n"*1000
+        log.write_bytes(original)
+        with mock.patch.object(p.os,"read",wraps=os.read) as read:
+            result=p._read_log_probe(log)
+        self.assertEqual(result,{"readable":True})
+        self.assertEqual(read.call_count,1)
+        self.assertEqual(read.call_args.args[1],1)
+        self.assertEqual(log.read_bytes(),original)
+        log.write_bytes(b"")
+        report=p.make_report([{"name":p.GAME,"pid":30000}],"LEGION",
+            self.docs,"fixture",[log],None,None,"LEGION",
+            {"settings":{"DocumentsDirectory":str(log.parent)}})
+        self.assertTrue(report["canAttemptSupervisedLogTest"])
+        self.assertTrue(report["logCandidates"][0]["readable"])
+        self.assertFalse(report["canClaimLiveChatReception"])
+        self.assertFalse(report["canClaimGameLoaded"])
+        self.assertFalse(report["readyForLiveChatAcceptance"])
+        self.assertFalse(report["gameInputSent"])
+        self.assertFalse(report["gameLoggingChanged"])
+        self.assertEqual(log.read_bytes(),b"")
+
+    def test_probe_os_errors_are_sanitized_and_close_the_open_handle(self):
+        log=self.docs/"RIFT"/"Log.txt"
+        log.write_bytes(b"fixture")
+        cloud=[]
+        for code in (362,0x8007016A,-2147024534):
+            error=OSError(errno.EIO,"private exception content")
+            error.winerror=code
+            cloud.append((error,"cloud_file_provider_not_running"))
+        cases=cloud+[(PermissionError(errno.EACCES,"private"),"permission_denied"),
+                     (FileNotFoundError(errno.ENOENT,"private"),"missing"),
+                     (OSError(errno.EINVAL,"private"),"unavailable"),
+                     (OSError(errno.EIO,"private"),"unavailable")]
+        for error,reason in cases:
+            with self.subTest(reason=reason,winerror=getattr(error,"winerror",None)), \
+                    mock.patch.object(p.os,"read",side_effect=error), \
+                    mock.patch.object(p.os,"close",wraps=os.close) as close:
+                result=p._read_log_probe(log)
+            self.assertFalse(result["readable"])
+            self.assertEqual(result["readError"],reason)
+            self.assertEqual(close.call_count,1)
+            self.assertNotIn("private",json.dumps(result))
+
+    def test_probe_rejects_disappearance_and_nonregular_objects(self):
+        log=self.docs/"RIFT"/"Log.txt"
+        log.mkdir()
+        with mock.patch.object(p.os,"open") as opened:
+            self.assertEqual(p._read_log_probe(log),
+                {"readable":False,"readError":"not_regular_file"})
+        opened.assert_not_called()
+        log.rmdir()
+        self.assertEqual(p._read_log_probe(log)["readError"],"missing")
+        log.write_bytes(b"fixture")
+        with mock.patch.object(p.Path,"lstat",return_value=mock.Mock(st_mode=stat.S_IFLNK)), \
+                mock.patch.object(p.os,"open") as opened:
+            self.assertEqual(p._read_log_probe(log),
+                {"readable":False,"readError":"not_regular_file"})
+        opened.assert_not_called()
+        with mock.patch.object(p.os,"open",side_effect=FileNotFoundError(
+                errno.ENOENT,"removed between stat and open")):
+            self.assertEqual(p._read_log_probe(log)["readError"],"missing")
+        with mock.patch.object(p.os,"fstat",return_value=mock.Mock(st_mode=stat.S_IFIFO)), \
+                mock.patch.object(p.os,"read") as read, \
+                mock.patch.object(p.os,"close",wraps=os.close) as close:
+            self.assertEqual(p._read_log_probe(log),
+                {"readable":False,"readError":"not_regular_file"})
+        read.assert_not_called()
+        close.assert_called_once()
+
+    def test_unconfigured_probe_stops_at_readable_log_and_never_reads_combat_log(self):
+        first=self.docs/"RIFT"/"Log.txt"
+        first.write_bytes(b"fixture")
+        second=self.root/"Log.txt"
+        second.write_bytes(b"fixture")
+        combat=self.root/"CombatLog.txt"
+        combat.write_bytes(b"combat fixture")
+        outcomes=[p.subprocess.CompletedProcess([],0,
+                  '{"readable":false,"readError":"unavailable"}',""),
+                  p.subprocess.CompletedProcess([],0,'{"readable":true}',"")]
+        with mock.patch.object(p.subprocess,"run",side_effect=outcomes) as probe:
+            report=p.make_report([{"name":p.GAME,"pid":30000}],"LEGION",
+                self.docs,"fixture",[combat,first,second,first],None,None,"LEGION")
+        self.assertTrue(report["canAttemptSupervisedLogTest"])
+        self.assertEqual([call.args[0][-1] for call in probe.call_args_list],
+                         [str(first),str(second)])
+        self.assertNotIn("readable",report["logCandidates"][0])
+        self.assertNotIn("readable",report["logCandidates"][3])
 
 if __name__=="__main__":
     unittest.main()

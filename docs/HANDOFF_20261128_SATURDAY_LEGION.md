@@ -17,6 +17,16 @@ The configured RIFT DocumentsDirectory is the OneDrive Documents/RIFT root. Nati
 
 An independent redacted Node decoder poll observed `read_error` code `UNKNOWN`, opened=false, offset=5246. A direct Windows .NET file-open/read probe on the configured file returned IOException HRESULT **0x8007016A**, "The cloud file provider is not running." Its numeric attributes were 4199968. This is a proven access failure, not an established parser or game build regression. No parser relaxation, fallback to a stale file, private data publication, OneDrive settings change, or DocumentsDirectory migration was performed. The WinApp window enumeration also returned DESKTOP_TREE_UNSETTLED; the existing native screenshot path worked instead.
 
+## Continuation — source-access corrections, 06:52–07:03 PHT
+
+The published checkpoint `64e8180` passed [GitHub run 46077473266](https://github.com/360madden/RiftChatModern/actions/runs/46077473266), with 531 tests and three clean builds. Fresh follow-up checks found the OneDrive process and cloud-file filter driver already running, while an independent .NET read still returned **0x8007016A** at 06:57 PHT. A Python read returned generic errno 22 without a Windows error code; that generic code alone cannot identify the provider problem.
+
+Corrected three host-tool defects exposed by the failure: session readiness now requires a bounded actual byte read of the eligible log; follower startup errors reach the coordinator through a strictly validated, redacted refusal receipt; and coordinator capture now has an independent deadline that fails/quarantines received batches even if the child stalls before its own timer or after reporting finished. Full contract and timing limits: [source-access report](LOG_SOURCE_ACCESS_20261128.md).
+
+The complete new Windows gate passed on LEGION at **07:03:35 PHT: 395 Python/Lua + 152 Node = 547 passed**, zero failures/skips/todo, all three Release builds with zero warnings/errors. Toolchain: Python 3.14.10, Node 24.20.0, .NET SDK 10.0.403. Validation job `rcm-20261128-source-gate-01`; see [offline qualification](OFFLINE_CI.md). Sixteen new regression methods cover these changes, including fail-before cases and unconfirmed child termination.
+
+The actual corrected preflight at **07:01:39 PHT** returned exit 2, blocker `configured_log_not_readable`, and `canAttemptSupervisedLogTest: false` for the existing 5,246-byte source. Game-input, logging-change and live-reception flags stayed false. This continuation performed no game input, logging toggle, addon deployment or account/sync reconfiguration. The underlying source remains inaccessible; fresh chat acceptance is still blocked.
+
 ## Status and resume
 
 - **RCM-085:** PARTIAL, live startup, game hash and independent save checkpoint accepted on LEGION; runtime API/console coverage, fresh authentic log/Say transfer and remaining physical interaction checks not run or blocked. Do not declare all physical recovery complete or upgrade before the baseline is fully qualified.

@@ -12,6 +12,22 @@ const {attachChatObserver,validLogPath}=require("./rcm-chat-observer.cjs");
 const {encodeRecord}=require("./rcm-chat-import.cjs");
 
 const MAX_PENDING=200;
+// Only fixed reason/code tokens may cross the process boundary. Native error
+// messages and paths can contain account names or other private information.
+const READ_ERROR_CODES=new Set(["EACCES","EPERM","ENOENT","ENOTDIR","EISDIR",
+  "ELOOP","EBUSY","EMFILE","ENFILE","EIO","ENODEV","ESTALE","ETIMEDOUT",
+  "UNKNOWN","OPEN_FAILED","READ_FAILED","UNAVAILABLE"]);
+const STARTUP_REASONS=new Set(["log_source_unavailable","log_baseline_read_error",
+  "log_baseline_not_clean","log_startup_failed"]);
+const REFUSAL_KEYS=new Set(["event","mode","source","reason","readErrorCode",
+  "gameInputSent","editorDeliveryVerified","diskSavedVerified"]);
+class LogStartupError extends Error{
+  constructor(reason,code=null){
+    super(reason);
+    this.readErrorCode=code===null?null:
+      (typeof code==="string"&&READ_ERROR_CODES.has(code)?code:"UNAVAILABLE");
+  }
+}
 const PROFILES=Object.freeze({
   say:Object.freeze({
     mode:"bounded_verified_say_follow",
@@ -29,6 +45,16 @@ const PROFILES=Object.freeze({
 function profileFor(name){
   if(!Object.hasOwn(PROFILES,name))throw Error("unknown_capture_profile");
   return PROFILES[name];
+}
+function isRefusedReceipt(e,profileName){
+  return !!e && typeof e==="object" && !Array.isArray(e) &&
+    Object.keys(e).length===REFUSAL_KEYS.size &&
+    Object.keys(e).every(key=>REFUSAL_KEYS.has(key)) &&
+    e.event==="refused" && e.mode===profileFor(profileName).mode &&
+    e.source==="RIFT_Log.txt" && STARTUP_REASONS.has(e.reason) &&
+    (e.readErrorCode===null || READ_ERROR_CODES.has(e.readErrorCode)) &&
+    e.gameInputSent===false && e.editorDeliveryVerified===false &&
+    e.diskSavedVerified===false;
 }
 function parseArgs(argv){
   const out={timeoutMs:30000,pollMs:100,maxMessages:20,prepareImport:false};
@@ -80,7 +106,8 @@ function isObserved(profileName,e){
 function follow(cfg, emit=(x)=>process.stdout.write(JSON.stringify(x)+"\n"),
                 profileName="say"){
   const p=profileFor(profileName);
-  sourceInfo(cfg.filePath);
+  try{sourceInfo(cfg.filePath);}
+  catch(error){throw new LogStartupError("log_source_unavailable",error.code||"UNAVAILABLE");}
   const tailer=new LogTailProbe({filePath:cfg.filePath,
     nonce:"RCM_FOLLOW_"+crypto.randomBytes(8).toString("hex")});
   let pending=[],overloaded=false,finished=false,timer=null;
@@ -89,15 +116,24 @@ function follow(cfg, emit=(x)=>process.stdout.write(JSON.stringify(x)+"\n"),
     if(pending.length>=MAX_PENDING){overloaded=true;return;}
     pending.push({event,record});
   },false);
-  const baselineEvents=tailer.poll();
-  if(!tailer.opened || baselineEvents.some(x=>x.event!=="file_opened") ||
-     pending.length!==0||overloaded){
-    tailer.close();throw Error("Could not establish a clean log EOF baseline");
+  let baselineOffset,fileKey,checkpointAnchor;
+  try{
+    const baselineEvents=tailer.poll();
+    if(!tailer.opened || baselineEvents.some(x=>x.event!=="file_opened") ||
+       pending.length!==0||overloaded){
+      const readError=baselineEvents.find(x=>x.event==="read_error");
+      throw new LogStartupError(readError?"log_baseline_read_error":"log_baseline_not_clean",
+        readError?(readError.code||"UNAVAILABLE"):null);
+    }
+    baselineOffset=tailer.offset;
+    fileKey=tailer.fileKey;
+    checkpointAnchor=anchorFor(cfg.filePath,baselineOffset);
+  }catch(error){
+    tailer.close();
+    if(error instanceof LogStartupError)throw error;
+    throw new LogStartupError("log_baseline_read_error",error.code||"UNAVAILABLE");
   }
-  const baselineOffset=tailer.offset;
-  const fileKey=tailer.fileKey;
   let checkpointOffset=baselineOffset;
-  let checkpointAnchor=anchorFor(cfg.filePath,checkpointOffset);
   const baselineOversized=tailer.oversizedLineCount;
   const startedAt=Date.now();
   function finish(reason,code=0){
@@ -186,6 +222,15 @@ function start(argv=process.argv.slice(2),profileName="say"){
     return;
   }
   try{follow(cfg,undefined,profileName);}
-  catch(e){process.stderr.write("RCM "+profileName+" follow refused: "+e.message+"\n");process.exitCode=2;}
+  catch(error){
+    const reason=error instanceof LogStartupError?error.message:"log_startup_failed";
+    const readErrorCode=error instanceof LogStartupError?error.readErrorCode:null;
+    process.stdout.write(JSON.stringify({event:"refused",mode:p.mode,source:"RIFT_Log.txt",
+      reason,readErrorCode,gameInputSent:false,editorDeliveryVerified:false,
+      diskSavedVerified:false})+"\n");
+    process.stderr.write("RCM "+profileName+" follow refused: "+reason+
+      (readErrorCode===null?"":" ("+readErrorCode+")")+"\n");
+    process.exitCode=2;
+  }
 }
-module.exports={PROFILES,parseArgs,sourceInfo,anchorFor,isObserved,follow,start};
+module.exports={PROFILES,isRefusedReceipt,parseArgs,sourceInfo,anchorFor,isObserved,follow,start};
