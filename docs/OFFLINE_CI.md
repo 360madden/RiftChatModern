@@ -11,7 +11,11 @@ $env:PYTHONUTF8 = '1'
 & .\.venv\Scripts\python.exe -B tools/rcm_offline_ci.py
 ```
 
-The runner builds all three .NET projects serially, discovers Python/Lua and Node suites, requires at least the November 28 source-access baseline (**395 Python/Lua and 152 Node tests**), and refuses skipped/todo tests or incomplete TAP summaries. This adds eight Python log-read guards and eight Node refusal/deadline regressions to the November 24 baseline below. This is fixture-only qualification. It must never substitute for the physical patch recovery gate, actual RIFT API/log receipts, or character save acceptance. It does not itself launch, deploy or input to RIFT. The CI configuration is intended for a disposable Windows runner with read-only repository permissions, not a self-hosted gaming PC. Adjust test-count floors explicitly only when changes to the documented baseline justify it.
+The runner builds all three .NET projects serially, discovers Python/Lua and Node suites, requires at least the November 28 compatibility baseline (**399 Python/Lua and 152 Node tests**), and refuses skipped/todo tests or incomplete TAP summaries. This includes the source-access guards below and four additional [historical-release compatibility methods](RELEASE_COMPATIBILITY_20261128.md). This is fixture-only qualification. It must never substitute for the physical patch recovery gate, actual RIFT API/log receipts, or character save acceptance. It does not itself launch, deploy or input to RIFT. The CI configuration is intended for a disposable Windows runner with read-only repository permissions, not a self-hosted gaming PC. Adjust test-count floors explicitly only when changes to the documented baseline justify it.
+
+## Verified November 28 compatibility result
+
+At 07:27:39 PHT, the full LEGION Windows gate passed on the compatibility candidate based on `7dd85d2`: **399 Python/Lua + 152 Node = 551 tests**, zero failures/skips/todo, and all three Release builds with zero warnings/errors. Historical fixture regeneration matched the committed fixture bytes. Job: `rcm-20261128-release-compat-full-gate`. See [release compatibility](RELEASE_COMPATIBILITY_20261128.md). Prior source-access qualification remains recorded below. Hosted CI for the subsequent commit must be checked independently.
 
 ## Verified November 28 LEGION result
 

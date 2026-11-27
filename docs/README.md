@@ -11,8 +11,9 @@ as [the complete engineering archive](ENGINEERING_ARCHIVE_README_THROUGH_2026112
 
 - **[Authoritative living development roadmap](../ROADMAP.md)** — prioritized milestones, evidence levels, acceptance gates, risks and next work
 - **[November 24 patch recovery playbook](PATCH_RECOVERY_20261124.md)** — verified LEGION baseline, private rollback snapshot, and staged post-patch acceptance
-- **[Latest development handoff](HANDOFF_20261128_SATURDAY_LEGION.md)** — LEGION restored, 547 tests passed, live v0.2.23 startup/save proof and confirmed cloud-file blocker
+- **[Latest development handoff](HANDOFF_20261128_SATURDAY_LEGION.md)** — LEGION restored, live v0.2.23 startup/save proof, log readability recovered and new release compatibility tests
 - **[Log source access and capture deadlines](LOG_SOURCE_ACCESS_20261128.md)** — byte-read readiness, sanitized source failures, independent capture deadline and actual LEGION refusal proof
+- **[Historical release compatibility](RELEASE_COMPATIBILITY_20261128.md)** — release-derived synthetic save, API surface, importer and palette regressions
 - **[Tuesday recovery handoff](HANDOFF_20261124_TUESDAY_RECOVERY.md)** — Windows CI and deployment/recovery guard evidence
 - **[Windows offline qualification](OFFLINE_CI.md)** — pinned companion dependency, three Release builds and complete no-skip suites
 - **[Tuesday deployment target guard](PATCH_RECOVERY_TARGET_GUARD_20261124.md)** — original explicit-target defect and initial isolated checks; see the Tuesday handoff for later integrated results

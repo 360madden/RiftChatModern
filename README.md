@@ -153,15 +153,15 @@ The API also provides history retrieval, subscriptions, UI controls, copy helper
 
 ## Project status
 
-**November 28 checkpoint (PHT):** **547 tests passed on LEGION**, with all three Release builds clean. Log preflight now verifies actual byte readability; capture preserves sanitized read errors and enforces an independent child deadline. Live v0.2.23 startup and save checkpoint are verified on LEGION; current public-log access remains blocked by Windows cloud-file error 0x8007016A. See [source-access corrections and verification](docs/LOG_SOURCE_ACCESS_20261128.md).
+**November 28 checkpoint (PHT):** **551 tests passed on LEGION**, with all three Release builds clean. Log preflight now verifies actual byte readability; capture preserves sanitized read errors and enforces an independent child deadline. Live v0.2.23 startup and save checkpoint are verified on LEGION; the formerly unreadable configured log became readable at 07:20 PHT, but fresh game-written bytes remain unverified. See [source-access corrections and verification](docs/LOG_SOURCE_ACCESS_20261128.md).
 
 | Area | Current evidence |
 |---|---|
 | **Addon source / live baseline** | **v0.2.26** source includes the graphical palette, API hardening and a separate integration example; **v0.2.23** is the last physically accepted version, with a retained real **`[HOST/SAY]`** import |
 | **Physical RIFT evidence** | v0.2.22 General, Loot and named public-channel subscriptions confirmed in native screenshots; v0.2.21 drag/resize, focus, details, message columns previously accepted |
-| **Current Windows regression result** | **395 Python/Lua + 152 Node = 547 passed** on LEGION at 07:03 PHT, zero failures/skips; three .NET Release builds with zero warnings/errors. Includes 16 new source-read and capture-failure regressions. See [qualification evidence](docs/OFFLINE_CI.md) and [GitHub workflow results](https://github.com/360madden/RiftChatModern/actions/workflows/offline-regression.yml). |
+| **Current Windows regression result** | **399 Python/Lua + 152 Node = 551 passed** on LEGION at 07:27 PHT, zero failures/skips; three .NET Release builds with zero warnings/errors. Includes 16 source-read/capture-failure and four release-derived compatibility regressions. See [qualification evidence](docs/OFFLINE_CI.md) and [GitHub workflow results](https://github.com/360madden/RiftChatModern/actions/workflows/offline-regression.yml). |
 | **Historical regression baseline** | **511 passed** on LEGION before the recovery branch (367 Python/Lua + 144 Node; zero failures/skips), at main `d2e280a`. See [pre-patch bug hunt](docs/PATCH_RECOVERY_BUGHUNT_20261124.md). |
-| **Current physical access** | LEGION restored November 28 PHT; actual running executable hash unchanged, v0.2.23 startup and fresh save verified. Remaining physical recovery and fresh log receipt pending. |
+| **Current physical access** | LEGION restored November 28 PHT; executable hash unchanged, v0.2.23 startup/save verified, and configured log readable at 07:20. Intermittent foreground acquisition and fresh log receipt remain pending. |
 | **Persistence** | Window position and size survived `/reloadui`; exact UI geometry and local DEV test entry independently found in the on-disk SavedVariables file |
 | **Windows host tooling** | Existing .NET 10 editor batch validator, exact-candidate gate; temporary RIFT foreground capture/return physically verified |
 | **Native player social chat** | Two supervised real **Say** imports accepted; 20 game-created numbered public-channel log lines establish one additional parser format, but public import and Guild/Party/Tell remain unverified |
@@ -179,8 +179,9 @@ The homepage is intentionally concise. The complete development history—includ
 | Start here | Purpose |
 |---|---|
 | 🧭 [Current development roadmap](ROADMAP.md) | Canonical priorities, dependency gates, measurable acceptance criteria and current project board |
-| 📋 [Latest development handoff](docs/HANDOFF_20261128_SATURDAY_LEGION.md) | LEGION live recovery, 547-test result, verified startup/save and confirmed log-access blocker |
+| 📋 [Latest development handoff](docs/HANDOFF_20261128_SATURDAY_LEGION.md) | LEGION live recovery, restored log readability, verified startup/save, compatibility work and pending foreground/fresh-log acceptance |
 | 🛠️ [Log source access and capture deadlines](docs/LOG_SOURCE_ACCESS_20261128.md) | Byte-read readiness, sanitized refusal diagnostics and bounded child capture |
+| [Historical release compatibility](docs/RELEASE_COMPATIBILITY_20261128.md) | Synthetic v0.2.23 save, API v2, import token and layout compatibility |
 | 📋 [Tuesday recovery handoff](docs/HANDOFF_20261124_TUESDAY_RECOVERY.md) | Recovery guards and passing Windows CI |
 | 🧪 [Windows offline qualification](docs/OFFLINE_CI.md) | Reproducible toolchain, pinned companion dependency, all three builds and no-skip suite gate |
 | 📋 [Monday development closeout](docs/HANDOFF_20261123_MONDAY_CLOSEOUT.md) | Preserved v0.2.26 API/palette work and historical 497-test checkpoint |

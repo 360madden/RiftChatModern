@@ -1,0 +1,123 @@
+{
+  "apiFunctions": [
+    "CloseMessage",
+    "Copy",
+    "CopySelectedMessage",
+    "FocusEditor",
+    "FocusSearch",
+    "GetAddonTransportStatus",
+    "GetConsoleMirrorStatus",
+    "GetFocusState",
+    "GetHistory",
+    "GetHostIngressStatus",
+    "GetMessage",
+    "GetNativeConsoles",
+    "GetSaveCheckpointStatus",
+    "GetSelectedMessage",
+    "GetStatus",
+    "Hide",
+    "OpenMessage",
+    "Publish",
+    "RegisterCommand",
+    "SendAddon",
+    "SetConsoleMirror",
+    "SetWindowSize",
+    "Show",
+    "Submit",
+    "Subscribe",
+    "Unsubscribe"
+  ],
+  "fixtureVersion": 1,
+  "interfaceVersion": 2,
+  "legacyChatQuery": [
+    {
+      "at": 1700,
+      "channelKind": "general",
+      "channelName": "Say",
+      "id": 3,
+      "importToken": "AABBCCDDEEFF",
+      "kind": "import",
+      "nativePlayerChatVerified": false,
+      "origin": "host_manual",
+      "source": "FixtureSpeaker",
+      "text": "fixture Say message"
+    },
+    {
+      "at": 1700,
+      "channelKind": "public",
+      "channelName": "Level 1-29",
+      "id": 4,
+      "importToken": "112233445566",
+      "kind": "import",
+      "nativePlayerChatVerified": false,
+      "origin": "host_manual",
+      "source": "FixtureSpeaker",
+      "text": "fixture public message"
+    }
+  ],
+  "release": "0.2.23",
+  "saved": {
+    "filter": "chat",
+    "history": [
+      {
+        "at": 1700,
+        "id": 1,
+        "kind": "system",
+        "origin": "local_addon",
+        "source": "RiftChatModern",
+        "text": "Modern chat window ready. :help lists local commands."
+      },
+      {
+        "at": 1700,
+        "id": 2,
+        "kind": "addons",
+        "origin": "external_api",
+        "source": "FixtureAddon",
+        "text": "compatibility fixture message"
+      },
+      {
+        "at": 1700,
+        "channelKind": "general",
+        "channelName": "Say",
+        "id": 3,
+        "importToken": "AABBCCDDEEFF",
+        "kind": "import",
+        "origin": "host_manual",
+        "source": "FixtureSpeaker",
+        "text": "fixture Say message"
+      },
+      {
+        "at": 1700,
+        "channelKind": "public",
+        "channelName": "Level 1-29",
+        "id": 4,
+        "importToken": "112233445566",
+        "kind": "import",
+        "origin": "host_manual",
+        "source": "FixtureSpeaker",
+        "text": "fixture public message"
+      }
+    ],
+    "nextId": 5,
+    "saveCheckpoint": {
+      "at": 1701,
+      "formatVersion": 1,
+      "historyCount": 4,
+      "lastHistoryId": 4,
+      "lastImportId": 4,
+      "nextId": 5,
+      "schemaVersion": 2,
+      "sequence": 1
+    },
+    "schemaVersion": 2,
+    "search": "fixture",
+    "ui": {
+      "h": 680,
+      "w": 940,
+      "x": 580,
+      "y": 154
+    }
+  },
+  "sourceCommit": "5a95d0e56e7652dca7ef2e2dc7a481dea5a7673b",
+  "syntheticOnly": true
+}
