@@ -56,3 +56,18 @@ jobs:
       - name: Build and qualify offline suites
         shell: pwsh
         run: python -B tools/rcm_offline_ci.py
+      - name: Build and verify addon-only candidate
+        shell: pwsh
+        run: |
+          python -B tools/package_rcm.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -B tools/package_rcm.py --check
+      - name: Retain qualified addon candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: rcm-addon-candidate-${{ github.sha }}
+          path: |
+            RiftChatModern/dist/RiftChatModern-*.zip
+            RiftChatModern/dist/RiftChatModern-*.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
