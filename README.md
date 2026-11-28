@@ -58,8 +58,8 @@ RCM is built to support other RIFT addons as a shared diagnostics surface—not 
 
 RCM is a **RIFT Live addon**. It does not require an external host tool for the core in-game window.
 
-1. Download or clone this repository.
-2. Copy the contents of [`addon/RiftChatModern`](addon/RiftChatModern/) into your RIFT AddOns directory, preserving the folder structure and `RiftAddon.toc`.
+1. Use a verified addon-only candidate from a successful [Windows CI run](https://github.com/360madden/RiftChatModern/actions/workflows/offline-regression.yml), or clone this repository and [build the package locally](docs/ADDON_PACKAGE.md).
+2. For a new installation, extract the inner addon ZIP into your actual RIFT `Interface\AddOns` directory. Alternatively, copy the entire [`addon/RiftChatModern`](addon/RiftChatModern/) folder there. The final path must be `AddOns\RiftChatModern\RiftAddon.toc`. For an existing installation, use the guarded updater below.
 3. Start RIFT, or if the addon is already installed, type `/reloadui` in **RIFT's original chat** to load updated Lua files.
 4. Type `/rcm` or `/rcm show` in the original chat to open the RCM window.
 
@@ -74,6 +74,7 @@ RIFT/
             ├── Core.lua
             ├── AddonMessages.lua
             ├── NativeChatProbe.lua
+            ├── ConsoleCategories.lua
             ├── ConsoleMirror.lua
             ├── HostIngress.lua
             ├── Main.lua

@@ -15,10 +15,10 @@ import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-# November 28 compatibility baseline: 395 source-access methods + 4
-# historical-release compatibility methods; 152 existing Node tests.
+# November 28 packaging baseline: 399 compatibility methods + 10
+# addon package regressions; 152 existing Node tests.
 # A silently skipped or missing suite must not qualify as a clean result.
-MIN_PYTHON_TESTS = 399
+MIN_PYTHON_TESTS = 409
 MIN_NODE_TESTS = 152
 
 
